@@ -1,4 +1,4 @@
-import { Context, Logger, segment, Element, Session, Dict, h, Next, Fragment, trimSlash, User } from 'koishi'
+import { Context, Logger, segment, Element, Session, h, Next, Fragment, trimSlash, User } from 'koishi'
 import fs, { readFileSync } from 'fs'
 import { getUsage } from 'koishi-plugin-rate-limit'
 import { } from 'koishi-plugin-puppeteer'
@@ -35,9 +35,6 @@ class DVc extends Dvc {
     this.pluginConfig = config
     ctx.i18n.define('zh', require('./locales/zh'))
 
-    ctx.on('ready', () => {
-      if ((!ctx.puppeteer) && config.output == 'image') logger.warn('未启用 pptr，将无法发送图片消息')
-    })
     ctx.inject(['console'], (ctx) => {
       ctx.console.addEntry({
         dev: resolve(__dirname, '../client/index.ts'),
@@ -80,24 +77,22 @@ class DVc extends Dvc {
       return this.clear(session)
     })
 
-    if (!config.onlyOnePersonality) {
-      //切换现有人格
-      ctx.command('dvc.切换人格 <prompt:text>', '切换为现有的人格', {
-        authority: 1
-      }).alias('dvc.人格切换', '切换人格').action(async ({ session }, prompt) => {
-        return this.switch_personality(session, prompt)
-      })
-      //设置人格
-      ctx.command('dvc.添加人格 <prompt:text>', '更改AI的人格,并重置会话', {
-        authority: 1
-      }).action(({ session }, prompt) => {
-        session.send('添加人格失败？看这里！\n https://forum.koishi.xyz/t/topic/2349/4')
-        return this.add_personality(session, prompt)
-      })
-      //删除人格
-      ctx.command('dvc.删除人格 <prompt:text>', '删除AI的人格,并重置会话', { authority: 1 })
-        .action(({ session }, prompt) => { return this.rm_personality(session, prompt) })
-    }
+    //切换现有人格
+    ctx.command('dvc.切换人格 <prompt:text>', '切换为现有的人格', {
+      authority: 2
+    }).alias('dvc.人格切换', '切换人格').action(async ({ session }, prompt) => {
+      return this.switch_personality(session, prompt)
+    })
+    //设置人格
+    ctx.command('dvc.添加人格 <prompt:text>', '更改AI的人格,并重置会话', {
+      authority: 3
+    }).action(({ session }, prompt) => {
+      session.send('添加人格失败？看这里！\n https://forum.koishi.xyz/t/topic/2349/4')
+      return this.add_personality(session, prompt)
+    })
+    //删除人格
+    ctx.command('dvc.删除人格 <prompt:text>', '删除AI的人格,并重置会话', { authority: 3 })
+      .action(({ session }, prompt) => { return this.rm_personality(session, prompt) })
 
 
 
@@ -113,58 +108,13 @@ class DVc extends Dvc {
       return this.switch_output(session, type)
     })
 
-    //生图
-    ctx.command('dvc.生图 <prompt:text>', '生成图片', {
-      authority: 1,
-      usageName: 'dvc',
-    })
-      .option('resolution', '-r <resolution:string>')
-      .option('img_number', '-n <img_number:number>')
-      .action(async ({
-        session,
-        options
-      },
-        prompt
-      ) => {
-        return this.paint(
-          session,
-          prompt ? prompt : 'landscape',
-          options.img_number ? options.img_number : 1,
-          options.resolution ? options.resolution : config.resolution
-        )
-      })
     ctx.command('dvc.翻译 <prompt:text>', 'AI翻译', { usageName: 'dvc' })
       .option('lang', '-l <lang:t=string>', { fallback: config.lang })
       .action(async ({ session, options }, prompt) => {
         return await this.translate(session, options.lang, prompt)
       })
-    ctx.command('dvc.update', '一键加载 400 条极品预设', { authority: 4 })
-      .alias('dvc.更新预设')
-      .option('displace', '-d')
-      .action(async ({ session, options }) => {
-        let prompts_latest = (await ctx.http.get(
-          'https://gitee.com/initencunter/ChatPrompts/raw/master/safe', {
-          responseType: 'text'
-        }))
-        const prompts_latest_ = JSON.parse(Buffer.from(prompts_latest, 'base64').toString('utf-8'))
-        if (options.displace) {
-          await session.send('该选项将会导致人格丢失，其否继续[Y/n]?')
-          const confirm = await session.prompt(60000)
-          if (!confirm) return
-          if (confirm.toLowerCase() !== 'y') return session.send('取消切换')
-          this.personality = prompts_latest_
-        } else {
-          for (const i of Object.keys(prompts_latest_)) {
-            this.personality[i] = prompts_latest_[i]
-          }
-        }
-        fs.writeFileSync('./personality.json', JSON.stringify(this.personality, null, 2))
-        logger.info('更新预设成功')
-        return session.execute('切换人格')
-      })
 
-    ctx.command('dvc.cat', '显示一个对话')
-      .alias('dvc.会话人格')
+    ctx.command('dvc.cat', '显示一个对话').alias('dvc.会话人格')
       .option('all', '-a --all 显示所有字数')
       .option('personality', '-p <personality:string> 指定人格昵称')
       .option('id', '-i <id:number> 指定会话ID，默认为 0')
@@ -180,9 +130,7 @@ class DVc extends Dvc {
       return config.baseURL ?? 'https://api.deepseek.com'
     })
     ctx.console.addListener('satori-ai/getcredit', async (key?: string) => {
-      if (!key) {
-        key = this.pluginConfig.key[this.key_number]
-      }
+      if (!key) key = this.pluginConfig.key[this.key_number]
       return await this.get_credit()
     })
     ctx.console.addListener('satori-ai/getusage', () => {
@@ -203,46 +151,6 @@ class DVc extends Dvc {
       { role: 'user', content: `请帮我我将如下文字翻译成${lang},“${prompt}”` }])
   }
 
-  /**
-   *
-   * @param session 会话
-   * @param prompt 描述词
-   * @param n 生成数量
-   * @param size 图片大小
-   * @returns Promise<string|segment>
-   */
-  async paint(session: Session, prompt: string, n: number, size: string): Promise<string | segment> {
-    session.send(h('quote', { id: session.messageId }) + session.text('commands.dvc.messages.painting'))
-    try {
-      const response = await this.ctx.http.post(
-        trimSlash(`${this.pluginConfig.baseURL ?? 'https://api.deepseek.com'}/v1/images/generations`),
-        {
-          prompt: prompt,
-          n: n,
-          size: size
-        }, {
-        timeout: 0,
-        headers: {
-          Authorization: `Bearer ${this.pluginConfig.key[this.key_number]}`,
-          'Content-Type': 'application/json',
-        },
-      })
-      const result = segment('figure')
-      const attrs: Dict = {
-        userId: session.userId,
-        nickname: 'GPT'
-      }
-      for (var msg of response.data) {
-        result.children.push(
-          segment('message', attrs, segment.image(msg.url)))
-      }
-      return result
-    }
-    catch (e) {
-      return session.text('commands.dvc.messages.err', [`key${this.key_number + 1} 报错：${String(e)}`])
-    }
-
-  }
 
   /**
    *
@@ -290,7 +198,8 @@ class DVc extends Dvc {
 
   async middleware(session: Session, next: Next): Promise<string | string[] | segment | void | Fragment> {
     // 私信触发
-    if (session.subtype === 'private' && this.pluginConfig.private)
+    const matchResult = session.channelId.match(new RegExp("private", "g"));
+    if (matchResult && matchResult.includes("private"))
       return this.dvc(session, session.content)
 
     // 艾特触发

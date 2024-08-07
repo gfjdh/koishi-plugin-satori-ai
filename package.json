@@ -4,17 +4,51 @@
   "version": "0.0.1",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
+  "types": "lib/index.d.ts",
   "files": [
     "lib",
     "dist"
   ],
   "license": "MIT",
+  "author": {
+    "name": "清水尚辉",
+    "email": "2556123498@qq.com",
+    "url": "https://github.com/gfjdh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gfjdh"
+  },
+  "bugs": {
+    "url": "https://github.com/gfjdh"
+  },
+  "homepage": "https://github.com/initialencounter/2022-12-24/tree/neat/plugins/AI/davinci-003#readme",
   "keywords": [
     "chatbot",
     "koishi",
     "plugin"
   ],
   "peerDependencies": {
-    "koishi": "4.17.10"
+    "@koishijs/plugin-console": "^5.29.3",
+    "koishi": "^4.17.10",
+    "koishi-plugin-rate-limit": "^2.0.4"
+  },
+  "koishi": {
+    "description": "觉bot的ai聊天",
+    "browser": true,
+    "service": {
+      "optional": [
+        "puppeteer",
+        "vits",
+        "sst",
+        "censor"
+      ],
+      "required": [
+        "console"
+      ],
+      "implements": [
+        "dvc"
+      ]
+    }
   }
 }

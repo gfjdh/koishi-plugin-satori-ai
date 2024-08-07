@@ -2,7 +2,7 @@ import { Context, Dict, Schema, Service } from 'koishi'
 export class Dvc extends Service {
     static inject = {
       required: ['console', 'database'],
-      optional: ['puppeteer', 'vits', 'sst', 'censor']
+      optional: ['puppeteer']
     }
     output_type: string
     session_config: Dvc.Msg[]
@@ -38,7 +38,6 @@ export namespace Dvc {
       key: string[]
       appointModel: string
 
-      onlyOnePersonality: boolean
       onlyOneContext: boolean
       waiting: boolean
       whisper: boolean
@@ -56,7 +55,6 @@ export namespace Dvc {
       minInterval?: number
 
       alias: string[]
-      resolution?: string
       output: string
 
       private: boolean
@@ -77,7 +75,6 @@ export namespace Dvc {
         appointModel: Schema.string().default('deepseek-chat').description('[模型](https://openai.com/api/pricing/)'),
       }).description('基础设置'),
       Schema.object({
-        onlyOnePersonality: Schema.boolean().default(false).description('所有人共用一个人设，开启后将无法切换人格、删除人格、添加人格'),
         onlyOneContext: Schema.boolean().default(false).description('所有人共用一个上下文'),
         whisper: Schema.boolean().default(false).description('语音回复，开启后 AI 将回复你的语音消息'),
         waiting: Schema.boolean().default(true).description('消息反馈，开启后会发送 `思考中...`'),
@@ -96,7 +93,6 @@ export namespace Dvc {
         minInterval: Schema.number().default(5000).description('连续调用的最小间隔,单位毫秒。'),
 
         alias: Schema.array(String).default(['ai', 'alowel']).description('触发命令;别名'),
-        resolution: Schema.string().default('1024x1024').description('生成图像的默认比例'),
         output: Schema.union([
           Schema.const('minimal').description('只发送文字消息'),
           Schema.const('quote').description('引用消息'),
