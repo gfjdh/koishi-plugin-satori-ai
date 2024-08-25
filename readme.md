@@ -15,17 +15,8 @@
 ### 指令如下：
 | 功能 | 指令 |
 |  ----  | ----  |
-| 重置会话 | dvc.重置会话 |
-| 添加人格 | dvc.添加人格 |
-| 清空所有回话 | dvc.clear |
-| 切换人格 | dvc.切换人格 |
-| 查询余额 | dvc.credit |
-| 切换输出模式 | dvc.output |
-| 更新人格(需要4级权限) | dvc.update |
-| 显示一个对话 |  dvc.cat |
-
-- dvc \<prompt\>
-  - -o 输出方式
+| 清空所有回话 | sat.clear |
+| 对话 |  sat |
 
 ## 设置多个 key 的方法
 
@@ -40,12 +31,3 @@
         - sk-ItGRonJPTa6sp9QYhN*
         - sk-sgadtiasyn2ouoi1n*
     ```
-
-## 添加人格的方法
-
-* 使用 [`explorer`](https://koishi.chat/zh-CN/plugins/console/explorer.html) 插件直接编辑, [*点我*](../files/personality.json) 跳转到编译页面
-    - 编辑后记得保存哟
-* 在聊天中发送“dvc.添加人格”可以添加并自动保存人格
-* [添加人格教程](https://forum.koishi.xyz/t/topic/2349/4)
-* 使用 `dvc.update` 指令(需要4级权限)，该指令会加载 [*ChatPrompts*](https://github.com/initialencounter/ChatPrompts) 里的所有人格
-    - 分享你的人格！，可以到 [*ChatPrompts/Pulls*](https://github.com/initialencounter/ChatPrompts//pulls) 创建一个 Pr

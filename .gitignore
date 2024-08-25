@@ -16,3 +16,4 @@ tsconfig.tsbuildinfo
 *.ntvs*
 *.njsproj
 *.sln
+*.lnk
