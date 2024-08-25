@@ -97,6 +97,13 @@ class SAt extends Sat {
       if (!notExists)
       {
         const favorability = user.length > 0 ? user[0].favorability : 0
+        const regex = /\*\*/g;
+        if (regex.test(prompt)) {
+          const newFavorability = user[0].favorability - 11;
+          await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
+        }
+        else
+          await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: user[0].favorability + 1 });//增加好感
         // 更新 system_prompt
         const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${user[0].usersname}, 你对我的好感度: ${favorability}`
         this.personality['人格'][0].content = system_prompt
