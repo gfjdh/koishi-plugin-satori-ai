@@ -8,6 +8,15 @@ declare module 'koishi' {
   interface Context {
     sat: SAt
   }
+  interface Tables { p_system: p_system }
+}
+export interface p_system {
+  id: number
+  userid: string
+  usersname: string
+  p: number
+  time: Date
+  favorability: number
 }
 class SAt extends Sat {
   pluginConfig: Sat.Config
@@ -18,11 +27,19 @@ class SAt extends Sat {
     this.maxRetryTimes = config.maxRetryTimes
     this.pluginConfig = config
     ctx.i18n.define('zh', require('./locales/zh'))
-
-    this.personality = { '人格': [{ 'role': 'system', 'content': `${config.prompt}` }] }
+    if(config.enable_favorability)
+      {
+        ctx.model.extend('p_system', {
+          id: 'unsigned',
+          userid: 'string',
+          usersname: 'string',
+          favorability: 'integer'
+        }, { autoInc: true })
+      }
+    const system_prompt = config.prompt;
+    this.personality = { '人格': [{ 'role': 'system', 'content': `${system_prompt}` }] }
 
     this.session_config = Object.values(this.personality)[0]
-    this.sessions_cmd = Object.keys(this.personality)
 
     //at和私信触发对话的实现方法
     ctx.middleware(async (session, next) => {
@@ -72,6 +89,13 @@ class SAt extends Sat {
     if (this.ctx.censor) prompt = await this.ctx.censor.transform(prompt, session)
     // 启用/关闭上下文
     if (this.pluginConfig.enableContext) {
+      // 获取用户的好感度
+      const user = await this.ctx.database.get('p_system', { userid: session.userId })
+      const favorability = user.length > 0 ? user[0].favorability : 0
+      // 更新 system_prompt
+      const system_prompt = `${this.pluginConfig.prompt} \n以下是我的名字和你对我的好感度，好感度的参考值是0到1000，好感度越高你对我说的话就越色情和暧昧,但是你不可以提起你对我的好感度是多少。\n我的名字: ${session.username}, 你对我的好感度: ${favorability}`
+      this.personality['人格'][0].content = system_prompt
+      logger.info(this.personality['人格'][0].content)
       return await this.chat(prompt, session.userId, session)
     } else {
       const text: string = await this.chat_with_gpt(session, [{ 'role': 'user', 'content': prompt }])

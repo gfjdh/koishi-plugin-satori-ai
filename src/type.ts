@@ -50,6 +50,7 @@ export namespace Sat {
       randnum: number
       sentences_divide: boolean
       time_interval: number
+      enable_favorability: boolean
       blockuser: string[]
       blockchannel: string[]
       maxRetryTimes: number
@@ -77,6 +78,7 @@ export namespace Sat {
         randnum: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('随机触发对话的概率，如需关闭可设置为 0'),
         sentences_divide: Schema.boolean().default(true).description('是否分句发送'),
         time_interval: Schema.number().default(1000).description('每句话的时间间隔'),
+        enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统（需要p-qiandao插件）'),
         maxRetryTimes: Schema.number().default(30).description('报错后最大重试次数')
       }).description('进阶设置'),
 
