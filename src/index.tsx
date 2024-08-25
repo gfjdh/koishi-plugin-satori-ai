@@ -33,7 +33,16 @@ class SAt extends Sat {
     ctx.command('sat <text:text>', { authority: config.authority })
       .alias(...config.alias)
       .action(async ({ session }, ...prompt) => {
-        return this.sat(session, prompt.join(' '))
+        if (config.sentences_divide) {
+          const message: string | void | Element = await this.sat(session, prompt.join(' '))
+          const content = (message as unknown as { attrs: { content: string } }).attrs.content;
+          const sentences = content.split(/(?<=\。)\s*/) // 以句号为分割符，保留句号
+          for (const sentence of sentences) {
+            await session.sendQueued(h.text(sentence), config.time_interval);
+          }
+        }
+        else
+          return this.sat(session, prompt.join(' '));
       })
 
     //清空所有会话及人格
@@ -62,12 +71,12 @@ class SAt extends Sat {
     // 文本审核
     if (this.ctx.censor) prompt = await this.ctx.censor.transform(prompt, session)
     // 启用/关闭上下文
-    if (!this.pluginConfig.enableContext) {
+    if (this.pluginConfig.enableContext) {
+      return await this.chat(prompt, session.userId, session)
+    } else {
       const text: string = await this.chat_with_gpt(session, [{ 'role': 'user', 'content': prompt }])
       const resp = [{ 'role': 'user', 'content': prompt }, { 'role': 'assistant', 'content': text }]
       return await this.getContent(session.userId, resp, session.messageId, session.bot.selfId)
-    } else {
-      return await this.chat(prompt, session.userId, session)
     }
   }
 
@@ -156,8 +165,6 @@ class SAt extends Sat {
 
   async chat(msg: string, sessionid: string, session: Session): Promise<string | segment> {
     logger.info((session.author?.nick || session.username) + ':' + msg)
-    if (this.pluginConfig.onlyOneContext)
-      sessionid = 'e2b5e6a3b58f06b914e5ede4d5737afb93afd0cc03f25d66e778bb733e589228'
     // 获得对话session
     let session_of_id = this.get_chat_session(sessionid)
     // 设置本次对话内容

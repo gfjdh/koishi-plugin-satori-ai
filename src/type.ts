@@ -39,8 +39,6 @@ export namespace Sat {
       appointModel: string
       prompt: string
 
-      onlyOneContext: boolean
-
       max_tokens: number
       temperature: number
       authority: number
@@ -50,6 +48,8 @@ export namespace Sat {
       private: boolean
       mention: boolean
       randnum: number
+      sentences_divide: boolean
+      time_interval: number
       blockuser: string[]
       blockchannel: string[]
       maxRetryTimes: number
@@ -66,8 +66,6 @@ export namespace Sat {
         prompt: Schema.string().role('textarea').description('人格设定')
       }).description('基础设置'),
       Schema.object({
-        onlyOneContext: Schema.boolean().default(false).description('所有人共用一个上下文'),
-
         max_tokens: Schema.number().description('请求长度,否则报错').default(50),
         temperature: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('温度'),
         authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
@@ -77,6 +75,8 @@ export namespace Sat {
         private: Schema.boolean().default(true).description('开启后私聊AI可触发对话, 不需要使用指令'),
         mention: Schema.boolean().default(true).description('开启后机器人被提及(at/引用)可触发对话'),
         randnum: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('随机触发对话的概率，如需关闭可设置为 0'),
+        sentences_divide: Schema.boolean().default(true).description('是否分句发送'),
+        time_interval: Schema.number().default(1000).description('每句话的时间间隔'),
         maxRetryTimes: Schema.number().default(30).description('报错后最大重试次数')
       }).description('进阶设置'),
 
