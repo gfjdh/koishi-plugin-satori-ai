@@ -17,12 +17,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gfjdh"
+    "url": "git+https://github.com/gfjdh/koishi-plugin-satori-ai"
   },
   "bugs": {
     "url": "https://github.com/gfjdh"
   },
-  "homepage": "https://github.com/initialencounter/2022-12-24/tree/neat/plugins/AI/davinci-003#readme",
+  "homepage": "https://github.com/gfjdh/koishi-plugin-satori-ai",
   "keywords": [
     "chatbot",
     "koishi",
