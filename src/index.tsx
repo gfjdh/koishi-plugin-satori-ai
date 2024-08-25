@@ -89,13 +89,19 @@ class SAt extends Sat {
     if (this.ctx.censor) prompt = await this.ctx.censor.transform(prompt, session)
     // 启用/关闭上下文
     if (this.pluginConfig.enableContext) {
+      if(this.pluginConfig.enable_favorability)
+      {
       // 获取用户的好感度
       const user = await this.ctx.database.get('p_system', { userid: session.userId })
-      const favorability = user.length > 0 ? user[0].favorability : 0
-      // 更新 system_prompt
-      const system_prompt = `${this.pluginConfig.prompt} \n以下是我的名字和你对我的好感度，好感度的参考值是0到1000，好感度越高你对我说的话就越色情和暧昧,但是你不可以提起你对我的好感度是多少。\n我的名字: ${session.username}, 你对我的好感度: ${favorability}`
-      this.personality['人格'][0].content = system_prompt
-      logger.info(this.personality['人格'][0].content)
+      const notExists = await isTargetIdExists(this.ctx, user[0].userid); //该群中的该用户是否签到过
+      if (!notExists)
+      {
+        const favorability = user.length > 0 ? user[0].favorability : 0
+        // 更新 system_prompt
+        const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${user[0].usersname}, 你对我的好感度: ${favorability}`
+        this.personality['人格'][0].content = system_prompt
+      }
+      }
       return await this.chat(prompt, session.userId, session)
     } else {
       const text: string = await this.chat_with_gpt(session, [{ 'role': 'user', 'content': prompt }])
@@ -247,6 +253,12 @@ class SAt extends Sat {
     this.sessions = {}
     return session.text('commands.sat.messages.clean')
   }
+}
+
+async function isTargetIdExists(ctx: Context, USERID: string) {
+  //检查数据表中是否有指定id者
+  const targetInfo = await ctx.database.get('p_system', { userid: USERID });
+  return targetInfo.length == 0;
 }
 namespace SAt {
 }
