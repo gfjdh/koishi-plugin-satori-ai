@@ -27,15 +27,14 @@ class SAt extends Sat {
     this.maxRetryTimes = config.maxRetryTimes
     this.pluginConfig = config
     ctx.i18n.define('zh', require('./locales/zh'))
-    if(config.enable_favorability)
-      {
-        ctx.model.extend('p_system', {
-          id: 'unsigned',
-          userid: 'string',
-          usersname: 'string',
-          favorability: 'integer'
-        }, { autoInc: true })
-      }
+    if (config.enable_favorability) {
+      ctx.model.extend('p_system', {
+        id: 'unsigned',
+        userid: 'string',
+        usersname: 'string',
+        favorability: 'integer'
+      }, { autoInc: true })
+    }
     const system_prompt = config.prompt;
     this.personality = { '人格': [{ 'role': 'system', 'content': `${system_prompt}` }] }
 
@@ -51,16 +50,19 @@ class SAt extends Sat {
       .alias(...config.alias)
       .action(async ({ session }, ...prompt) => {
         if (config.sentences_divide) {
-          const message: string | void | Element = await this.sat(session, prompt.join(' '))
-          const content = (message as unknown as { attrs: { content: string } }).attrs.content;
-          const sentences = content.split(/(?<=\。)\s*/) // 以句号为分割符，保留句号
-          for (const sentence of sentences) {
-            await session.sendQueued(h.text(sentence), config.time_interval);
+          const message = await this.sat(session, prompt.join(' '));
+          if (typeof message === 'string') {
+            return message;
+          } else {
+            const content = (message as unknown as { attrs: { content: string } }).attrs.content;
+            const sentences = content.split(/(?<=\。)\s*/); // 以句号为分割符，保留句号
+            for (const sentence of sentences)
+              await session.sendQueued(h.text(sentence), config.time_interval);
           }
-        }
-        else
+        } else {
           return this.sat(session, prompt.join(' '));
-      })
+        }
+      });
 
     //清空所有会话及人格
     ctx.command('sat.clear', '清空所有会话及人格', {
@@ -89,25 +91,23 @@ class SAt extends Sat {
     if (this.ctx.censor) prompt = await this.ctx.censor.transform(prompt, session)
     // 启用/关闭上下文
     if (this.pluginConfig.enableContext) {
-      if(this.pluginConfig.enable_favorability)
-      {
-      // 获取用户的好感度
-      const user = await this.ctx.database.get('p_system', { userid: session.userId })
-      const notExists = await isTargetIdExists(this.ctx, user[0].userid); //该群中的该用户是否签到过
-      if (!notExists)
-      {
-        const favorability = user.length > 0 ? user[0].favorability : 0
-        const regex = /\*\*/g;
-        if (regex.test(prompt)) {
-          const newFavorability = user[0].favorability - 11;
-          await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
+      if (this.pluginConfig.enable_favorability) {
+        // 获取用户的好感度
+        const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
+        if (!notExists) {
+          const user = await this.ctx.database.get('p_system', { userid: session.userId })
+          const favorability = user.length > 0 ? user[0].favorability : 0
+          const regex = /\*\*/g;
+          if (regex.test(prompt)) {
+            const newFavorability = user[0].favorability - 11;
+            await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
+          }
+          else
+            await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: user[0].favorability + 1 });//增加好感
+          // 更新 system_prompt
+          const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${user[0].usersname}, 你对我的好感度: ${favorability}`
+          this.personality['人格'][0].content = system_prompt
         }
-        else
-          await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: user[0].favorability + 1 });//增加好感
-        // 更新 system_prompt
-        const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${user[0].usersname}, 你对我的好感度: ${favorability}`
-        this.personality['人格'][0].content = system_prompt
-      }
       }
       return await this.chat(prompt, session.userId, session)
     } else {
