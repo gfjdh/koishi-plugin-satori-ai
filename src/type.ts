@@ -51,6 +51,10 @@ export namespace Sat {
       sentences_divide: boolean
       time_interval: number
       enable_favorability: boolean
+      favorability_div_1: number
+      favorability_div_2: number
+      favorability_div_3: number
+      favorability_div_4: number
       blockuser: string[]
       blockchannel: string[]
       maxRetryTimes: number
@@ -79,6 +83,10 @@ export namespace Sat {
         sentences_divide: Schema.boolean().default(true).description('是否分句发送'),
         time_interval: Schema.number().default(1000).description('每句话的时间间隔'),
         enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统（需要p-qiandao插件）'),
+        favorability_div_1: Schema.number().default(15).description('厌恶-陌生分界线'),
+        favorability_div_2: Schema.number().default(150).description('陌生-朋友分界线'),
+        favorability_div_3: Schema.number().default(500).description('朋友-思慕分界线'),
+        favorability_div_4: Schema.number().default(1000).description('思慕-恋慕分界线'),
         maxRetryTimes: Schema.number().default(30).description('报错后最大重试次数')
       }).description('进阶设置'),
 

@@ -96,7 +96,6 @@ class SAt extends Sat {
         const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
         if (!notExists) {
           const user = await this.ctx.database.get('p_system', { userid: session.userId })
-          const favorability = user.length > 0 ? user[0].favorability : 0
           const regex = /\*\*/g;
           if (regex.test(prompt)) {
             const newFavorability = user[0].favorability - 11;
@@ -104,8 +103,20 @@ class SAt extends Sat {
           }
           else
             await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: user[0].favorability + 1 });//增加好感
+          let level: string;
+          if (user[0].favorability < this.pluginConfig.favorability_div_1) {
+            level = '厌恶';
+          } else if (user[0].favorability < this.pluginConfig.favorability_div_2) {
+            level = '陌生';
+          } else if (user[0].favorability < this.pluginConfig.favorability_div_3) {
+            level = '朋友';
+          } else if (user[0].favorability < this.pluginConfig.favorability_div_4) {
+            level = '暧昧';
+          } else {
+            level = '恋人';
+          }
           // 更新 system_prompt
-          const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${user[0].usersname}, 你对我的好感度: ${favorability}`
+          const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${user[0].usersname}, 你对我的关系: ${level}`
           this.personality['人格'][0].content = system_prompt
         }
       }
