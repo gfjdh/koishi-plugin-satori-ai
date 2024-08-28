@@ -40,6 +40,7 @@ export namespace Sat {
       prompt: string
 
       max_tokens: number
+      content_max_tokens: number
       temperature: number
       authority: number
 
@@ -71,7 +72,8 @@ export namespace Sat {
         prompt: Schema.string().role('textarea').description('人格设定')
       }).description('基础设置'),
       Schema.object({
-        max_tokens: Schema.number().description('请求长度,否则报错').default(50),
+        max_tokens: Schema.number().description('最大请求长度').default(50),
+        content_max_tokens: Schema.number().description('最大回答长度').default(100),
         temperature: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('温度'),
         authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
 

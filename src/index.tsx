@@ -55,6 +55,7 @@ class SAt extends Sat {
             return message;
           } else {
             const content = (message as unknown as { attrs: { content: string } }).attrs.content;
+            if (content.length > this.pluginConfig.max_tokens) return session.text('commands.sat.messages.content_tooLong')
             if (this.pluginConfig.enable_favorability) {
               // 获取用户的好感度
               const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过

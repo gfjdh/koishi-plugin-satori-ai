@@ -6,6 +6,7 @@ commands:
       no-prompt: 你好！很高兴认识你！
       err: 寄！{0}
       tooLong: 你的话太多了。
+      content_tooLong: 这个问题有点复杂，你还是去问别人吧。
       clean: 舒服了
       block1: 我讨厌你！
       block2: 我讨厌你们！
