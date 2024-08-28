@@ -55,6 +55,21 @@ class SAt extends Sat {
             return message;
           } else {
             const content = (message as unknown as { attrs: { content: string } }).attrs.content;
+            if (this.pluginConfig.enable_favorability) {
+              // 获取用户的好感度
+              const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
+              if (!notExists) {
+                const user = await this.ctx.database.get('p_system', { userid: session.userId })
+                const regex = /\*\*/g;
+                if (this.ctx.censor) {
+                  const censor_content = await this.ctx.censor.transform(content, session)
+                  if (regex.test(censor_content)) {
+                    const newFavorability = user[0].favorability - 5;
+                    await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
+                  }
+                }
+              }
+            } //以上检测bot的负面反馈以扣好感
             const sentences = content.split(/(?<=\。)\s*/); // 以句号为分割符，保留句号
             for (const sentence of sentences)
               await session.sendQueued(h.text(sentence), config.time_interval);
