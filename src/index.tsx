@@ -134,6 +134,10 @@ class SAt extends Sat {
           // 更新 system_prompt
           const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${user[0].usersname}, 你对我的关系: ${level}`
           this.personality['人格'][0].content = system_prompt
+        } else {
+          // 更新 system_prompt
+          const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${session.username}, 你对我的关系: 陌生`
+          this.personality['人格'][0].content = system_prompt
         }
       }
       return await this.chat(prompt, session.userId, session)
