@@ -122,22 +122,25 @@ class SAt extends Sat {
           let level: string;
           if (user[0].favorability < this.pluginConfig.favorability_div_1) {
             level = '厌恶';
+            this.personality['人格'][0].content = `${this.pluginConfig.prompt} \n ${this.pluginConfig.prompt_0} \n我的名字: ${user[0].usersname}`;
           } else if (user[0].favorability < this.pluginConfig.favorability_div_2) {
             level = '陌生';
+            this.personality['人格'][0].content = `${this.pluginConfig.prompt} \n ${this.pluginConfig.prompt_1} \n我的名字: ${user[0].usersname}`;
           } else if (user[0].favorability < this.pluginConfig.favorability_div_3) {
             level = '朋友';
+            this.personality['人格'][0].content = `${this.pluginConfig.prompt} \n ${this.pluginConfig.prompt_2} \n我的名字: ${user[0].usersname}`;
           } else if (user[0].favorability < this.pluginConfig.favorability_div_4) {
             level = '暧昧';
+            this.personality['人格'][0].content = `${this.pluginConfig.prompt} \n ${this.pluginConfig.prompt_3} \n我的名字: ${user[0].usersname}`;
           } else {
             level = '恋人';
+            this.personality['人格'][0].content = `${this.pluginConfig.prompt} \n ${this.pluginConfig.prompt_4} \n我的名字: ${user[0].usersname}`;
           }
-          // 更新 system_prompt
-          const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${user[0].usersname}, 你对我的关系: ${level}`
-          this.personality['人格'][0].content = system_prompt
+          logger.info(`名字: ${user[0].usersname}, 关系: ${level}`)
         } else {
           // 更新 system_prompt
-          const system_prompt = `${this.pluginConfig.prompt} \n我的名字: ${session.username}, 你对我的关系: 陌生`
-          this.personality['人格'][0].content = system_prompt
+          this.personality['人格'][0].content = `${this.pluginConfig.prompt} \n ${this.pluginConfig.prompt_1} \n我的名字: ${session.username}`;
+          logger.info(`名字: ${session.username}, 关系: 陌生`)
         }
       }
       return await this.chat(prompt, session.userId, session)
