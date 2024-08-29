@@ -50,34 +50,37 @@ class SAt extends Sat {
     ctx.command('sat <text:text>', { authority: config.authority })
       .alias(...config.alias)
       .action(async ({ session }, ...prompt) => {
-        if (config.sentences_divide) {
-          const message = await this.sat(session, prompt.join(' '));
-          if (typeof message === 'string') {
-            return message;
-          } else {
-            const content = (message as unknown as { attrs: { content: string } }).attrs.content;
-            if (content.length > this.pluginConfig.content_max_tokens) return session.text('commands.sat.messages.content_tooLong')
-            if (this.pluginConfig.enable_favorability) {
-              // 获取用户的好感度
-              const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
-              if (!notExists) {
-                const user = await this.ctx.database.get('p_system', { userid: session.userId })
-                const regex = /\*\*/g;
-                if (this.ctx.censor) {
-                  const censor_content = await this.ctx.censor.transform(content, session)
-                  if (regex.test(censor_content)) {
-                    const newFavorability = user[0].favorability - 5;
-                    await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
-                  }
-                }
+        const message = await this.sat(session, prompt.join(' '));
+        if (typeof message === 'string')
+          return message;
+        const content = (message as unknown as { attrs: { content: string } }).attrs.content;
+        if (content.length > this.pluginConfig.content_max_tokens) return session.text('commands.sat.messages.content_tooLong')
+        if (this.pluginConfig.enable_favorability) {
+          // 获取用户的好感度
+          const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
+          if (!notExists) {
+            const user = await this.ctx.database.get('p_system', { userid: session.userId })
+            if (this.ctx.censor) {
+              const censor_content = await this.ctx.censor.transform(content, session)
+              const regex = /\*\*/g;
+              if (regex.test(censor_content)) {
+                const newFavorability = user[0].favorability - 5;
+                await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
               }
-            } //以上检测bot的负面反馈以扣好感
-            const sentences = content.split(/(?<=\。)\s*/); // 以句号为分割符，保留句号
-            for (const sentence of sentences)
-              await session.sendQueued(h.text(sentence), config.time_interval);
+              if (content == '6') {
+                const newFavorability = user[0].favorability - 1;
+                await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
+              }
+            }
           }
+        } //以上检测bot的负面反馈以扣好感
+        this.sessions = {}
+        if (config.sentences_divide) {
+          const sentences = content.split(/(?<=\。)\s*/); // 以句号为分割符，保留句号
+          for (const sentence of sentences)
+            await session.sendQueued(h.text(sentence), config.time_interval);
         } else {
-          return this.sat(session, prompt.join(' '));
+          return content;
         }
       });
 
@@ -116,45 +119,32 @@ class SAt extends Sat {
       }
     }
     this.personality['人格'][0].content = this.pluginConfig.prompt;
-
-    // 读取对话记录文件并搜索关键词
-    this.personality['人格'][0].content = this.pluginConfig.prompt;
     // 读取对话记录文件并搜索关键词
     const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
     if (fs.existsSync(filePath)) {
       const fileContent = fs.readFileSync(filePath, 'utf-8');
       const dialogues = JSON.parse(fileContent).filter(msg => msg.role === 'user');
-      const promptWords = this.pluginConfig.prompt.split(' ');
-      const keywords = [];
-
-      // 从第一个字开始，每次取两个字进行拆分
-      for (let i = 0; i < promptWords.length; i++) {
-        const word = promptWords[i];
-        for (let j = 0; j < word.length - 1; j++) {
-          keywords.push(word.substring(j, j + 2));
-        }
-      }
-
-      const matchCounts = {};
-      for (const keyword of keywords) {
-        for (let i = 0; i < dialogues.length; i++) {
-          if (dialogues[i].content.includes(keyword)) {
-            const context = dialogues.slice(Math.max(0, i - 1), i + 1);
-            const contextKey = context.map(msg => `${msg.role}: ${msg.content}`).join('\n');
-            if (!matchCounts[contextKey]) {
-              matchCounts[contextKey] = 0;
-            }
-            matchCounts[contextKey]++;
+      // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
+      const keywords = prompt.split('');
+      // 计算每个对话匹配到的关键词数量
+      let matchCounts = [];
+      for (let i = 0; i < dialogues.length; i++) {
+        const dialogue = dialogues[i];
+        let count = 0;
+        for (let j = 0; j < keywords.length; j++) {
+          if (dialogue.content.includes(keywords[j])) {
+            count++;
           }
         }
+        matchCounts.push({ index: i, count });
       }
-
-      // 将匹配结果按匹配度排序，选出匹配度最高的十条记录
-      const sortedMatches = Object.keys(matchCounts).sort((a, b) => matchCounts[b] - matchCounts[a]);
+      // 过滤掉 matchCounts 为 0 的内容
+      const filteredMatchCounts = matchCounts.filter(item => item.count > 0);
+      // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的十条记录
+      const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
       const topMatches = sortedMatches.slice(0, 10);
-      this.personality['人格'][0].content += '\n这是你可能用到的之前的对话内容：\n' + topMatches.join('\n');
+      this.personality['人格'][0].content += '\n这是你可能用到的之前的对话内容：\n' + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n';
     }
-
     // 启用/关闭上下文
     if (this.pluginConfig.enableContext) {
       if (this.pluginConfig.enable_favorability) {
@@ -193,7 +183,7 @@ class SAt extends Sat {
           logger.info(`名字: ${session.username}, 关系: 陌生`)
         }
       }
-      logger.info(this.personality['人格'][0].content);
+      logger.info(this.personality['人格'][0].content)
       return await this.chat(prompt, session.userId, session)
     } else {
       const text: string = await this.chat_with_gpt(session, [{ 'role': 'user', 'content': prompt }])
@@ -306,6 +296,7 @@ class SAt extends Sat {
     logger.info(message)
 
     // 保存对话记录到文件
+
     const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${sessionid}.txt`);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
@@ -315,12 +306,14 @@ class SAt extends Sat {
       existingContent = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     }
 
-    // 过滤掉 system 角色的对话
+    // 过滤掉 其他 角色的对话
     const newContent = session_of_id.filter(msg => msg.role === 'user');
-
-    // 追加新的对话记录
-    existingContent.push(...newContent);
-    fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
+    const regex = /记住/g;
+    if (regex.test(newContent[0].content) || newContent[0].content.length > 24) {
+      // 追加新的对话记录
+      existingContent.push(...newContent);
+      fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
+    }
 
     return await this.getContent(sessionid, session_of_id, session.messageId, session.bot.selfId)
   }
