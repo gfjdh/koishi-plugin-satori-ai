@@ -316,7 +316,7 @@ class SAt extends Sat {
     }
 
     // 过滤掉 system 角色的对话
-    const newContent = session_of_id.filter(msg => msg.role !== 'system');
+    const newContent = session_of_id.filter(msg => msg.role === 'user');
 
     // 追加新的对话记录
     existingContent.push(...newContent);
