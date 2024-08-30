@@ -12,3 +12,8 @@ commands:
       block2: 我讨厌你们！
   sat.clear:
     description: 清空所有人的会话
+  sat.common_sense:
+    description: 添加常识
+    messages:
+      no-prompt: 你想让我知道什么？
+      succeed: 我知道了，{0}
