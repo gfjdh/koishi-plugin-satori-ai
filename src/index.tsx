@@ -109,15 +109,7 @@ class SAt extends Sat {
     if (prompt.length > this.pluginConfig.max_tokens) return session.text('commands.sat.messages.tooLong')
     let censored_prompt: string;
     if (this.ctx.censor)// 文本审核
-    {
       censored_prompt = await this.ctx.censor.transform(prompt, session);
-      const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
-      if (!notExists) {
-        const user = await this.ctx.database.get('p_system', { userid: session.userId })
-        if (user[0].favorability < this.pluginConfig.favorability_div_3)
-          prompt = censored_prompt;
-      }
-    }
     this.personality['人格'][0].content = this.pluginConfig.prompt;
     // 读取对话记录文件并搜索关键词
     const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
@@ -143,6 +135,7 @@ class SAt extends Sat {
       // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的十条记录
       const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
       const topMatches = sortedMatches.slice(0, 10);
+      logger.info('\n这是你可能用到的之前的对话内容：\n' + topMatches.map(item => dialogues[item.index].content).join('\n'))
       this.personality['人格'][0].content += '\n这是你可能用到的之前的对话内容：\n' + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n';
     }
     // 启用/关闭上下文
@@ -162,20 +155,26 @@ class SAt extends Sat {
           let level: string;
           if (user[0].favorability < this.pluginConfig.favorability_div_1) {
             level = '厌恶';
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_0} \n我的名字: ${user[0].usersname}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_0} \n我的名字: ${session.username}`;
           } else if (user[0].favorability < this.pluginConfig.favorability_div_2) {
             level = '陌生';
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n我的名字: ${user[0].usersname}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n我的名字: ${session.username}`;
           } else if (user[0].favorability < this.pluginConfig.favorability_div_3) {
             level = '朋友';
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_2} \n我的名字: ${user[0].usersname}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_2} \n我的名字: ${session.username}`;
           } else if (user[0].favorability < this.pluginConfig.favorability_div_4) {
             level = '暧昧';
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n我的名字: ${user[0].usersname}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n我的名字: ${session.username}`;
           } else {
             level = '恋人';
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_4} \n我的名字: ${user[0].usersname}`;
+            const matchResult = session.channelId.match(new RegExp("private", "g"));
+            if (matchResult && matchResult.includes("private"))
+              this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_4} \n`;
+            else
+              this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n`;
+            this.personality['人格'][0].content += `我的名字: ${user[0].usersname}`
           }
+
           logger.info(`名字: ${user[0].usersname}, 关系: ${level}`)
         } else {
           // 更新 system_prompt
@@ -183,7 +182,6 @@ class SAt extends Sat {
           logger.info(`名字: ${session.username}, 关系: 陌生`)
         }
       }
-      logger.info(this.personality['人格'][0].content)
       return await this.chat(prompt, session.userId, session)
     } else {
       const text: string = await this.chat_with_gpt(session, [{ 'role': 'user', 'content': prompt }])
@@ -309,7 +307,7 @@ class SAt extends Sat {
     // 过滤掉 其他 角色的对话
     const newContent = session_of_id.filter(msg => msg.role === 'user');
     const regex = /记住/g;
-    if (regex.test(newContent[0].content) || newContent[0].content.length > 24) {
+    if (regex.test(newContent[0].content) || newContent[0].content.length > 14) {
       // 追加新的对话记录
       existingContent.push(...newContent);
       fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
