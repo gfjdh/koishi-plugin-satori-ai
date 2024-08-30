@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 const name = 'satori-ai'
 const logger = new Logger(name)
-const debug = 0;
+const debug = 1;
 type ChatCallback = (session: Session, session_of_id: Sat.Msg[]) => Promise<string>
 declare module 'koishi' {
   interface Context {
@@ -87,16 +87,16 @@ class SAt extends Sat {
 
     //清空所有会话及人格
     ctx.command('sat.clear', '清空所有会话及人格', { authority: 1 })
-    .action(({ session }) => {
-      return this.clear(session)
-    })
+      .action(({ session }) => {
+        return this.clear(session)
+      })
     //添加常识
     ctx.command('sat.common_sense <text:text>', '添加常识', { authority: 3 })
       .action(async ({ session }, ...prompt) => {
         const content = prompt.join(' ');
         if (!content) return session.text('commands.sat.common_sense.messages.no-prompt');
-        await addCommonSense(content,this.pluginConfig.dataDir);
-        return session.text('commands.sat.common_sense.messages.succeed',[content]);
+        await addCommonSense(content, this.pluginConfig.dataDir);
+        return session.text('commands.sat.common_sense.messages.succeed', [content]);
       });
   }
 
@@ -109,80 +109,66 @@ class SAt extends Sat {
    */
 
   async sat(session: Session, prompt: string): Promise<string | Element | void> {
-    // 黑名单拦截
     if (this.pluginConfig.blockuser.includes(session.userId)) return session.text('commands.sat.messages.block1')
-    if (this.pluginConfig.blockchannel.includes(session.channelId)) return session.text('commands.sat.messages.block2')
-    // 内容为空
-    if (!prompt && !session.quote?.content) return session.text('commands.sat.messages.no-prompt')
-    if (prompt.length > this.pluginConfig.max_tokens) return session.text('commands.sat.messages.tooLong')
+    if (this.pluginConfig.blockchannel.includes(session.channelId)) return session.text('commands.sat.messages.block2') // 黑名单拦截
+    if (!prompt && !session.quote?.content) return session.text('commands.sat.messages.no-prompt')           // 内容为空
+    if (prompt.length > this.pluginConfig.max_tokens) return session.text('commands.sat.messages.tooLong')   // 内容过长
     let censored_prompt: string;
-    if (this.ctx.censor)// 文本审核
-      censored_prompt = await this.ctx.censor.transform(prompt, session);
-    this.personality['人格'][0].content = this.pluginConfig.prompt;
-
-    // 获取频道的最近十条对话
-    const channelId = session.channelId;
-    const dialogues = this.channelDialogues[channelId] || [];
-    const recentDialogues = dialogues.slice(-10);
-    this.personality['人格'][0].content += '\n这是最近的对话内容：\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n');
-    // 读取对话记录文件并搜索关键词
-    const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
-    if (fs.existsSync(filePath)) {
-      const fileContent = fs.readFileSync(filePath, 'utf-8');
-      const dialogues = JSON.parse(fileContent).filter(msg => msg.role === 'user');
+    if (this.ctx.censor) censored_prompt = await this.ctx.censor.transform(prompt, session);// 文本审核
+    if (this.pluginConfig.enableContext) {  // 启用/关闭上下文
+      this.personality['人格'][0].content = this.pluginConfig.prompt;
+      // 获取频道的最近十条对话
+      const channelId = session.channelId;
+      const dialogues = this.channelDialogues[channelId] || [];
+      const recentDialogues = dialogues.slice(-10);
+      this.personality['人格'][0].content += '\n这是刚刚的对话内容：{\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n}';
       // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
-      const keywords = prompt.split('');
-      // 计算每个对话匹配到的关键词数量
-      let matchCounts = [];
-      for (let i = 0; i < dialogues.length; i++) {
-        const dialogue = dialogues[i];
-        let count = 0;
-        for (let j = 0; j < keywords.length; j++) {
-          if (dialogue.content.includes(keywords[j])) {
-            count++;
-          }
+      const charactersToRemove: string[] = ["的", "一", "是", "了", "我", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会"];
+      const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
+      const tmp = (session.username + prompt).split('');
+      const keywords = tmp.filter(word => !charactersToRemove.includes(word));
+      // 读取对话记录文件并搜索关键词
+      if (fs.existsSync(filePath)) {
+        const fileContent = fs.readFileSync(filePath, 'utf-8');
+        const dialogues = JSON.parse(fileContent).filter(msg => msg.role === 'user');
+        // 计算每个对话匹配到的关键词数量
+        let matchCounts = [];
+        for (let i = 0; i < dialogues.length; i++) {
+          const dialogue = dialogues[i];
+          let count = 0;
+          for (let j = 0; j < keywords.length; j++)
+            if (dialogue.content.includes(keywords[j])) count++;
+          matchCounts.push({ index: i, count });
         }
-        matchCounts.push({ index: i, count });
+        // 过滤掉 matchCounts 为 0 的内容
+        const filteredMatchCounts = matchCounts.filter(item => item.count > 0);
+        // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的几条记录
+        const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
+        const topMatches = sortedMatches.slice(0, 5);
+        this.personality['人格'][0].content += '\n这是你可能用到的较久之前的对话内容：{\n' + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n}';
       }
-      // 过滤掉 matchCounts 为 0 的内容
-      const filteredMatchCounts = matchCounts.filter(item => item.count > 0);
-      // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的几条记录
-      const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
-      const topMatches = sortedMatches.slice(0, 5);
-      this.personality['人格'][0].content += '\n这是你可能用到的之前的对话内容：\n' + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n';
-    }
-    // 读取 common_sense 文件并搜索关键词
-    const commonSenseFilePath = path.join(this.pluginConfig.dataDir, 'common_sense.txt');
-    if (fs.existsSync(commonSenseFilePath)) {
-      const commonSenseContent = fs.readFileSync(commonSenseFilePath, 'utf-8');
-      const commonSenseDialogues = JSON.parse(commonSenseContent).filter(msg => msg.role === 'user');
-
-      // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
-      const keywords = prompt.split('');
-
-      // 计算每个对话匹配到的关键词数量
-      let matchCounts = [];
-      for (let i = 0; i < commonSenseDialogues.length; i++) {
-        const dialogue = commonSenseDialogues[i];
-        let count = 0;
-        for (let j = 0; j < keywords.length; j++) {
-          if (dialogue.content.includes(keywords[j])) {
-            count++;
-          }
+      // 读取 common_sense 文件并搜索关键词
+      const commonSenseFilePath = path.join(this.pluginConfig.dataDir, 'common_sense.txt');
+      if (fs.existsSync(commonSenseFilePath)) {
+        const commonSenseContent = fs.readFileSync(commonSenseFilePath, 'utf-8');
+        const commonSenseDialogues = JSON.parse(commonSenseContent).filter(msg => msg.role === 'user');
+        // 计算每个对话匹配到的关键词数量
+        let matchCounts = [];
+        for (let i = 0; i < commonSenseDialogues.length; i++) {
+          const dialogue = commonSenseDialogues[i];
+          let count = 0;
+          for (let j = 0; j < keywords.length; j++)
+            if (dialogue.content.includes(keywords[j])) count++;
+          matchCounts.push({ index: i, count });
         }
-        matchCounts.push({ index: i, count });
+        // 过滤掉 matchCounts 为 0 的内容
+        const filteredMatchCounts = matchCounts.filter(item => item.count > 0);
+        // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的几条记录
+        const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
+        const topMatches = sortedMatches.slice(0, 5);
+        this.personality['人格'][0].content += '\n这是你需要知道的信息：{\n' + topMatches.map(item => commonSenseDialogues[item.index].content).join('\n') + '\n}';
       }
 
-      // 过滤掉 matchCounts 为 0 的内容
-      const filteredMatchCounts = matchCounts.filter(item => item.count > 0);
-
-      // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的几条记录
-      const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
-      const topMatches = sortedMatches.slice(0, 5);
-      this.personality['人格'][0].content += '\n这是你需要知道的常识内容：\n' + topMatches.map(item => commonSenseDialogues[item.index].content).join('\n') + '\n';
-    }
-    // 启用/关闭上下文
-    if (this.pluginConfig.enableContext) {
       if (this.pluginConfig.enable_favorability) {
         // 获取用户的好感度
         const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
@@ -225,8 +211,8 @@ class SAt extends Sat {
           logger.info(`名字: ${session.username}, 关系: 陌生`)
         }
       }
-      if(debug) logger.info(this.personality['人格'][0].content)
-      return await this.chat(prompt, session.userId, session)
+      if (debug) logger.info(this.personality['人格'][0].content.slice(-800));
+      return await this.chat(censored_prompt, session.userId, session)
     } else {
       const text: string = await this.chat_with_gpt(session, [{ 'role': 'user', 'content': prompt }])
       const resp = [{ 'role': 'user', 'content': prompt }, { 'role': 'assistant', 'content': text }]
@@ -337,8 +323,7 @@ class SAt extends Sat {
     if (!this.channelDialogues[channelId]) {
       this.channelDialogues[channelId] = [];
     }
-    this.channelDialogues[channelId].push({ 'role': 'user', 'content': msg });
-    this.channelDialogues[channelId].push({ 'role': 'assistant', 'content': message });
+    this.channelDialogues[channelId].push({ 'role': session.username, 'content': msg });
     if (this.channelDialogues[channelId].length > this.pluginConfig.message_max_length) {
       this.channelDialogues[channelId].shift();
     }
@@ -356,7 +341,7 @@ class SAt extends Sat {
 
     // 过滤掉 其他 角色的对话
     const newContent = session_of_id.filter(msg => msg.role === 'user');
-    //过滤屏蔽词
+    //过滤记录屏蔽词
     for (let i = 0; i < this.pluginConfig.memory_block_words.length; i++) {
       if (newContent[0].content.includes(this.pluginConfig.memory_block_words[i]))
         return await this.getContent(sessionid, session_of_id, session.messageId, session.bot.selfId)
@@ -419,7 +404,7 @@ async function isTargetIdExists(ctx: Context, USERID: string) {
 }
 
 // 添加常识的方法
-async function addCommonSense(content: string,dir: string) {
+async function addCommonSense(content: string, dir: string) {
   const filePath = path.join(dir, 'common_sense.txt');
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
