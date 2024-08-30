@@ -22,6 +22,7 @@ export interface p_system {
 }
 class SAt extends Sat {
   pluginConfig: Sat.Config
+  channelDialogues: { [channelId: string]: Sat.Msg[] } = {}
   constructor(ctx: Context, config: Sat.Config) {
     super(ctx, config)
     this.key_number = 0
@@ -40,7 +41,6 @@ class SAt extends Sat {
     this.personality = { '人格': [{ 'role': 'system', 'content': `${config.prompt}` }] }
 
     this.session_config = Object.values(this.personality)[0]
-
     //at和私信触发对话的实现方法
     ctx.middleware(async (session, next) => {
       return this.middleware(session, next)
@@ -111,6 +111,12 @@ class SAt extends Sat {
     if (this.ctx.censor)// 文本审核
       censored_prompt = await this.ctx.censor.transform(prompt, session);
     this.personality['人格'][0].content = this.pluginConfig.prompt;
+
+    // 获取频道的最近十条对话
+    const channelId = session.channelId;
+    const dialogues = this.channelDialogues[channelId] || [];
+    const recentDialogues = dialogues.slice(-10);
+    this.personality['人格'][0].content += '\n这是最近的对话内容：\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n');
     // 读取对话记录文件并搜索关键词
     const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
     if (fs.existsSync(filePath)) {
@@ -135,7 +141,7 @@ class SAt extends Sat {
       // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的十条记录
       const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
       const topMatches = sortedMatches.slice(0, 10);
-      logger.info('\n这是你可能用到的之前的对话内容：\n' + topMatches.map(item => dialogues[item.index].content).join('\n'))
+      logger.info('\n最近的对话内容：\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n这是你可能用到的之前的对话内容：\n' + topMatches.map(item => dialogues[item.index].content).join('\n'))
       this.personality['人格'][0].content += '\n这是你可能用到的之前的对话内容：\n' + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n';
     }
     // 启用/关闭上下文
@@ -282,16 +288,22 @@ class SAt extends Sat {
     // 与ChatGPT交互获得对话内容
     let message: string = await this.try_control(this.chat_with_gpt, session, session_of_id)
 
-    // 记录上下文
+    // 记录回答
     session_of_id.push({ 'role': 'assistant', 'content': message })
-    while (JSON.stringify(session_of_id).length > this.pluginConfig.message_max_length) {
-      session_of_id.splice(1, 1)
-      if (session_of_id.length <= 1) break
-    }
 
     this.sessions[sessionid] = session_of_id
-    logger.info('ChatGPT返回内容: ')
-    logger.info(message)
+    logger.info('ChatGPT返回内容: ' + message)
+
+    // 更新频道的对话记录(记录频道上下文)
+    const channelId = session.channelId;
+    if (!this.channelDialogues[channelId]) {
+      this.channelDialogues[channelId] = [];
+    }
+    this.channelDialogues[channelId].push({ 'role': 'user', 'content': msg });
+    this.channelDialogues[channelId].push({ 'role': 'assistant', 'content': message });
+    if (this.channelDialogues[channelId].length > this.pluginConfig.message_max_length) {
+      this.channelDialogues[channelId].shift();
+    }
 
     // 保存对话记录到文件
 
@@ -307,9 +319,11 @@ class SAt extends Sat {
     // 过滤掉 其他 角色的对话
     const newContent = session_of_id.filter(msg => msg.role === 'user');
     const regex = /记住/g;
-    if (regex.test(newContent[0].content) || newContent[0].content.length > 14) {
+
+    if (regex.test(newContent[0].content) || newContent[0].content.length > this.pluginConfig.remember_min_length) {
       // 追加新的对话记录
       existingContent.push(...newContent);
+      logger.info('已记录，长度：' + newContent[0].content.length)
       fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
     }
 
@@ -351,6 +365,7 @@ class SAt extends Sat {
 
   clear(session: Session): string {
     this.sessions = {}
+    this.channelDialogues = {}
     return session.text('commands.sat.messages.clean')
   }
 }

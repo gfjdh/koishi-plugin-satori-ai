@@ -42,6 +42,7 @@ export namespace Sat {
     max_tokens: number
     content_max_tokens: number
     message_max_length: number
+    remember_min_length: number
     dataDir: string
     temperature: number
     authority: number
@@ -82,7 +83,8 @@ export namespace Sat {
     Schema.object({
       max_tokens: Schema.number().description('最大请求长度').default(50),
       content_max_tokens: Schema.number().description('最大回答长度').default(100),
-      message_max_length: Schema.number().description('最大上下文长度').default(7000),
+      message_max_length: Schema.number().description('最大频道上下文长度').default(10),
+      remember_min_length: Schema.number().description('触发保存到记忆的长度').default(20),
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
       temperature: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('温度'),
       authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
