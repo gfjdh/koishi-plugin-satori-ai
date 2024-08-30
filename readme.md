@@ -17,17 +17,3 @@
 |  ----  | ----  |
 | 清空所有回话 | sat.clear |
 | 对话 |  sat |
-
-## 设置多个 key 的方法
-
-1. 直接修改
-2. 在配置文件修改
-  打开koishi.yml  (可以使用 explorer 插件)
-  修改配置项
-    ```
-    davinci-003:3seyqr:
-        key:
-        - sk-kashdkahsjdhkashkd*
-        - sk-ItGRonJPTa6sp9QYhN*
-        - sk-sgadtiasyn2ouoi1n*
-    ```
