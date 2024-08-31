@@ -121,7 +121,7 @@ class SAt extends Sat {
       const channelId = session.channelId;
       const dialogues = this.channelDialogues[channelId] || [];
       const recentDialogues = dialogues.slice(-10);
-      // 检查最近十条对话中是否含有和本次对话 role 和 content 完全一样的情况
+      // 检查最近十条对话中是否含有和本次对话 role 和 content 一样的情况
       const duplicateDialogue = recentDialogues.find(msg => msg.role === session.username && (msg.content.includes(prompt) || prompt.includes(msg.content)));
       if (duplicateDialogue) {
         // 扣好感
@@ -135,7 +135,7 @@ class SAt extends Sat {
       }
       this.personality['人格'][0].content += '\n这是刚刚的对话内容：{\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n}';
       // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
-      const charactersToRemove: string[] = ["的", "一", "是", "了", "我", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会"];
+      const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会"];
       const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
       const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
       let tmp;
@@ -146,47 +146,66 @@ class SAt extends Sat {
         tmp = (prompt).split('');
       }
       const keywords = tmp.filter(word => !charactersToRemove.includes(word));
-      // 读取对话记录文件并搜索关键词
-      if (fs.existsSync(filePath)) {
+      const fs = require('fs');
+
+      function searchKeywordsInFile(filePath, keywords) {
+        if (!fs.existsSync(filePath)) return [];
         const fileContent = fs.readFileSync(filePath, 'utf-8');
-        const dialogues = JSON.parse(fileContent).filter(msg => msg.role === 'user');
-        // 计算每个对话匹配到的关键词数量
-        let matchCounts = [];
-        for (let i = 0; i < dialogues.length; i++) {
-          const dialogue = dialogues[i];
+        const dialogues = JSON.parse(fileContent);
+        // 使用正则表达式进行关键词匹配
+        const keywordRegex = new RegExp(keywords.join('|'), 'gi');
+        const chineseRegex = /[\u4e00-\u9fa5]/; // 匹配中文字符的正则表达式
+        let matchCounts = dialogues.map((dialogue, index) => {
+          const matches = dialogue.content.match(keywordRegex);
           let count = 0;
-          for (let j = 0; j < keywords.length; j++)
-            if (dialogue.content.includes(keywords[j])) count++;
-          matchCounts.push({ index: i, count });
-        }
-        // 过滤掉 matchCounts 为 0 的内容
+          if (matches) {
+            matches.forEach(match => {
+              let chineseCount = (match.match(chineseRegex) || []).length;
+              let englishCount = match.length - chineseCount;
+              count += chineseCount * 3 + englishCount; // 中文字符权重为3，英文字符权重为1
+            });
+          }
+          // 计算总字符数
+          let totalChineseCount = (dialogue.content.match(chineseRegex) || []).length;
+          let totalEnglishCount = dialogue.content.length - totalChineseCount;
+          let totalCount = totalChineseCount * 3 + totalEnglishCount; // 总字符数权重计算
+          let ratio = totalCount > 0 ? count / totalCount : 0; // 计算匹配字符数与总字符数之比
+          return { index, count, totalCount, ratio };
+        });
         const filteredMatchCounts = matchCounts.filter(item => item.count > 0);
-        // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的几条记录
-        const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
-        const topMatches = sortedMatches.slice(0, 5);
-        this.personality['人格'][0].content += '\n这是你可能用到的较久之前的对话内容：{\n' + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n}';
+        const sortedMatches = filteredMatchCounts.sort((a, b) => b.ratio - a.ratio);
+        return sortedMatches;
       }
+
+      function appendTopMatches(dialogues, sortedMatches, topN, prefix) {
+        const topMatches = sortedMatches.slice(0, topN);
+        const personalityContent = `\n${prefix}{\n` + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n}';
+        return personalityContent;
+      }
+
+      // 读取对话记录文件并搜索关键词
+      let sortedMatches = searchKeywordsInFile(filePath, keywords);
+      if (sortedMatches.length > 0) {
+        this.personality['人格'][0].content = appendTopMatches(JSON.parse(fs.readFileSync(filePath, 'utf-8')), sortedMatches, 10, '这是你可能用到的较久之前的对话内容：');
+      }
+
       // 读取 common_sense 文件并搜索关键词
       const commonSenseFilePath = path.join(this.pluginConfig.dataDir, 'common_sense.txt');
-      if (fs.existsSync(commonSenseFilePath)) {
-        const commonSenseContent = fs.readFileSync(commonSenseFilePath, 'utf-8');
-        const commonSenseDialogues = JSON.parse(commonSenseContent).filter(msg => msg.role === 'user');
-        // 计算每个对话匹配到的关键词数量
-        let matchCounts = [];
-        for (let i = 0; i < commonSenseDialogues.length; i++) {
-          const dialogue = commonSenseDialogues[i];
-          let count = 0;
-          for (let j = 0; j < keywords.length; j++)
-            if (dialogue.content.includes(keywords[j])) count++;
-          matchCounts.push({ index: i, count });
+      const commonSenseContent = JSON.parse(fs.readFileSync(commonSenseFilePath, 'utf-8'));
+      // 第一次搜索关键词
+     sortedMatches = searchKeywordsInFile(commonSenseFilePath, keywords);
+      if (sortedMatches.length > 0) {
+        this.personality['人格'][0].content = appendTopMatches(commonSenseContent, sortedMatches, 5, '这是你需要知道的信息：');
+        // 获取匹配度最高的记录并再次进行检索
+        if (sortedMatches.length > 0) {
+          const highestMatchContent = commonSenseContent[sortedMatches[0].index].content.split('').filter(word => !charactersToRemove.includes(word));
+          const reSortedMatches = searchKeywordsInFile(commonSenseFilePath, highestMatchContent);
+          if (reSortedMatches.length > 0) {
+            this.personality['人格'][0].content = appendTopMatches(commonSenseContent, reSortedMatches, 5, '这是更多补充信息：');
+          }
         }
-        // 过滤掉 matchCounts 为 0 的内容
-        const filteredMatchCounts = matchCounts.filter(item => item.count > 0);
-        // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的几条记录
-        const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
-        const topMatches = sortedMatches.slice(0, 5);
-        this.personality['人格'][0].content += '\n这是你需要知道的信息：{\n' + topMatches.map(item => commonSenseDialogues[item.index].content).join('\n') + '\n';
       }
+
 
       // 获取当前日期和时间
       const now = new Date();
@@ -196,51 +215,54 @@ class SAt extends Sat {
       else if (hour >= 12 && hour < 14) timeOfDay = '中午';
       else if (hour >= 14 && hour < 18) timeOfDay = '下午';
       else timeOfDay = '晚上';
-      this.personality['人格'][0].content += `\n当前时间:${timeOfDay}\n}`;
+      this.personality['人格'][0].content += `\n当前时间:${timeOfDay}\n`;
 
       if (this.pluginConfig.enable_favorability) {
         // 获取用户的好感度
-        const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
+        const notExists = await isTargetIdExists(this.ctx, session.userId); // 该群中的该用户是否签到过
         if (!notExists) {
-          const user = await this.ctx.database.get('p_system', { userid: session.userId })
+          const user = await this.ctx.database.get('p_system', { userid: session.userId });
           const regex = /\*\*/g;
           if (regex.test(censored_prompt)) {
             const newFavorability = user[0].favorability - 11;
             await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
-          }
-          else
-            await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: user[0].favorability + 1 });//增加好感
-          let level: string;
-          if (user[0].favorability < this.pluginConfig.favorability_div_1) {
-            level = '厌恶';
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_0} \n我的名字: ${session.username}`;
-          } else if (user[0].favorability < this.pluginConfig.favorability_div_2) {
-            level = '陌生';
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n我的名字: ${session.username}`;
-          } else if (user[0].favorability < this.pluginConfig.favorability_div_3) {
-            level = '朋友';
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_2} \n我的名字: ${session.username}`;
-          } else if (user[0].favorability < this.pluginConfig.favorability_div_4) {
-            level = '暧昧';
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n我的名字: ${session.username}`;
           } else {
-            level = '恋人';
-            const matchResult = session.channelId.match(new RegExp("private", "g"));
-            if (matchResult && matchResult.includes("private"))
-              this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_4} \n`;
-            else
-              this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n`;
-            this.personality['人格'][0].content += `我的名字: ${user[0].usersname}`
+            await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: user[0].favorability + 1 }); // 增加好感
           }
 
-          logger.info(`名字: ${user[0].usersname}, 关系: ${level}`)
+          const levels: readonly string[] = ["厌恶", "陌生", "朋友", "暧昧", "恋人"] as const;
+          const favorability = user[0].favorability;
+          let level: string;
+          if (favorability < this.pluginConfig.favorability_div_1) {
+            level = levels[0];
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_0} \n我的名字: ${session.username}`;
+          } else if (favorability < this.pluginConfig.favorability_div_2) {
+            level = levels[1];
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n我的名字: ${session.username}`;
+          } else if (favorability < this.pluginConfig.favorability_div_3) {
+            level = levels[2];
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_2} \n我的名字: ${session.username}`;
+          } else if (favorability < this.pluginConfig.favorability_div_4) {
+            level = levels[3];
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n我的名字: ${session.username}`;
+          } else {
+            level = levels[4];
+            const isPrivate = session.channelId.match(new RegExp("private", "g"))?.includes("private");
+            if (isPrivate) {
+              this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_4} \n`;
+            } else {
+              this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n`;
+            }
+            this.personality['人格'][0].content += `我的名字: ${user[0].usersname}`;
+          }
+          logger.info(`名字: ${user[0].usersname}, 关系: ${level}`);
         } else {
           // 更新 system_prompt
           this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n我的名字: ${session.username}`;
-          logger.info(`名字: ${session.username}, 关系: 陌生`)
+          logger.info(`名字: ${session.username}, 关系: 陌生`);
         }
       }
-      if (debug) logger.info(this.personality['人格'][0].content.slice(-800));
+      if (debug) logger.info(this.personality['人格'][0].content.slice(-1500));
       return await this.chat(censored_prompt, session.userId, session)
     } else {
       const text: string = await this.chat_with_gpt(session, [{ 'role': 'user', 'content': prompt }])
