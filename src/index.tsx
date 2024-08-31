@@ -186,7 +186,7 @@ class SAt extends Sat {
       // 读取对话记录文件并搜索关键词
       let sortedMatches = searchKeywordsInFile(filePath, keywords);
       if (sortedMatches.length > 0) {
-        this.personality['人格'][0].content = appendTopMatches(JSON.parse(fs.readFileSync(filePath, 'utf-8')), sortedMatches, 10, '这是你可能用到的较久之前的对话内容：');
+        this.personality['人格'][0].content += appendTopMatches(JSON.parse(fs.readFileSync(filePath, 'utf-8')), sortedMatches, 10, '这是你可能用到的较久之前的对话内容：');
       }
 
       // 读取 common_sense 文件并搜索关键词
@@ -195,13 +195,13 @@ class SAt extends Sat {
       // 第一次搜索关键词
      sortedMatches = searchKeywordsInFile(commonSenseFilePath, keywords);
       if (sortedMatches.length > 0) {
-        this.personality['人格'][0].content = appendTopMatches(commonSenseContent, sortedMatches, 5, '这是你需要知道的信息：');
+        this.personality['人格'][0].content += appendTopMatches(commonSenseContent, sortedMatches, 5, '这是你需要知道的信息：');
         // 获取匹配度最高的记录并再次进行检索
         if (sortedMatches.length > 0) {
           const highestMatchContent = commonSenseContent[sortedMatches[0].index].content.split('').filter(word => !charactersToRemove.includes(word));
           const reSortedMatches = searchKeywordsInFile(commonSenseFilePath, highestMatchContent);
           if (reSortedMatches.length > 0) {
-            this.personality['人格'][0].content = appendTopMatches(commonSenseContent, reSortedMatches, 5, '这是更多补充信息：');
+            this.personality['人格'][0].content += appendTopMatches(commonSenseContent, reSortedMatches, 5, '这是更多补充信息：');
           }
         }
       }
