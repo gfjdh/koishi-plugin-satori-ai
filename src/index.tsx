@@ -185,8 +185,18 @@ class SAt extends Sat {
         // 将匹配结果按匹配到的字数排序，选出匹配到的字数最多的几条记录
         const sortedMatches = filteredMatchCounts.sort((a, b) => b.count - a.count);
         const topMatches = sortedMatches.slice(0, 5);
-        this.personality['人格'][0].content += '\n这是你需要知道的信息：{\n' + topMatches.map(item => commonSenseDialogues[item.index].content).join('\n') + '\n}';
+        this.personality['人格'][0].content += '\n这是你需要知道的信息：{\n' + topMatches.map(item => commonSenseDialogues[item.index].content).join('\n') + '\n';
       }
+
+      // 获取当前日期和时间
+      const now = new Date();
+      const hour = now.getHours();
+      let timeOfDay;
+      if (hour >= 5 && hour < 12) timeOfDay = '早晨';
+      else if (hour >= 12 && hour < 14) timeOfDay = '中午';
+      else if (hour >= 14 && hour < 18) timeOfDay = '下午';
+      else timeOfDay = '晚上';
+      this.personality['人格'][0].content += `\n当前时间:${timeOfDay}\n}`;
 
       if (this.pluginConfig.enable_favorability) {
         // 获取用户的好感度
