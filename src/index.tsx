@@ -6,7 +6,7 @@ import * as path from 'path';
 
 const name = 'satori-ai'
 const logger = new Logger(name)
-const debug = 0;
+const debug = 1;
 type ChatCallback = (session: Session, session_of_id: Sat.Msg[]) => Promise<string>
 declare module 'koishi' {
   interface Context {
@@ -141,7 +141,7 @@ class SAt extends Sat {
       }
       this.personality['人格'][0].content += '\n这是刚刚的对话内容：{\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n}';
       // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
-      const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会"];
+      const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
       const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
       const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
       let tmp;
@@ -149,10 +149,11 @@ class SAt extends Sat {
         const user = await this.ctx.database.get('p_system', { userid: session.userId })
         tmp = (user[0].usersname + prompt).split('');
       } else {
-        tmp = (prompt).split('');
+        tmp = (session.username + prompt).split('');
       }
       const keywords = tmp.filter(word => !charactersToRemove.includes(word));
       const fs = require('fs');
+      const USERID = [session.userId]
 
       // 读取对话记录文件并搜索关键词
       let sortedMatches = searchKeywordsInFile(filePath, keywords);
@@ -160,8 +161,7 @@ class SAt extends Sat {
         this.personality['人格'][0].content += appendTopMatches(JSON.parse(fs.readFileSync(filePath, 'utf-8')), sortedMatches, 10, '这是你可能用到的较久之前的对话内容：');
       }
 
-      // 读取 common_sense 文件并搜索关键词
-      // 读取 common_sense 文件并搜索关键词
+      // 读取 common_sense 文件
       const commonSenseFilePath = path.join(this.pluginConfig.dataDir, 'common_sense.txt');
       let commonSenseContent;
       try {
@@ -170,10 +170,11 @@ class SAt extends Sat {
         console.error('Error reading or parsing common_sense file:', error);
         return;
       }
+
       // 第一次搜索关键词
       sortedMatches = searchKeywordsInFile(commonSenseFilePath, keywords);
       if (sortedMatches.length > 0) {
-        this.personality['人格'][0].content += appendTopMatches(commonSenseContent, sortedMatches, 5, '这是你需要知道的信息：');
+        this.personality['人格'][0].content += appendTopMatches(commonSenseContent, sortedMatches, 10, '这是你需要知道的信息：');
         // 获取匹配度最高的记录并再次进行检索
         if (sortedMatches.length > 4) {
           for (let i = 0; i < 5; i++) {
@@ -210,33 +211,32 @@ class SAt extends Sat {
           let level: string;
           if (favorability < this.pluginConfig.favorability_div_1) {
             level = levels[0];
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_0} \n我的名字: ${user[0].usersname}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_0} \n`;
           } else if (favorability < this.pluginConfig.favorability_div_2) {
             level = levels[1];
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n我的名字: ${user[0].usersname}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n`;
           } else if (favorability < this.pluginConfig.favorability_div_3) {
             level = levels[2];
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_2} \n我的名字: ${user[0].usersname}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_2} \n`;
           } else if (favorability < this.pluginConfig.favorability_div_4) {
             level = levels[3];
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n我的名字: ${user[0].usersname}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n`;
           } else {
             level = levels[4];
-            const isPrivate = session.channelId.match(new RegExp("private", "g"))?.includes("private");
-            if (isPrivate) {
-              this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_4} \n`;
-            } else {
-              this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n`;
-            }
-            this.personality['人格'][0].content += `我的名字: ${user[0].usersname}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_4} \n`;
           }
-          logger.info(`名字: ${user[0].usersname}, 关系: ${level}`);
+          this.personality['人格'][0].content += `发言者的名字: ${session.username}，发言者的id：${session.userId}`;
+          logger.info(`名字: ${session.username}, 关系: ${level}`);
         } else {
           // 更新 system_prompt
-          this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n我的名字: ${session.username}`;
+          this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n发言者的名字: ${session.username}，发言者的id：${session.userId}`;
           logger.info(`名字: ${session.username}, 关系: 陌生`);
         }
       }
+      // 搜索id
+      sortedMatches = searchKeywordsInFile(commonSenseFilePath, USERID);
+      if (sortedMatches.length > 0)
+        this.personality['人格'][0].content += appendTopMatches(commonSenseContent, sortedMatches, 1, '这是发言者的真实身份：');
       if (debug) logger.info(this.personality['人格'][0].content.slice(-1500));
       return await this.chat(censored_prompt, session.userId, session)
     } else {
@@ -350,7 +350,6 @@ class SAt extends Sat {
       this.channelDialogues[channelId] = [];
     }
     this.channelDialogues[channelId].push({ 'role': session.username, 'content': msg });
-    this.channelDialogues[channelId].push({ 'role': '回复', 'content': message  });
     if (this.channelDialogues[channelId].length > this.pluginConfig.message_max_length) {
       this.channelDialogues[channelId].shift();
     }
