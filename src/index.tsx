@@ -3,7 +3,6 @@ import { } from '@koishijs/censor'
 import { Sat } from './type'
 import * as fs from 'fs';
 import * as path from 'path';
-import { assert } from 'console';
 const name = 'satori-ai'
 const logger = new Logger(name)
 const debug = 1;
@@ -55,7 +54,12 @@ class SAt extends Sat {
         const message = await this.sat(session, prompt.join(' '));
         if (typeof message === 'string')
           return message;
-        const content = (message as unknown as { attrs: { content: string } }).attrs.content;
+        const content = (message as unknown as { attrs: { content: string } })?.attrs?.content;
+        if (!content) {
+          // 处理 message 为 undefined 或 attrs 为 undefined 的情况
+          console.error('Message or its attrs are undefined');
+          return session.text('commands.sat.messages.err');
+        }
         if (content.length > this.pluginConfig.content_max_tokens) return session.text('commands.sat.messages.content_tooLong')
         if (this.pluginConfig.enable_favorability) {
           // 获取用户的好感度
@@ -156,18 +160,27 @@ class SAt extends Sat {
       }
 
       // 读取 common_sense 文件并搜索关键词
+      // 读取 common_sense 文件并搜索关键词
       const commonSenseFilePath = path.join(this.pluginConfig.dataDir, 'common_sense.txt');
-      const commonSenseContent = JSON.parse(fs.readFileSync(commonSenseFilePath, 'utf-8'));
+      let commonSenseContent;
+      try {
+        commonSenseContent = JSON.parse(fs.readFileSync(commonSenseFilePath, 'utf-8'));
+      } catch (error) {
+        console.error('Error reading or parsing common_sense file:', error);
+        return;
+      }
       // 第一次搜索关键词
       sortedMatches = searchKeywordsInFile(commonSenseFilePath, keywords);
       if (sortedMatches.length > 0) {
         this.personality['人格'][0].content += appendTopMatches(commonSenseContent, sortedMatches, 5, '这是你需要知道的信息：');
         // 获取匹配度最高的记录并再次进行检索
-        if (sortedMatches.length > 0) {
-          const highestMatchContent = commonSenseContent[sortedMatches[0].index].content.split('').filter(word => !charactersToRemove.includes(word));
-          const reSortedMatches = searchKeywordsInFile(commonSenseFilePath, highestMatchContent);
-          if (reSortedMatches.length > 0) {
-            this.personality['人格'][0].content += appendTopMatches(commonSenseContent, reSortedMatches, 5, '这是更多补充信息：');
+        if (sortedMatches.length > 4) {
+          for (let i = 0; i < 5; i++) {
+            const matchContent = commonSenseContent[sortedMatches[i].index].content.split('').filter(word => !charactersToRemove.includes(word));
+            const reSortedMatches = searchKeywordsInFile(commonSenseFilePath, matchContent);
+            if (reSortedMatches.length > 0) {
+              this.personality['人格'][0].content += appendTopMatches(commonSenseContent, reSortedMatches, 3, `这是第${i + 1}条信息的补充信息：`);
+            }
           }
         }
       }
@@ -336,7 +349,6 @@ class SAt extends Sat {
       this.channelDialogues[channelId] = [];
     }
     this.channelDialogues[channelId].push({ 'role': session.username, 'content': msg });
-    this.channelDialogues[channelId].push({ 'role': '你', 'content': message });
     if (this.channelDialogues[channelId].length > this.pluginConfig.message_max_length) {
       this.channelDialogues[channelId].shift();
     }
@@ -372,8 +384,8 @@ class SAt extends Sat {
           fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
         }
       }
-      return await this.getContent(sessionid, session_of_id, session.messageId, session.bot.selfId)
     }
+    return await this.getContent(sessionid, session_of_id, session.messageId, session.bot.selfId)
   }
   /**
    *
@@ -460,7 +472,7 @@ function searchKeywordsInFile(filePath, keywords) {
     let ratio = totalCount > 0 ? count / totalCount : 0; // 计算匹配字符数与总字符数之比
     return { index, count, totalCount, ratio };
   });
-  const filteredMatchCounts = matchCounts.filter(item => item.count > 2);
+  const filteredMatchCounts = matchCounts.filter(item => item.count > 1);
   const sortedMatches = filteredMatchCounts.sort((a, b) => b.ratio - a.ratio);
   return sortedMatches;
 }
