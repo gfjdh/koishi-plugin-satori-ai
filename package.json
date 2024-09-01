@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-satori-ai",
-  "description": "觉bot的ai对话",
-  "version": "0.0.1",
+  "description": "适用于satori的ai对话",
+  "version": "1.0.0",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "types": "lib/index.d.ts",
@@ -13,7 +13,7 @@
   "author": {
     "name": "清水尚辉",
     "email": "2556123498@qq.com",
-    "url": "https://github.com/gfjdh"
+    "url": "https://gfjdh.cn"
   },
   "repository": {
     "type": "git",
