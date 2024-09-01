@@ -3,6 +3,7 @@ import { } from '@koishijs/censor'
 import { Sat } from './type'
 import * as fs from 'fs';
 import * as path from 'path';
+import { assert } from 'console';
 const name = 'satori-ai'
 const logger = new Logger(name)
 const debug = 1;
@@ -128,7 +129,7 @@ class SAt extends Sat {
         const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
         if (!notExists) {
           const user = await this.ctx.database.get('p_system', { userid: session.userId });
-          const newFavorability = user[0].favorability - 1; // 假设扣10点好感
+          const newFavorability = user[0].favorability - 1; // 假设扣1点好感
           await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
         }
         return session.text('commands.sat.messages.duplicate-dialogue');
@@ -148,41 +149,6 @@ class SAt extends Sat {
       const keywords = tmp.filter(word => !charactersToRemove.includes(word));
       const fs = require('fs');
 
-      function searchKeywordsInFile(filePath, keywords) {
-        if (!fs.existsSync(filePath)) return [];
-        const fileContent = fs.readFileSync(filePath, 'utf-8');
-        const dialogues = JSON.parse(fileContent);
-        // 使用正则表达式进行关键词匹配
-        const keywordRegex = new RegExp(keywords.join('|'), 'gi');
-        const chineseRegex = /[\u4e00-\u9fa5]/; // 匹配中文字符的正则表达式
-        let matchCounts = dialogues.map((dialogue, index) => {
-          const matches = dialogue.content.match(keywordRegex);
-          let count = 0;
-          if (matches) {
-            matches.forEach(match => {
-              let chineseCount = (match.match(chineseRegex) || []).length;
-              let englishCount = match.length - chineseCount;
-              count += chineseCount * 3 + englishCount; // 中文字符权重为3，英文字符权重为1
-            });
-          }
-          // 计算总字符数
-          let totalChineseCount = (dialogue.content.match(chineseRegex) || []).length;
-          let totalEnglishCount = dialogue.content.length - totalChineseCount;
-          let totalCount = totalChineseCount * 3 + totalEnglishCount; // 总字符数权重计算
-          let ratio = totalCount > 0 ? count / totalCount : 0; // 计算匹配字符数与总字符数之比
-          return { index, count, totalCount, ratio };
-        });
-        const filteredMatchCounts = matchCounts.filter(item => item.count > 0);
-        const sortedMatches = filteredMatchCounts.sort((a, b) => b.ratio - a.ratio);
-        return sortedMatches;
-      }
-
-      function appendTopMatches(dialogues, sortedMatches, topN, prefix) {
-        const topMatches = sortedMatches.slice(0, topN);
-        const personalityContent = `\n${prefix}{\n` + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n}';
-        return personalityContent;
-      }
-
       // 读取对话记录文件并搜索关键词
       let sortedMatches = searchKeywordsInFile(filePath, keywords);
       if (sortedMatches.length > 0) {
@@ -193,7 +159,7 @@ class SAt extends Sat {
       const commonSenseFilePath = path.join(this.pluginConfig.dataDir, 'common_sense.txt');
       const commonSenseContent = JSON.parse(fs.readFileSync(commonSenseFilePath, 'utf-8'));
       // 第一次搜索关键词
-     sortedMatches = searchKeywordsInFile(commonSenseFilePath, keywords);
+      sortedMatches = searchKeywordsInFile(commonSenseFilePath, keywords);
       if (sortedMatches.length > 0) {
         this.personality['人格'][0].content += appendTopMatches(commonSenseContent, sortedMatches, 5, '这是你需要知道的信息：');
         // 获取匹配度最高的记录并再次进行检索
@@ -208,14 +174,9 @@ class SAt extends Sat {
 
 
       // 获取当前日期和时间
-      const now = new Date();
-      const hour = now.getHours();
-      let timeOfDay;
-      if (hour >= 5 && hour < 12) timeOfDay = '早晨';
-      else if (hour >= 12 && hour < 14) timeOfDay = '中午';
-      else if (hour >= 14 && hour < 18) timeOfDay = '下午';
-      else timeOfDay = '晚上';
-      this.personality['人格'][0].content += `\n当前时间:${timeOfDay}\n`;
+      const timeOfDay = await getTimeOfDay();
+      this.personality['人格'][0].content += `\n当前时间: ${timeOfDay}\n`;
+
 
       if (this.pluginConfig.enable_favorability) {
         // 获取用户的好感度
@@ -235,16 +196,16 @@ class SAt extends Sat {
           let level: string;
           if (favorability < this.pluginConfig.favorability_div_1) {
             level = levels[0];
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_0} \n我的名字: ${session.username}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_0} \n我的名字: ${user[0].usersname}`;
           } else if (favorability < this.pluginConfig.favorability_div_2) {
             level = levels[1];
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n我的名字: ${session.username}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_1} \n我的名字: ${user[0].usersname}`;
           } else if (favorability < this.pluginConfig.favorability_div_3) {
             level = levels[2];
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_2} \n我的名字: ${session.username}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_2} \n我的名字: ${user[0].usersname}`;
           } else if (favorability < this.pluginConfig.favorability_div_4) {
             level = levels[3];
-            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n我的名字: ${session.username}`;
+            this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_3} \n我的名字: ${user[0].usersname}`;
           } else {
             level = levels[4];
             const isPrivate = session.channelId.match(new RegExp("private", "g"))?.includes("private");
@@ -369,12 +330,13 @@ class SAt extends Sat {
     this.sessions[sessionid] = session_of_id
     logger.info('ChatGPT返回内容: ' + message)
 
-    // 更新频道的对话记录(记录频道上下文)
+    // 更新频道的对话记录(短期记忆记录频道上下文)
     const channelId = session.channelId;
     if (!this.channelDialogues[channelId]) {
       this.channelDialogues[channelId] = [];
     }
     this.channelDialogues[channelId].push({ 'role': session.username, 'content': msg });
+    this.channelDialogues[channelId].push({ 'role': '你', 'content': message });
     if (this.channelDialogues[channelId].length > this.pluginConfig.message_max_length) {
       this.channelDialogues[channelId].shift();
     }
@@ -383,13 +345,11 @@ class SAt extends Sat {
 
     const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${sessionid}.txt`);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-
     // 读取现有文件内容
     let existingContent = [];
     if (fs.existsSync(filePath)) {
       existingContent = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     }
-
     // 过滤掉 其他 角色的对话
     const newContent = session_of_id.filter(msg => msg.role === 'user');
     //过滤记录屏蔽词
@@ -398,14 +358,22 @@ class SAt extends Sat {
         return await this.getContent(sessionid, session_of_id, session.messageId, session.bot.selfId)
     }
     //记录
-    const regex = /记住/g;
-    if (regex.test(newContent[0].content) || newContent[0].content.length > this.pluginConfig.remember_min_length) {
-      // 追加新的对话记录
-      existingContent.push(...newContent);
-      logger.info('已记录，长度：' + newContent[0].content.length)
-      fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
+
+    const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
+    if (!notExists) {
+      const user = await this.ctx.database.get('p_system', { userid: session.userId });
+      const Favorability = user[0].favorability;
+      const regex = /记住/g;
+      if (regex.test(newContent[0].content) || newContent[0].content.length > this.pluginConfig.remember_min_length) {
+        // 追加新的对话记录
+        if (Favorability > this.pluginConfig.favorability_div_2) {
+          existingContent.push(...newContent);
+          logger.info('已记录，长度：' + newContent[0].content.length)
+          fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
+        }
+      }
+      return await this.getContent(sessionid, session_of_id, session.messageId, session.bot.selfId)
     }
-    return await this.getContent(sessionid, session_of_id, session.messageId, session.bot.selfId)
   }
   /**
    *
@@ -466,6 +434,55 @@ async function addCommonSense(content: string, dir: string) {
 
   existingContent.push({ role: 'user', content });
   fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
+}
+
+function searchKeywordsInFile(filePath, keywords) {
+  if (!fs.existsSync(filePath)) return [];
+  const fileContent = fs.readFileSync(filePath, 'utf-8');
+  const dialogues = JSON.parse(fileContent);
+  // 使用正则表达式进行关键词匹配
+  const keywordRegex = new RegExp(keywords.join('|'), 'gi');
+  const chineseRegex = /[\u4e00-\u9fa5]/; // 匹配中文字符的正则表达式
+  let matchCounts = dialogues.map((dialogue, index) => {
+    const matches = dialogue.content.match(keywordRegex);
+    let count = 0;
+    if (matches) {
+      matches.forEach(match => {
+        let chineseCount = (match.match(chineseRegex) || []).length;
+        let englishCount = match.length - chineseCount;
+        count += chineseCount * 2 + englishCount; // 中文字符权重为2，英文字符权重为1
+      });
+    }
+    // 计算总字符数
+    let totalChineseCount = (dialogue.content.match(chineseRegex) || []).length;
+    let totalEnglishCount = dialogue.content.length - totalChineseCount;
+    let totalCount = totalChineseCount * 2 + totalEnglishCount; // 总字符数权重计算
+    let ratio = totalCount > 0 ? count / totalCount : 0; // 计算匹配字符数与总字符数之比
+    return { index, count, totalCount, ratio };
+  });
+  const filteredMatchCounts = matchCounts.filter(item => item.count > 2);
+  const sortedMatches = filteredMatchCounts.sort((a, b) => b.ratio - a.ratio);
+  return sortedMatches;
+}
+
+function appendTopMatches(dialogues, sortedMatches, topN, prefix) {
+  const topMatches = sortedMatches.slice(0, topN);
+  const personalityContent = `\n${prefix}{\n` + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n}';
+  return personalityContent;
+}
+
+async function getTimeOfDay() {
+  const now = new Date();
+  const hour = now.getHours();
+  let timeOfDay: string;
+  if (hour >= 5 && hour < 9) timeOfDay = '清晨';
+  else if (hour >= 9 && hour < 12) timeOfDay = '上午';
+  else if (hour >= 12 && hour < 14) timeOfDay = '中午';
+  else if (hour >= 14 && hour < 17) timeOfDay = '下午';
+  else if (hour >= 17 && hour < 19) timeOfDay = '傍晚';
+  else if (hour >= 19 && hour < 22) timeOfDay = '晚上';
+  else timeOfDay = '深夜';
+  return timeOfDay;
 }
 
 namespace SAt {
