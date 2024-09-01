@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-satori-ai",
-  "description": "适用于satori的ai对话",
-  "version": "1.0.2",
+  "description": "适用于satori的ai对话，请务必使用最新版本",
+  "version": "1.0.3",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "types": "lib/index.d.ts",
