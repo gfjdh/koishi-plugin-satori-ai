@@ -6,7 +6,7 @@ import * as path from 'path';
 
 const name = 'satori-ai'
 const logger = new Logger(name)
-const debug = 1;
+const debug = 0;
 type ChatCallback = (session: Session, session_of_id: Sat.Msg[]) => Promise<string>
 declare module 'koishi' {
   interface Context {
@@ -58,7 +58,7 @@ class SAt extends Sat {
         const content = (message as unknown as { attrs: { content: string } })?.attrs?.content;
         if (!content) {
           // 处理 message 为 undefined 或 attrs 为 undefined 的情况
-          console.error('Message or its attrs are undefined');
+          logger.error(message);
           return session.text('commands.sat.messages.err');
         }
         if (content.length > this.pluginConfig.content_max_tokens) return session.text('commands.sat.messages.content_tooLong')
@@ -97,7 +97,7 @@ class SAt extends Sat {
         return this.clear(session)
       })
     //添加常识
-    ctx.command('sat.common_sense <text:text>', '添加常识', { authority: 3 })
+    ctx.command('sat.common_sense <text:text>', '添加常识', { authority: 3 }).alias('添加常识')
       .action(async ({ session }, ...prompt) => {
         const content = prompt.join(' ');
         if (!content) return session.text('commands.sat.common_sense.messages.no-prompt');
@@ -129,9 +129,9 @@ class SAt extends Sat {
       const recentDialogues = dialogues.slice(-10);
       // 检查最近十条对话中是否含有和本次对话 role 和 content 一样的情况
       const duplicateDialogue = recentDialogues.find(msg => msg.role === session.username && (msg.content.includes(prompt) || prompt.includes(msg.content)));
+      const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
       if (duplicateDialogue) {
         // 扣好感
-        const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
         if (!notExists) {
           const user = await this.ctx.database.get('p_system', { userid: session.userId });
           const newFavorability = user[0].favorability - 1; // 假设扣1点好感
@@ -143,7 +143,6 @@ class SAt extends Sat {
       // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
       const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
       const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
-      const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
       let tmp;
       if (!notExists) {
         const user = await this.ctx.database.get('p_system', { userid: session.userId })
@@ -154,22 +153,23 @@ class SAt extends Sat {
       const keywords = tmp.filter(word => !charactersToRemove.includes(word));
       const fs = require('fs');
       const USERID = [session.userId]
-
-      // 读取对话记录文件并搜索关键词
-      let sortedMatches = searchKeywordsInFile(filePath, keywords);
-      if (sortedMatches.length > 0) {
-        this.personality['人格'][0].content += appendTopMatches(JSON.parse(fs.readFileSync(filePath, 'utf-8')), sortedMatches, 10, '这是你可能用到的较久之前的对话内容：');
+      if (debug) logger.info(1);
+      // 检查文件是否存在
+      let sortedMatches;
+      if (fs.existsSync(filePath)) {
+        // 读取对话记录文件并搜索关键词
+        sortedMatches = searchKeywordsInFile(filePath, keywords);
+        if (sortedMatches.length > 0) {
+          this.personality['人格'][0].content += appendTopMatches(JSON.parse(fs.readFileSync(filePath, 'utf-8')), sortedMatches, 10, '这是你可能用到的较久之前的对话内容：');
+        }
       }
 
       // 读取 common_sense 文件
       const commonSenseFilePath = path.join(this.pluginConfig.dataDir, 'common_sense.txt');
       let commonSenseContent;
-      try {
+      if (fs.existsSync(commonSenseFilePath))
         commonSenseContent = JSON.parse(fs.readFileSync(commonSenseFilePath, 'utf-8'));
-      } catch (error) {
-        console.error('Error reading or parsing common_sense file:', error);
-        return;
-      }
+
 
       // 第一次搜索关键词
       sortedMatches = searchKeywordsInFile(commonSenseFilePath, keywords);
@@ -186,7 +186,6 @@ class SAt extends Sat {
           }
         }
       }
-
 
       // 获取当前日期和时间
       const timeOfDay = await getTimeOfDay();
