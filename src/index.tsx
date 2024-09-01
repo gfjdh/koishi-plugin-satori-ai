@@ -129,28 +129,24 @@ class SAt extends Sat {
       const recentDialogues = dialogues.slice(-10);
       // 检查最近十条对话中是否含有和本次对话 role 和 content 一样的情况
       const duplicateDialogue = recentDialogues.find(msg => msg.role === session.username && (msg.content.includes(prompt) || prompt.includes(msg.content)));
-      const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
-      if (duplicateDialogue) {
-        // 扣好感
-        if (!notExists) {
-          const user = await this.ctx.database.get('p_system', { userid: session.userId });
-          const newFavorability = user[0].favorability - 1; // 假设扣1点好感
-          await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
-        }
-        return session.text('commands.sat.messages.duplicate-dialogue');
-      }
       this.personality['人格'][0].content += '\n这是刚刚的对话内容：{\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n}';
       // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
       const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
       const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
-      let tmp;
-      if (!notExists) {
-        const user = await this.ctx.database.get('p_system', { userid: session.userId })
-        tmp = (user[0].usersname + prompt).split('');
-      } else {
-        tmp = (session.username + prompt).split('');
+
+      if (duplicateDialogue) {
+        if (this.pluginConfig.enable_favorability) {
+          const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
+          // 扣好感
+          if (!notExists) {
+            const user = await this.ctx.database.get('p_system', { userid: session.userId });
+            const newFavorability = user[0].favorability - 1; // 假设扣1点好感
+            await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
+          }
+        }
+        return session.text('commands.sat.messages.duplicate-dialogue');
       }
-      const keywords = tmp.filter(word => !charactersToRemove.includes(word));
+      const keywords = (session.username + prompt).split('').filter(word => !charactersToRemove.includes(word));
       const fs = require('fs');
       const USERID = [session.userId]
       if (debug) logger.info(1);
@@ -370,18 +366,19 @@ class SAt extends Sat {
         return await this.getContent(sessionid, session_of_id, session.messageId, session.bot.selfId)
     }
     //记录
-
-    const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
-    if (!notExists) {
-      const user = await this.ctx.database.get('p_system', { userid: session.userId });
-      const Favorability = user[0].favorability;
-      const regex = /记住/g;
-      if (regex.test(newContent[0].content) || newContent[0].content.length > this.pluginConfig.remember_min_length) {
-        // 追加新的对话记录
-        if (Favorability > this.pluginConfig.favorability_div_2) {
-          existingContent.push(...newContent);
-          logger.info('已记录，长度：' + newContent[0].content.length)
-          fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
+    if (this.pluginConfig.enable_favorability) {
+      const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
+      if (!notExists) {
+        const user = await this.ctx.database.get('p_system', { userid: session.userId });
+        const Favorability = user[0].favorability;
+        const regex = /记住/g;
+        if (regex.test(newContent[0].content) || newContent[0].content.length > this.pluginConfig.remember_min_length) {
+          // 追加新的对话记录
+          if (Favorability > this.pluginConfig.favorability_div_2) {
+            existingContent.push(...newContent);
+            logger.info('已记录，长度：' + newContent[0].content.length)
+            fs.writeFileSync(filePath, JSON.stringify(existingContent, null, 2));
+          }
         }
       }
     }
