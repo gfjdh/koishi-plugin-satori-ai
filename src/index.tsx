@@ -3,9 +3,10 @@ import { } from '@koishijs/censor'
 import { Sat } from './type'
 import * as fs from 'fs';
 import * as path from 'path';
+export const usage = `使用说明见插件主页`;
 const name = 'satori-ai'
 const logger = new Logger(name)
-const debug = 1;
+const debug = 0;
 type ChatCallback = (session: Session, session_of_id: Sat.Msg[]) => Promise<string>
 declare module 'koishi' {
   interface Context {
@@ -349,6 +350,7 @@ class SAt extends Sat {
       this.channelDialogues[channelId] = [];
     }
     this.channelDialogues[channelId].push({ 'role': session.username, 'content': msg });
+    this.channelDialogues[channelId].push({ 'role': '回复', 'content': message  });
     if (this.channelDialogues[channelId].length > this.pluginConfig.message_max_length) {
       this.channelDialogues[channelId].shift();
     }
