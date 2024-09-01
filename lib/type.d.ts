@@ -1,4 +1,5 @@
 import { Context, Dict, Schema, Service } from 'koishi';
+export declare const usage = "\u4F7F\u7528\u8BF4\u660E\u89C1\u63D2\u4EF6\u4E3B\u9875";
 export declare class Sat extends Service {
     static inject: {
         required: string[];

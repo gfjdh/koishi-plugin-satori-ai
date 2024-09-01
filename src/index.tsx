@@ -3,7 +3,7 @@ import { } from '@koishijs/censor'
 import { Sat } from './type'
 import * as fs from 'fs';
 import * as path from 'path';
-export const usage = `使用说明见插件主页`;
+
 const name = 'satori-ai'
 const logger = new Logger(name)
 const debug = 0;
@@ -180,7 +180,7 @@ class SAt extends Sat {
             const matchContent = commonSenseContent[sortedMatches[i].index].content.split('').filter(word => !charactersToRemove.includes(word));
             const reSortedMatches = searchKeywordsInFile(commonSenseFilePath, matchContent);
             if (reSortedMatches.length > 0) {
-              this.personality['人格'][0].content += appendTopMatches(commonSenseContent, reSortedMatches, 3, `这是第${i + 1}条信息的补充信息：`);
+              this.personality['人格'][0].content += appendTopMatches(commonSenseContent, reSortedMatches, 3, `这是第${i + 1}条信息的补充信息：`, 1);
             }
           }
         }
@@ -479,8 +479,8 @@ function searchKeywordsInFile(filePath, keywords) {
   return sortedMatches;
 }
 
-function appendTopMatches(dialogues, sortedMatches, topN, prefix) {
-  const topMatches = sortedMatches.slice(0, topN);
+function appendTopMatches(dialogues, sortedMatches, topN, prefix, begin = 0) {
+  const topMatches = sortedMatches.slice(begin, topN);
   const personalityContent = `\n${prefix}{\n` + topMatches.map(item => dialogues[item.index].content).join('\n') + '\n}';
   return personalityContent;
 }

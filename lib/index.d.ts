@@ -1,6 +1,5 @@
 import { Context, segment, Element, Session, Next, Fragment } from 'koishi';
 import { Sat } from './type';
-export declare const usage = "\u4F7F\u7528\u8BF4\u660E\u89C1\u63D2\u4EF6\u4E3B\u9875";
 type ChatCallback = (session: Session, session_of_id: Sat.Msg[]) => Promise<string>;
 declare module 'koishi' {
     interface Context {

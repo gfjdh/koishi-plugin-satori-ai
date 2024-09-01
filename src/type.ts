@@ -1,4 +1,5 @@
 import { Context, Dict, Schema, Service } from 'koishi'
+export const usage = `使用说明见插件主页`;
 export class Sat extends Service {
   static inject = {
     required: ['console', 'database'],
