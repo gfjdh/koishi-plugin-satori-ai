@@ -127,13 +127,11 @@ class SAt extends Sat {
       const channelId = session.channelId;
       const dialogues = this.channelDialogues[channelId] || [];
       const recentDialogues = dialogues.slice(-10);
-      // 检查最近十条对话中是否含有和本次对话 role 和 content 一样的情况
-      const duplicateDialogue = recentDialogues.find(msg => msg.role === session.username && (msg.content.includes(prompt) || prompt.includes(msg.content)));
-      this.personality['人格'][0].content += '\n这是刚刚的对话内容：{\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n}';
-      // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
-      const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
-      const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
 
+      // 检查最近十条对话中是否含有和本次对话 role 和 content 一样的情况
+      let duplicateDialogue: Sat.Msg;
+      if(prompt.length <= 6)
+        duplicateDialogue = recentDialogues.find(msg => msg.role === session.username && (msg.content.includes(prompt) || prompt.includes(msg.content)));
       if (duplicateDialogue) {
         if (this.pluginConfig.enable_favorability) {
           const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
@@ -146,6 +144,11 @@ class SAt extends Sat {
         }
         return session.text('commands.sat.messages.duplicate-dialogue');
       }
+      this.personality['人格'][0].content += '\n这是刚刚的对话内容：{\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n}';
+
+      // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
+      const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+      const filePath = path.join(this.pluginConfig.dataDir, 'dialogues', `${session.userId}.txt`);
       const keywords = (session.username + prompt).split('').filter(word => !charactersToRemove.includes(word));
       const fs = require('fs');
       const USERID = [session.userId]
@@ -156,7 +159,7 @@ class SAt extends Sat {
         // 读取对话记录文件并搜索关键词
         sortedMatches = searchKeywordsInFile(filePath, keywords);
         if (sortedMatches.length > 0) {
-          this.personality['人格'][0].content += appendTopMatches(JSON.parse(fs.readFileSync(filePath, 'utf-8')), sortedMatches, 10, '这是你可能用到的较久之前的对话内容：');
+          this.personality['人格'][0].content += appendTopMatches(JSON.parse(fs.readFileSync(filePath, 'utf-8')), sortedMatches, 10, '这是你和发言者较久之前的对话内容：');
         }
       }
 

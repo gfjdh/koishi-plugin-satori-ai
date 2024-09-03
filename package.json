@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-satori-ai",
   "description": "适用于satori的ai对话，具有长期记忆、常识写入和好感度功能，请务必使用最新版本",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "types": "lib/index.d.ts",
