@@ -115,12 +115,14 @@ class SAt extends Sat {
    */
 
   async sat(session: Session, prompt: string): Promise<string | Element | void> {
-    let notExists: boolean,user;
+    let notExists: boolean, user;
     if (this.pluginConfig.enable_favorability)// 获取用户的好感度
     {
       notExists = await isTargetIdExists(this.ctx, session.userId); // 该群中的该用户是否签到过
       user = await this.ctx.database.get('p_system', { userid: session.userId });
-      if (user[0].favorability < -20 && user[0].favorability > -900) return session.text('commands.sat.messages.block1')
+      if (user[0].favorability < -50 && user[0].favorability > -900) return session.text('commands.sat.messages.block1')
+      const englishLettersCount = (prompt.match(/[a-zA-Z]/g) || []).length;
+      if (user[0].favorability < 50 && englishLettersCount > 8) return session.text('commands.sat.messages.tooManyEnglishLetters')// 如果 prompt 中有超过八个英文字母则拦截
     }
     if (this.pluginConfig.blockuser.includes(session.userId)) return session.text('commands.sat.messages.block1')
     if (this.pluginConfig.blockchannel.includes(session.channelId)) return session.text('commands.sat.messages.block2') // 黑名单拦截
@@ -137,7 +139,7 @@ class SAt extends Sat {
 
       // 检查最近十条对话中是否含有和本次对话 role 和 content 一样的情况
       let duplicateDialogue: Sat.Msg;
-      if(prompt.length <= 6)
+      if (prompt.length <= 6)
         duplicateDialogue = recentDialogues.find(msg => msg.role === session.username && (msg.content.includes(prompt) || prompt.includes(msg.content)));
       if (duplicateDialogue) {
         if (this.pluginConfig.enable_favorability) {

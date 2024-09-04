@@ -4,6 +4,7 @@ commands:
     messages:
       censor: 不合规，请检查输入内容是否含有违禁词。
       no-prompt: 你好。使用说明可以看我的空间哦。
+      tooManyEnglishLetters: 请不要用这么多英文......
       err: 寄！{0}
       tooLong: 你的话太多了。
       content_tooLong: 这个问题有点复杂，你还是去问别人吧。
