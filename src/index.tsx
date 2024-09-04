@@ -71,11 +71,11 @@ class SAt extends Sat {
               const censor_content = await this.ctx.censor.transform(content, session)
               const regex = /\*\*/g;
               if (regex.test(censor_content)) {
-                const newFavorability = user[0].favorability - 5;
+                const newFavorability = user[0].favorability - 10;
                 await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
               }
               if (content == '6') {
-                const newFavorability = user[0].favorability - 1;
+                const newFavorability = user[0].favorability - 5;
                 await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
               }
             }
@@ -115,6 +115,13 @@ class SAt extends Sat {
    */
 
   async sat(session: Session, prompt: string): Promise<string | Element | void> {
+    let notExists: boolean,user;
+    if (this.pluginConfig.enable_favorability)// 获取用户的好感度
+    {
+      notExists = await isTargetIdExists(this.ctx, session.userId); // 该群中的该用户是否签到过
+      user = await this.ctx.database.get('p_system', { userid: session.userId });
+      if (user[0].favorability < -20 && user[0].favorability > -900) return session.text('commands.sat.messages.block1')
+    }
     if (this.pluginConfig.blockuser.includes(session.userId)) return session.text('commands.sat.messages.block1')
     if (this.pluginConfig.blockchannel.includes(session.channelId)) return session.text('commands.sat.messages.block2') // 黑名单拦截
     if (!prompt && !session.quote?.content) return session.text('commands.sat.messages.no-prompt')           // 内容为空
@@ -191,14 +198,11 @@ class SAt extends Sat {
       this.personality['人格'][0].content += `\n当前时间: ${timeOfDay}\n`;
 
 
-      if (this.pluginConfig.enable_favorability) {
-        // 获取用户的好感度
-        const notExists = await isTargetIdExists(this.ctx, session.userId); // 该群中的该用户是否签到过
+      if (this.pluginConfig.enable_favorability) {// 获取用户的好感度
         if (!notExists) {
-          const user = await this.ctx.database.get('p_system', { userid: session.userId });
           const regex = /\*\*/g;
           if (regex.test(censored_prompt)) {
-            const newFavorability = user[0].favorability - 11;
+            const newFavorability = user[0].favorability - 15;
             await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
           } else {
             await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: user[0].favorability + 1 }); // 增加好感
@@ -453,7 +457,8 @@ function searchKeywordsInFile(filePath, keywords) {
   const fileContent = fs.readFileSync(filePath, 'utf-8');
   const dialogues = JSON.parse(fileContent);
   // 使用正则表达式进行关键词匹配
-  const keywordRegex = new RegExp(keywords.join('|'), 'gi');
+  const escapedKeywords = keywords.map(escapeRegExp);
+  const keywordRegex = new RegExp(escapedKeywords.join('|'), 'gi');
   const chineseRegex = /[\u4e00-\u9fa5]/; // 匹配中文字符的正则表达式
   let matchCounts = dialogues.map((dialogue, index) => {
     const matches = dialogue.content.match(keywordRegex);
@@ -475,6 +480,10 @@ function searchKeywordsInFile(filePath, keywords) {
   const filteredMatchCounts = matchCounts.filter(item => item.count > 1);
   const sortedMatches = filteredMatchCounts.sort((a, b) => b.ratio - a.ratio);
   return sortedMatches;
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
 }
 
 function appendTopMatches(dialogues, sortedMatches, topN, prefix, begin = 0) {
