@@ -119,7 +119,8 @@ class SAt extends Sat {
     if (this.pluginConfig.enable_favorability)// 获取用户的好感度
     {
       notExists = await isTargetIdExists(this.ctx, session.userId); // 该群中的该用户是否签到过
-      user = await this.ctx.database.get('p_system', { userid: session.userId });
+      if (notExists) return session.text('commands.sat.messages.notExists')
+      if (!notExists) user = await this.ctx.database.get('p_system', { userid: session.userId });
       if (user[0].favorability < -50 && user[0].favorability > -900) return session.text('commands.sat.messages.block1')
       const englishLettersCount = (prompt.match(/[a-zA-Z]/g) || []).length;
       if (user[0].favorability < 50 && englishLettersCount > 8) return session.text('commands.sat.messages.tooManyEnglishLetters')// 如果 prompt 中有超过八个英文字母则拦截
@@ -161,7 +162,6 @@ class SAt extends Sat {
       const keywords = (session.username + prompt).split('').filter(word => !charactersToRemove.includes(word));
       const fs = require('fs');
       const USERID = [session.userId]
-      if (debug) logger.info(1);
       // 检查文件是否存在
       let sortedMatches;
       if (fs.existsSync(filePath)) {
@@ -260,7 +260,7 @@ class SAt extends Sat {
   async middleware(session: Session, next: Next): Promise<string | string[] | segment | void | Fragment> {
     // 私信触发
     const matchResult = session.channelId.match(new RegExp("private", "g"));
-    if (matchResult && matchResult.includes("private"))
+    if (this.pluginConfig.private && matchResult && matchResult.includes("private"))
       return this.sat(session, session.content)
 
     // 艾特触发

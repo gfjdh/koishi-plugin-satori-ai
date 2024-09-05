@@ -2,6 +2,7 @@ commands:
   sat:
     description: AI聊天
     messages:
+      notExists: 请先签到哦......
       censor: 不合规，请检查输入内容是否含有违禁词。
       no-prompt: 你好。使用说明可以看我的空间哦。
       tooManyEnglishLetters: 请不要用这么多英文......
