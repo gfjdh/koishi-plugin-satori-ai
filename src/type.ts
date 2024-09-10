@@ -89,7 +89,7 @@ export namespace Sat {
       memory_block_words: Schema.array(String).default(['好感']).description('记忆屏蔽词'),
       remember_min_length: Schema.number().description('触发保存到记忆的长度').default(20),
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
-      temperature: Schema.number().role('slider').min(0).max(1).step(0.01).default(0.5).description('温度'),
+      temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
       authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
 
       alias: Schema.array(String).default(['ai']).description('触发命令;别名'),

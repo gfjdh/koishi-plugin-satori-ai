@@ -74,7 +74,7 @@ class SAt extends Sat {
                 const newFavorability = user[0].favorability - 10;
                 await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
               }
-              if (content == '6') {
+              if (content == '⑥' || content == '……') {
                 const newFavorability = user[0].favorability - 5;
                 await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
               }
@@ -121,7 +121,7 @@ class SAt extends Sat {
       notExists = await isTargetIdExists(this.ctx, session.userId); // 该群中的该用户是否签到过
       if (notExists) return session.text('commands.sat.messages.notExists')
       user = await this.ctx.database.get('p_system', { userid: session.userId });
-      if (user[0].favorability < -50 && user[0].favorability > -900) return session.text('commands.sat.messages.block1')
+      if (user[0].favorability < -30 && user[0].favorability > -900) return session.text('commands.sat.messages.block1')
       const englishLettersCount = (prompt.match(/[a-zA-Z]/g) || []).length;
       if (user[0].favorability < 50 && englishLettersCount > 8) return session.text('commands.sat.messages.tooManyEnglishLetters')// 如果 prompt 中有超过八个英文字母则拦截
     }
@@ -142,6 +142,8 @@ class SAt extends Sat {
       let duplicateDialogue: Sat.Msg;
       if (prompt.length <= 6)
         duplicateDialogue = recentDialogues.find(msg => msg.role === session.username && (msg.content.includes(prompt) || prompt.includes(msg.content)));
+      else
+        duplicateDialogue = recentDialogues.find(msg => msg.role === session.username && (msg.content.includes(prompt)));
       if (duplicateDialogue) {
         if (this.pluginConfig.enable_favorability) {
           const notExists = await isTargetIdExists(this.ctx, session.userId); //该群中的该用户是否签到过
@@ -292,6 +294,7 @@ class SAt extends Sat {
     let url = trimSlash(`${this.pluginConfig.baseURL ?? 'https://api.deepseek.com'}/v1/chat/completions`)
     const payload = {
       model: this.pluginConfig.appointModel,
+      max_tokens: this.pluginConfig.max_tokens,
       temperature: this.pluginConfig.temperature,
       top_p: 1,
       frequency_penalty: 0,
