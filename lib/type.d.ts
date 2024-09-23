@@ -41,6 +41,7 @@ export declare namespace Sat {
         content_max_tokens: number;
         message_max_length: number;
         remember_min_length: number;
+        enable_self_memory: boolean;
         memory_block_words: string[];
         dataDir: string;
         temperature: number;

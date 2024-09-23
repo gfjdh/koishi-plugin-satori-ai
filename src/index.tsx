@@ -74,7 +74,7 @@ class SAt extends Sat {
                 const newFavorability = user[0].favorability - 10;
                 await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
               }
-              if (content == '⑥' || content == '……') {
+              if (content == '……') {
                 const newFavorability = user[0].favorability - 5;
                 await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
               }
@@ -156,7 +156,7 @@ class SAt extends Sat {
         }
         return session.text('commands.sat.messages.duplicate-dialogue');
       }
-      this.personality['人格'][0].content += '\n这是刚刚的对话内容：{\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n}';
+      this.personality['人格'][0].content += '\n这是刚刚发言者的发言内容：{\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n}';
 
       // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
       const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
@@ -297,8 +297,8 @@ class SAt extends Sat {
       max_tokens: this.pluginConfig.max_tokens,
       temperature: this.pluginConfig.temperature,
       top_p: 1,
-      frequency_penalty: 0,
-      presence_penalty: 0,
+      frequency_penalty: 0.5,
+      presence_penalty: 0.5,
       messages: message
     }
     const config = {
@@ -349,7 +349,7 @@ class SAt extends Sat {
     session_of_id.push({ 'role': 'assistant', 'content': message })
 
     this.sessions[sessionid] = session_of_id
-    logger.info('ChatGPT返回内容: ' + message)
+    logger.info('模型返回内容: ' + message)
 
     // 更新频道的对话记录(短期记忆记录频道上下文)
     const channelId = session.channelId;
@@ -357,6 +357,7 @@ class SAt extends Sat {
       this.channelDialogues[channelId] = [];
     }
     this.channelDialogues[channelId].push({ 'role': session.username, 'content': msg });
+    if(this.pluginConfig.enable_self_memory) this.channelDialogues[channelId].push({ 'role': '你', 'content': message });
     if (this.channelDialogues[channelId].length > this.pluginConfig.message_max_length) {
       this.channelDialogues[channelId].shift();
     }
@@ -465,7 +466,7 @@ function searchKeywordsInFile(filePath, keywords) {
   const escapedKeywords = keywords.map(escapeRegExp);
   const keywordRegex = new RegExp(escapedKeywords.join('|'), 'gi');
   const chineseRegex = /[\u4e00-\u9fa5]/; // 匹配中文字符的正则表达式
-  let matchCounts = dialogues.map((dialogue, index) => {
+  let matchCounts = dialogues.map((dialogue: { content: string; }, index: any) => {
     const matches = dialogue.content.match(keywordRegex);
     let count = 0;
     if (matches) {
@@ -482,13 +483,13 @@ function searchKeywordsInFile(filePath, keywords) {
     let ratio = totalCount > 0 ? count / totalCount : 0; // 计算匹配字符数与总字符数之比
     return { index, count, totalCount, ratio };
   });
-  const filteredMatchCounts = matchCounts.filter(item => item.count > 1);
-  const sortedMatches = filteredMatchCounts.sort((a, b) => b.ratio - a.ratio);
+  const filteredMatchCounts = matchCounts.filter((item: { count: number; }) => item.count > 1);
+  const sortedMatches = filteredMatchCounts.sort((a: { ratio: number; }, b: { ratio: number; }) => b.ratio - a.ratio);
   return sortedMatches;
 }
 
-function escapeRegExp(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+function escapeRegExp(string: string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function appendTopMatches(dialogues, sortedMatches, topN, prefix, begin = 0) {

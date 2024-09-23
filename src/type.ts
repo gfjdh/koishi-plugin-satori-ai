@@ -44,6 +44,7 @@ export namespace Sat {
     content_max_tokens: number
     message_max_length: number
     remember_min_length: number
+    enable_self_memory: boolean
     memory_block_words: string[]
     dataDir: string
     temperature: number
@@ -86,6 +87,7 @@ export namespace Sat {
       max_tokens: Schema.number().description('最大请求长度').default(50),
       content_max_tokens: Schema.number().description('最大回答长度').default(100),
       message_max_length: Schema.number().description('最大频道上下文长度').default(10),
+      enable_self_memory: Schema.boolean().default(true).description('是否启用自发言记忆（启用容易发生复读）'),
       memory_block_words: Schema.array(String).default(['好感']).description('记忆屏蔽词'),
       remember_min_length: Schema.number().description('触发保存到记忆的长度').default(20),
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
