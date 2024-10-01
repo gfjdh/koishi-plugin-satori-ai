@@ -123,37 +123,7 @@ class SAt extends Sat {
     let censored_prompt: string;
     if (this.ctx.censor) censored_prompt = await this.ctx.censor.transform(prompt, session);// 文本审核
     else censored_prompt = prompt;// 文本审核
-    const fs = require('fs');
-    if (this.pluginConfig.enable_fixed_dialogues) {  // 启用/关闭固定对话
-      const fixedDialoguesPath = path.join(this.pluginConfig.dataDir, 'fixed_dialogues.json');// 读取固定对话文件
-      if (!fs.existsSync(fixedDialoguesPath)) {    // 检查文件是否存在
-          // 如果文件不存在，创建一个默认的对话模板
-          const defaultDialogues = [
-              {triggers: ["你好", "您好"],favorabilityRange: [0, 100],probability: 1,response: "你好！很高兴见到你。"},
-              {triggers: ["再见", "拜拜"],favorabilityRange: [0, 100],probability: 1,response: "再见！希望很快再见到你。"}
-          ];
-          fs.writeFileSync(fixedDialoguesPath, JSON.stringify(defaultDialogues, null, 2), 'utf-8');// 将默认对话模板写入文件
-      }
-      // 读取文件内容
-      const fixedDialogues = JSON.parse(fs.readFileSync(fixedDialoguesPath, 'utf-8'));
-      // 根据 prompt 和好感度匹配对话
-      const matchedDialogues = fixedDialogues.filter(dialogue => {
-          const promptMatch = dialogue.triggers.some(trigger => censored_prompt.includes(trigger));
-          const favorabilityMatch = dialogue.favorabilityRange ?
-              user[0].favorability >= dialogue.favorabilityRange[0] && user[0].favorability <= dialogue.favorabilityRange[1] :
-              true;
-          return promptMatch && favorabilityMatch;
-      });
-      if (matchedDialogues.length > 0) { // 如果有多个匹配的对话，根据概率选择一个
-          const totalProbability = matchedDialogues.reduce((sum, dialogue) => sum + dialogue.probability, 0);
-          let randomValue = Math.random() * totalProbability;
-          for (const dialogue of matchedDialogues) {
-              randomValue -= dialogue.probability;
-              if (randomValue <= 0)
-                  return dialogue.response;
-          }
-      }
-    }
+
     if (this.pluginConfig.enableContext) {  // 启用/关闭上下文
       this.personality['人格'][0].content = this.pluginConfig.prompt;
       // 获取频道的最近十条对话
@@ -175,6 +145,66 @@ class SAt extends Sat {
         }
         return session.text('commands.sat.messages.duplicate-dialogue');
       }
+    }
+
+    const fs = require('fs');
+    if (this.pluginConfig.enable_fixed_dialogues) {  // 启用/关闭固定对话
+      const fixedDialoguesPath = path.join(this.pluginConfig.dataDir, 'fixed_dialogues.json');// 读取固定对话文件
+      if (!fs.existsSync(fixedDialoguesPath)) {    // 检查文件是否存在
+          // 如果文件不存在，创建一个默认的对话模板
+          const defaultDialogues = [
+              {triggers: ["你好", "您好"],favorabilityRange: [0, 100],probability: 1,timeRange: ["06:00", "08:00"],response: "早上好！很高兴见到你。"},
+              {triggers: ["再见", "拜拜"],favorabilityRange: [0, 100],probability: 1,timeRange: ["18:00", "20:00"],response: "再见！希望很快再见到你。"}
+          ];
+          fs.writeFileSync(fixedDialoguesPath, JSON.stringify(defaultDialogues, null, 2), 'utf-8');// 将默认对话模板写入文件
+      }
+      // 读取文件内容
+      const fixedDialogues = JSON.parse(fs.readFileSync(fixedDialoguesPath, 'utf-8'));
+      // 获取当前时间
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      // 根据 prompt 和好感度匹配对话
+      const matchedDialogues = fixedDialogues.filter(dialogue => {
+          const promptMatch = dialogue.triggers.some(trigger => censored_prompt.includes(trigger));
+          const favorabilityMatch = dialogue.favorabilityRange ?
+              user[0].favorability >= dialogue.favorabilityRange[0] && user[0].favorability <= dialogue.favorabilityRange[1] : true;
+          // 检查时间范围
+          const timeRangeMatch = dialogue.timeRange ?
+              (() => {
+                  const [startHour, startMinute] = dialogue.timeRange[0].split(':').map(Number);
+                  const [endHour, endMinute] = dialogue.timeRange[1].split(':').map(Number);
+                  const startTime = startHour * 60 + startMinute;
+                  const endTime = endHour * 60 + endMinute;
+                  const currentTime = currentHour * 60 + currentMinute;
+                  return currentTime >= startTime && currentTime <= endTime;
+              })() : true;
+          return promptMatch && favorabilityMatch && timeRangeMatch;
+      });
+      if (matchedDialogues.length > 0) { // 如果有多个匹配的对话，根据概率选择一个
+          const totalProbability = matchedDialogues.reduce((sum, dialogue) => sum + dialogue.probability, 0);
+          let randomValue = Math.random() * totalProbability;
+          for (const dialogue of matchedDialogues) {
+              randomValue -= dialogue.probability;
+              if (randomValue <= 0) {
+                  // 更新用户的好感度
+                  if (this.pluginConfig.enable_favorability){
+                  const newFavorability = user[0].favorability + dialogue.favorability;
+                  await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
+                  }
+                  return dialogue.response;
+              }
+          }
+      }
+    }
+
+    if (this.pluginConfig.enableContext) {  // 启用/关闭上下文
+      this.personality['人格'][0].content = this.pluginConfig.prompt;
+      // 获取频道的最近十条对话
+      const channelId = session.channelId;
+      const dialogues = this.channelDialogues[channelId] || [];
+      const recentDialogues = dialogues.slice(-10);
+
       this.personality['人格'][0].content += '\n这是刚刚的聊天记录，禁止你重复其中的内容：{\n' + recentDialogues.map(msg => `${msg.role}: ${msg.content}`).join('\n') + '\n}';
 
       // 将 prompt 字符串拆分成单个字符并存储在 keywords 数组中
