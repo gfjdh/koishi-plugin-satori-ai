@@ -46,6 +46,7 @@ export declare namespace Sat {
         dataDir: string;
         temperature: number;
         authority: number;
+        enable_fixed_dialogues: boolean;
         alias: string[];
         private: boolean;
         mention: boolean;
