@@ -131,6 +131,7 @@ class SAt extends Sat {
     if (prompt.length > this.pluginConfig.max_tokens) return session.text('commands.sat.messages.tooLong')   // 内容过长
     let censored_prompt: string;
     if (this.ctx.censor) censored_prompt = await this.ctx.censor.transform(prompt, session);// 文本审核
+    else censored_prompt = prompt;// 文本审核
     if (this.pluginConfig.enableContext) {  // 启用/关闭上下文
       this.personality['人格'][0].content = this.pluginConfig.prompt;
       // 获取频道的最近十条对话
