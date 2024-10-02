@@ -192,6 +192,12 @@ class SAt extends Sat {
                   const newFavorability = user[0].favorability + dialogue.favorability;
                   await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
                   }
+                  // 更新频道的对话记录(短期记忆记录频道上下文)
+                  if (!this.channelDialogues[session.channelId])
+                    this.channelDialogues[session.channelId] = [];
+                  this.channelDialogues[session.channelId].push({ 'role': session.username, 'content': prompt });
+                  if (this.channelDialogues[session.channelId].length > this.pluginConfig.message_max_length)
+                    this.channelDialogues[session.channelId].shift();
                   return dialogue.response;
               }
           }
