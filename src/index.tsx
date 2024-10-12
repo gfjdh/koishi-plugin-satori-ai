@@ -70,7 +70,7 @@ class SAt extends Sat {
               const newFavorability = user[0].favorability - 10;
               await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
             }
-            if (content == '……') {
+            if (content == '……' || content == '滚') {
               const newFavorability = user[0].favorability - 5;
               await this.ctx.database.set('p_system', { userid: user[0].userid }, { favorability: newFavorability });
             }
@@ -166,7 +166,7 @@ class SAt extends Sat {
       const currentMinute = now.getMinutes();
       // 根据 prompt 和好感度匹配对话
       const matchedDialogues = fixedDialogues.filter(dialogue => {
-          const promptMatch = dialogue.triggers.some(trigger => censored_prompt.includes(trigger));
+          const promptMatch = dialogue.triggers.some(trigger => censored_prompt == trigger);
           const favorabilityMatch = dialogue.favorabilityRange ?
               user[0].favorability >= dialogue.favorabilityRange[0] && user[0].favorability <= dialogue.favorabilityRange[1] : true;
           // 检查时间范围
