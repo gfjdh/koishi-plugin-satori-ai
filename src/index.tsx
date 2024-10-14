@@ -283,9 +283,9 @@ class SAt extends Sat {
             level = levels[4];
             this.personality['人格'][0].content += `\n ${this.pluginConfig.prompt_4} \n`;
           }
-          this.personality['人格'][0].content += `发言者的名字: ${session.username}，发言者的id：${session.userId}`;
           logger.info(`名字: ${session.username}, 关系: ${level}`);
       }
+      this.personality['人格'][0].content += `发言者的名字: ${session.username}，发言者的id：${session.userId}`;
       // 搜索id
       sortedMatches = searchKeywordsInFile(commonSenseFilePath, USERID);
       if (sortedMatches.length > 0)
