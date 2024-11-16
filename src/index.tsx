@@ -323,7 +323,7 @@ class SAt extends Sat {
     // 随机触发
     if (session.event.message.elements[0].type == "img" || session.event.message.elements[0].type == "at")
       return next();
-    if (session.content.length < 20 || session.content.length >= this.pluginConfig.max_tokens)
+    if (session.content.length < this.pluginConfig.random_min_tokens || session.content.length >= this.pluginConfig.max_tokens)
       return next();
     const randnum: number = Math.random()
     if (randnum < this.pluginConfig.randnum)

@@ -50,6 +50,7 @@ export declare namespace Sat {
         alias: string[];
         private: boolean;
         mention: boolean;
+        random_min_tokens: number;
         randnum: number;
         sentences_divide: boolean;
         time_interval: number;
