@@ -101,7 +101,7 @@ export namespace Sat {
       private: Schema.boolean().default(true).description('开启后私聊AI可触发对话, 不需要使用指令'),
       mention: Schema.boolean().default(true).description('开启后机器人被提及(at/引用)可触发对话'),
       random_min_tokens: Schema.number().default(20).description('随机触发的最小长度'),
-      randnum: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('随机触发对话的概率，如需关闭可设置为 0'),
+      randnum: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('在群聊中随机触发对话的概率，如需关闭可设置为 0'),
       sentences_divide: Schema.boolean().default(true).description('是否分句发送'),
       time_interval: Schema.number().default(1000).description('每句话的时间间隔'),
       maxRetryTimes: Schema.number().default(30).description('报错后最大重试次数')

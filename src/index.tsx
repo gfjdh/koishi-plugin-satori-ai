@@ -321,7 +321,7 @@ class SAt extends Sat {
       return this.sat(session, msg)
     }
     // 随机触发
-    if (session.event.message.elements[0].type == "img" || session.event.message.elements[0].type == "at")
+    if (session.event.message.elements[0].type == "img" || session.event.message.elements[0].type == "at" || matchResult && matchResult.includes("private"))
       return next();
     if (session.content.length < this.pluginConfig.random_min_tokens || session.content.length >= this.pluginConfig.max_tokens)
       return next();
