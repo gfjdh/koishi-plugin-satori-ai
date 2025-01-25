@@ -167,8 +167,10 @@ class SAt extends Sat {
       // 根据 prompt 和好感度匹配对话
       const matchedDialogues = fixedDialogues.filter(dialogue => {
           const promptMatch = dialogue.triggers.some(trigger => censored_prompt == trigger);
-          const favorabilityMatch = dialogue.favorabilityRange ?
-              user[0].favorability >= dialogue.favorabilityRange[0] && user[0].favorability <= dialogue.favorabilityRange[1] : true;
+          let favorabilityMatch = true;
+          if (this.pluginConfig.enable_favorability && dialogue.favorabilityRange) {
+            favorabilityMatch = user[0].favorability >= dialogue.favorabilityRange[0] && user[0].favorability <= dialogue.favorabilityRange[1];
+          }
           // 检查时间范围
           const timeRangeMatch = dialogue.timeRange ?
               (() => {
