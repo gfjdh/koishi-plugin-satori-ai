@@ -2,19 +2,18 @@ commands:
   sat:
     description: AI聊天
     messages:
-      notExists: 请先签到哦......
-      censor: 不合规，请检查输入内容是否含有违禁词。
       no-prompt: 你好。使用说明可以看我的空间哦。
       tooManyEnglishLetters: 请不要用这么多英文......
       err: 寄！{0}
       tooLong: 你的话太多了。
       content_tooLong: 这个问题有点复杂，你还是去问别人吧。
       duplicate-dialogue: 这个刚刚说过了吧......
-      clean: 舒服了
       block1: 我讨厌你！
       block2: 我讨厌你们！
   sat.clear:
-    description: 清空所有人的会话
+    description: 清空当前频道会话
+    messages:
+      clean: 已清空当前频道会话。
   sat.common_sense:
     description: 添加常识
     messages:

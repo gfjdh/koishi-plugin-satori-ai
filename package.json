@@ -1,13 +1,14 @@
 {
   "name": "koishi-plugin-satori-ai",
-  "description": "适用于satori适配器的ai对话，具有长期记忆、常识写入和好感度功能",
-  "version": "1.0.16",
+  "description": "基于 Satori 适配器的智能对话插件，具备长期记忆、常识管理和好感度系统",
+  "version": "1.1.0",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "types": "lib/index.d.ts",
   "files": [
     "lib",
-    "dist"
+    "locales",
+    "README.md"
   ],
   "license": "MIT",
   "author": {
@@ -17,22 +18,40 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gfjdh/koishi-plugin-satori-ai"
+    "url": "git+https://github.com/gfjdh/koishi-plugin-satori-ai.git"
   },
   "bugs": {
-    "url": "https://github.com/gfjdh"
+    "url": "https://github.com/gfjdh/koishi-plugin-satori-ai/issues"
   },
-  "homepage": "https://github.com/gfjdh/koishi-plugin-satori-ai",
+  "homepage": "https://github.com/gfjdh/koishi-plugin-satori-ai#readme",
   "keywords": [
-    "chatbot",
     "koishi",
-    "plugin"
+    "plugin",
+    "satori",
+    "ai-chat",
+    "long-term-memory",
+    "nlp"
   ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
   "peerDependencies": {
     "koishi": "^4.17.10"
   },
+  "devDependencies": {
+    "typescript": "^5.0.4",
+    "@types/node": "^20.11.0",
+    "koishi": "^4.17.10"
+  },
   "koishi": {
-    "description": "适用于satori的ai对话",
+    "description": {
+      "zh": "基于 Satori 的智能对话插件，支持长期记忆和好感度系统",
+      "en": "Satori-based AI chat plugin with long-term memory and favorability system"
+    },
+    "locales": [
+      "zh"
+    ],
     "browser": true
   }
 }

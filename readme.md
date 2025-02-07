@@ -4,14 +4,14 @@
 
 # 觉bot的ai对话
 
+[作者主页](https://gfjdh.cn)
+
 本插件魔改自[davinci-003插件](https://github.com/initialencounter/2022-12-24/tree/neat/plugins/AI/davinci-003#readme),如有侵权请联系删除
 
 SAt 插件是一个基于 Koishi 框架的聊天机器人插件，集成了深度求索（DeepSeek）的 AI 模型，支持多种触发方式和丰富的配置选项。
 适配于satori适配器，不保证其他适配器能否适用。
 
 该插件可以实现自动回复、上下文记忆、长期记忆、好感度系统等功能。
-好感度系统需要[p-qiandao插件](https://github.com/gfjdh/koishi-plugin-p-qiandao)才能正常使用,用户签到过一次后便会开始记录好感
-[作者主页](https://gfjdh.cn)
 
 使用前在[https://platform.deepseek.com/](https://platform.deepseek.com) 中获取api-key，注册即送有效期一个月的免费500万token额度
 
@@ -113,7 +113,6 @@ SAt 插件是一个基于 Koishi 框架的聊天机器人插件，集成了深�
 ### 好感度系统
 
 - 插件支持好感度系统，根据用户的行为和对话内容调整好感度。
-- 好感度系统需要[p-qiandao插件](https://github.com/gfjdh/koishi-plugin-p-qiandao)才能正常使用,用户签到过一次后便会开始记录好感
 - 好感度会影响 AI 的回复内容和行为。
 - 可以通过配置 `enable_favorability` 开启或关闭好感度系统。
 
@@ -121,7 +120,7 @@ SAt 插件是一个基于 Koishi 框架的聊天机器人插件，集成了深�
 
 - 插件集成了文本审核功能，可以对用户输入的内容进行审核。
 - 强烈建议在开启好感度系统的情况下使用文本审核，遇到敏感词后会扣好感
-- 审核不通过的内容会被拦截并进行相应处理。
+- 审核不通过的内容会被拦截为“*”
 
 ### 黑名单功能
 

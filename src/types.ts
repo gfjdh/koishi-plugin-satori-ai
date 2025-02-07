@@ -1,5 +1,96 @@
 import { Context, Dict, Schema, Service } from 'koishi'
 export const usage = `使用说明见插件主页`;
+
+//用户数据模型
+export interface User {
+  id?: number
+  userid: string
+  usersname: string
+  p: number
+  favorability: number
+  time: Date
+}
+//好感度调整
+export type FavorabilityAdjustment =
+  | number
+  | { absolute: number }
+
+//好感度配置
+export interface FavorabilityConfig {
+  enable_favorability: boolean
+  prompt_0: string
+  favorability_div_1: number
+  prompt_1: string
+  favorability_div_2: number
+  prompt_2: string
+  favorability_div_3: number
+  prompt_3: string
+  favorability_div_4: number
+  prompt_4: string
+}
+//好感度等级
+export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人'
+
+//记忆配置
+export interface MemoryEntry {
+  role: string
+  content: string
+  timestamp?: number
+}
+export interface ChannelMemory {
+  dialogues: MemoryEntry[]
+  updatedAt: number
+}
+export interface MemoryConfig {
+  dataDir: string
+  message_max_length: number
+  memory_block_words: string[]
+  enable_self_memory: boolean
+  remember_min_length: number
+}
+
+// 中间件配置
+export interface MiddlewareConfig {
+  private: boolean
+  mention: boolean
+  random_min_tokens: number
+  randnum: number
+  max_tokens: number
+}
+
+// API配置
+export interface APIConfig {
+  baseURL: string
+  keys: string[]
+  appointModel: string
+  max_tokens: number
+  temperature: number
+  timeout?: number
+}
+// API响应
+export interface APIError extends Error {
+  response?: {
+    status: number
+    data: {
+      error?: {
+        code: string
+        message: string
+      }
+    }
+  }
+}
+
+//固定对话结构
+export interface FixedDialogue {
+  triggers: string[]
+  favorabilityRange?: [number, number]
+  probability: number
+  timeRange?: [string, string]
+  response: string
+  favorability?: number
+}
+
+
 export class Sat extends Service {
   static inject = {
     required: ['console', 'database'],
@@ -19,6 +110,8 @@ export class Sat extends Service {
     super(ctx, 'sat', true)
   }
 }
+
+
 export namespace Sat {
   export interface Msg {
     role: string
@@ -33,6 +126,7 @@ export namespace Sat {
     frequency_penalty: number
     presence_penalty: number
   }
+
   export interface Config {
     enableContext: boolean
     baseURL: string
@@ -73,6 +167,7 @@ export namespace Sat {
     blockchannel: string[]
     maxRetryTimes: number
   }
+
   export const Config: Schema<Config> = Schema.intersect([
     Schema.object({
       baseURL: Schema.string().default('https://api.deepseek.com').description('请求地址'),

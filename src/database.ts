@@ -1,0 +1,81 @@
+// src/database.ts
+import { Context } from 'koishi'
+import { User, FavorabilityAdjustment } from './types'
+
+// 用户数据模型
+declare module 'koishi' {
+  interface Tables {
+    p_system: User
+  }
+}
+
+export async function isTargetIdExists(ctx: Context, userId: string): Promise<boolean> {
+  const users = await ctx.database.get('p_system', { userid: userId })
+  return users.length === 0
+}
+
+export async function createUser(ctx: Context, user: Omit<User, 'id'>): Promise<void> {
+  await ctx.database.create('p_system', {
+    userid: user.userid,
+    usersname: user.usersname,
+    p: user.p || 0,
+    favorability: user.favorability || 0,
+    time: new Date()
+  })
+}
+
+export async function updateFavorability(
+  ctx: Context,
+  userId: string,
+  adjustment: FavorabilityAdjustment
+): Promise<void> {
+  const user = await getUser(ctx, userId)
+  if (!user) return
+
+  let newValue: number
+  if (typeof adjustment === 'number') {
+    newValue = user.favorability + adjustment
+  } else {
+    newValue = adjustment.absolute
+  }
+
+  await ctx.database.set('p_system',
+    { userid: userId },
+    { favorability: Math.max(newValue, -1000) }
+  )
+}
+
+export async function getUser(ctx: Context, userId: string): Promise<User | null> {
+  const users = await ctx.database.get('p_system', { userid: userId })
+  return users[0] || null
+}
+
+export async function ensureUserExists(
+  ctx: Context,
+  userId: string,
+  username: string
+): Promise<User> {
+  const exists = await isTargetIdExists(ctx, userId)
+  if (exists) {
+    await createUser(ctx, {
+      userid: userId,
+      usersname: username,
+      p: 0,
+      favorability: 0,
+      time: new Date()
+    })
+  }
+  return getUser(ctx, userId)
+}
+
+// 类型增强
+export function extendDatabase(ctx: Context) {
+  ctx.model.extend('p_system', {
+    id: 'unsigned',
+    userid: 'string',
+    usersname: 'string',
+    p: 'integer',
+    favorability: 'integer',
+    time: 'timestamp'
+  }, { autoInc: true })
+}
