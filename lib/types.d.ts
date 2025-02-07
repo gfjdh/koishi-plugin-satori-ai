@@ -27,7 +27,6 @@ export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋
 export interface MemoryEntry {
     role: string;
     content: string;
-    timestamp?: number;
 }
 export interface ChannelMemory {
     dialogues: MemoryEntry[];

@@ -5,8 +5,7 @@ import { updateFavorability } from './database'
 import { Context } from 'koishi'
 import * as fs from 'fs'
 import * as path from 'path'
-import { parseTimeToMinutes } from './utils'
-
+import { parseTimeToMinutes, parseTime } from './utils'
 export interface FixedDialogue {
   triggers: string[]
   favorabilityRange?: [number, number]
@@ -16,7 +15,7 @@ export interface FixedDialogue {
   favorability?: number
 }
 
-export async function handleFixedDialogues(ctx: Context, session: Session, user: User,
+export async function handleFixedDialogues(ctx: Context, session: Session, user: User, prompt: string,
   config: {
     dataDir: string
     enable_favorability: boolean
@@ -29,9 +28,7 @@ export async function handleFixedDialogues(ctx: Context, session: Session, user:
   const dialogues = await loadFixedDialogues(filePath)
   const currentTime = parseTime(session.timestamp)
 
-  const matched = dialogues.filter(dialogue =>
-    matchDialogue(dialogue, session.content, user, currentTime)
-  )
+  const matched = dialogues.filter(dialogue => matchDialogue(dialogue, prompt, user, currentTime))
 
   if (matched.length === 0) return null
 
@@ -82,7 +79,6 @@ function matchDialogue(
   const triggerMatch = dialogue.triggers.some(t => content === t)
   const favorabilityMatch = matchFavorability(dialogue, user)
   const timeMatch = matchTimeRange(dialogue, currentTime)
-
   return triggerMatch && favorabilityMatch && timeMatch
 }
 
@@ -90,11 +86,6 @@ function matchFavorability(dialogue: FixedDialogue, user: User): boolean {
   if (!dialogue.favorabilityRange) return true
   const [min, max] = dialogue.favorabilityRange
   return user.favorability >= min && user.favorability <= max
-}
-
-function parseTime(timestamp: number): number {
-  const date = new Date(timestamp)
-  return date.getHours() * 60 + date.getMinutes()
 }
 
 function matchTimeRange(dialogue: FixedDialogue, currentTime: number): boolean {

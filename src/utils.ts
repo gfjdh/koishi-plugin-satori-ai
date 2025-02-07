@@ -1,6 +1,4 @@
 // src/utils.ts
-import { Session } from 'koishi'
-import { MemoryConfig } from './types'
 
 // 正则表达式特殊字符转义
 export function escapeRegExp(str: string): string {
@@ -11,6 +9,12 @@ export function escapeRegExp(str: string): string {
 export function parseTimeToMinutes(timeStr: string): number {
   const [hours, minutes] = timeStr.split(':').map(Number)
   return hours * 60 + (minutes || 0)
+}
+
+// 时间戳转分钟数
+export function parseTime(timestamp: number): number {
+  const date = new Date(timestamp)
+  return date.getHours() * 60 + date.getMinutes()
 }
 
 // 获取时间段描述
@@ -45,22 +49,6 @@ export function shouldFilterContent(
   blockWords: string[]
 ): boolean {
   return blockWords.some(word => content.includes(word))
-}
-
-// 会话哈希生成
-export function generateSessionHash(session: Session): string {
-  return `${session.platform}:${session.channelId}:${session.userId}`
-}
-
-// 记忆权重计算
-export function calculateMemoryWeight(
-  content: string,
-  config: MemoryConfig
-): number {
-  const chineseCount = (content.match(/[\u4e00-\u9fa5]/g) || []).length
-  const englishCount = content.length - chineseCount
-  const total = chineseCount * 2 + englishCount
-  return total > config.remember_min_length ? 1 : 0
 }
 
 // 随机数生成

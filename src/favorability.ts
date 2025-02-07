@@ -1,9 +1,7 @@
 // src/favorability.ts
-import { Context, Session, Logger } from 'koishi'
+import { Context, Session } from 'koishi'
 import { User, FavorabilityLevel, FavorabilityConfig } from './types'
 import { getUser, updateFavorability, ensureUserExists } from './database'
-
-const logger = new Logger('satori-ai')
 
 export async function handleFavorabilitySystem(ctx: Context, session: Session, config: FavorabilityConfig): Promise<string | void> {
   const user = await ensureUserExists(ctx, session.userId, session.username);

@@ -35,7 +35,6 @@ export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋
 export interface MemoryEntry {
   role: string
   content: string
-  timestamp?: number
 }
 export interface ChannelMemory {
   dialogues: MemoryEntry[]
@@ -190,7 +189,7 @@ export namespace Sat {
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
       temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
       authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
-      enable_fixed_dialogues: Schema.boolean().default(true).description('是否启用固定对话（在dataDir中的fixed_dialogues.json修改）'),
+      enable_fixed_dialogues: Schema.boolean().default(false).description('是否启用固定对话（在dataDir中的fixed_dialogues.json修改）'),
       alias: Schema.array(String).default(['ai']).description('触发命令;别名'),
 
       private: Schema.boolean().default(true).description('开启后私聊AI可触发对话, 不需要使用指令'),

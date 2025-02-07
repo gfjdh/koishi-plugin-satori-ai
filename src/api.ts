@@ -55,10 +55,8 @@ export class APIClient {
   private async tryRequest(payload: any): Promise<string> {
     const url = `${trimSlash(this.config.baseURL)}/v1/chat/completions`
     const headers = this.createHeaders()
-    const response = await this.ctx.http.post(url, payload, {
-      headers,
-      timeout: this.config.timeout
-    })
+    const response = await this.ctx.http.post(url, payload, { headers })
+    logger.info('Received chat response:', response)
     this.retryCount = 0
     return response.choices[0].message.content
   }

@@ -9,7 +9,7 @@ export interface FixedDialogue {
     response: string;
     favorability?: number;
 }
-export declare function handleFixedDialogues(ctx: Context, session: Session, user: User, config: {
+export declare function handleFixedDialogues(ctx: Context, session: Session, user: User, prompt: string, config: {
     dataDir: string;
     enable_favorability: boolean;
     enable_fixed_dialogues: boolean;

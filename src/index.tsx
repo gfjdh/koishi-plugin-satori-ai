@@ -27,7 +27,7 @@ export class SAT extends Sat {
     extendDatabase(ctx)
     // 初始化模块
     this.apiClient = new APIClient(ctx, this.getAPIConfig())
-    this.memoryManager = new MemoryManager(ctx, this.getMemoryConfig())
+    this.memoryManager = new MemoryManager(this.getMemoryConfig())
     // 注册中间件
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
@@ -102,7 +102,7 @@ export class SAT extends Sat {
     const duplicateCheck = await this.checkDuplicateDialogue(session, prompt, recentDialogues, user)
     if (duplicateCheck) return duplicateCheck
     // 固定对话处理
-    const fixedResponse = await this.handleFixedDialoguesCheck(session, user)
+    const fixedResponse = await this.handleFixedDialoguesCheck(session, user, prompt)
     if (fixedResponse) return fixedResponse
 
     // 处理记忆和上下文
@@ -136,11 +136,7 @@ export class SAT extends Sat {
 
   // 重复对话检查
   private async checkDuplicateDialogue(session: Session, prompt: string, recentDialogues: Sat.Msg[], user: User): Promise<string> {
-    let duplicateDialogue: Sat.Msg
-    if (prompt.length <= 6)
-      duplicateDialogue = recentDialogues.find(msg => msg.content.includes(prompt) || prompt.includes(msg.content))
-    else
-      duplicateDialogue = recentDialogues.find(msg => msg.content.includes(prompt))
+    let duplicateDialogue = recentDialogues.find(msg => msg.content == user.usersname + ':' + prompt)
     if (!duplicateDialogue) return null
 
     if (this.config.enable_favorability)
@@ -149,11 +145,12 @@ export class SAT extends Sat {
   }
 
   // 处理固定对话
-  private async handleFixedDialoguesCheck(session: Session, user: User): Promise<string> {
+  private async handleFixedDialoguesCheck(session: Session, user: User, prompt: string): Promise<string> {
     return await handleFixedDialogues(
       this.ctx,
       session,
       user,
+      prompt,
       {
         dataDir: this.config.dataDir,
         enable_favorability: this.config.enable_favorability,
@@ -188,7 +185,7 @@ export class SAT extends Sat {
     // 添加人格设定
     messages.push({
       role: 'system',
-      content: await this.buildSystemPrompt(session)
+      content: await this.buildSystemPrompt(session, prompt)
     })
     // 添加上下文记忆
     const channelMemory = this.memoryManager.getChannelContext(session.channelId)
@@ -203,22 +200,20 @@ export class SAT extends Sat {
   }
 
   // 构建系统提示
-  private async buildSystemPrompt(session: Session): Promise<string> {
-    let prompt = this.config.prompt
+  private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
+    let systemPrompt = this.config.prompt
     // 添加常识
-    const commonSense = this.memoryManager.searchMemories(session, [], 'common')
-    prompt += commonSense
+    const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
     // 添加用户记忆
-    const userMemory = this.memoryManager.searchMemories(session, [session.userId])
-    prompt += userMemory
-    // 添加时间信息
-    prompt += `\n当前时间：${new Date().toLocaleString()}`
+    const userMemory = await this.memoryManager.searchMemories(session, prompt)
+    systemPrompt += commonSense
+    systemPrompt += userMemory
     // 添加好感度提示
     if (this.config.enable_favorability) {
       const user = await ensureUserExists(this.ctx, session.userId, session.username)
-      prompt += generateLevelPrompt(getFavorabilityLevel(user.favorability, this.config), this.config)
+      systemPrompt += generateLevelPrompt(getFavorabilityLevel(user.favorability, this.config), this.config)
     }
-    return prompt
+    return systemPrompt
   }
 
   // 更新记忆
@@ -257,7 +252,7 @@ export class SAT extends Sat {
   private async addCommonSense(session: Session, content: string) {
     const filePath = path.join(this.config.dataDir, 'common_sense.txt')
     await this.memoryManager.saveLongTermMemory(session, [{
-      role: 'system',
+      role: 'user',
       content
     }], filePath)
     return session.text('commands.sat.common_sense.messages.succeed', [content]);
