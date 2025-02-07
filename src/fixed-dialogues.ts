@@ -16,10 +16,7 @@ export interface FixedDialogue {
   favorability?: number
 }
 
-export async function handleFixedDialogues(
-  ctx: Context,
-  session: Session,
-  user: User,
+export async function handleFixedDialogues(ctx: Context, session: Session, user: User,
   config: {
     dataDir: string
     enable_favorability: boolean
@@ -29,8 +26,6 @@ export async function handleFixedDialogues(
   if (!config.enable_fixed_dialogues) return null
 
   const filePath = path.join(config.dataDir, 'fixed_dialogues.json')
-  await ensureFixedDialoguesFile(filePath)
-
   const dialogues = await loadFixedDialogues(filePath)
   const currentTime = parseTime(session.timestamp)
 
@@ -69,6 +64,7 @@ async function ensureFixedDialoguesFile(filePath: string) {
 }
 
 async function loadFixedDialogues(filePath: string): Promise<FixedDialogue[]> {
+  await ensureFixedDialoguesFile(filePath)
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
   } catch (error) {
@@ -120,7 +116,7 @@ function selectDialogueByProbability(dialogues: FixedDialogue[]): FixedDialogue 
 
 async function processFavorability(ctx: Context, user: User, dialogue: FixedDialogue) {
   if (dialogue.favorability) {
-    await updateFavorability(ctx, user.userid, dialogue.favorability)
+    await updateFavorability(ctx, user, dialogue.favorability)
   }
 }
 

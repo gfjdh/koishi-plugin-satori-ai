@@ -13,12 +13,6 @@ export function parseTimeToMinutes(timeStr: string): number {
   return hours * 60 + (minutes || 0)
 }
 
-// 获取格式化日期
-export function getCurrentDate(): string {
-  const now = new Date()
-  return `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`
-}
-
 // 获取时间段描述
 export function getTimeOfDay(hours: number): string {
   if (hours >= 5 && hours < 9) return '清晨'
@@ -88,14 +82,6 @@ export function isErrorWithMessage(
 export function detectEmojis(text: string): number {
   const emojiRegex = /\p{Emoji}/gu
   return (text.match(emojiRegex) || []).length
-}
-// 安全解析时间
-export function safeParseTime(timeStr: string): number {
-  try {
-    return parseTimeToMinutes(timeStr)
-  } catch {
-    return 0 // 返回默认值
-  }
 }
 
 //后续可通过实现以下接口增强工具模块：

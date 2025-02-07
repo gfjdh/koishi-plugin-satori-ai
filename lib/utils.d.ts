@@ -2,7 +2,6 @@ import { Session } from 'koishi';
 import { MemoryConfig } from './types';
 export declare function escapeRegExp(str: string): string;
 export declare function parseTimeToMinutes(timeStr: string): number;
-export declare function getCurrentDate(): string;
 export declare function getTimeOfDay(hours: number): string;
 export declare function detectEnglishLetters(text: string): number;
 export declare function trimSlash(url: string): string;
@@ -16,7 +15,6 @@ export declare function isErrorWithMessage(error: unknown): error is {
     message: string;
 };
 export declare function detectEmojis(text: string): number;
-export declare function safeParseTime(timeStr: string): number;
 export interface TextProcessor {
     process(content: string): string;
 }

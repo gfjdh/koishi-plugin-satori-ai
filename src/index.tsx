@@ -9,7 +9,7 @@ import { handleFavorabilitySystem, handleContentCheck, generateLevelPrompt, getF
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
-import { splitSentences } from './utils'
+import { splitSentences, getTimeOfDay } from './utils'
 
 const logger = new Logger('satori-ai')
 
@@ -21,6 +21,8 @@ export class SAT extends Sat {
   constructor(ctx: Context, public config: Sat.Config) {
     // 调用父类构造函数
     super(ctx, config)
+    // 初始化本地化
+    ctx.i18n.define('zh', require('./locales/zh'))
     // 初始化数据库
     extendDatabase(ctx)
     // 初始化模块
@@ -37,7 +39,7 @@ export class SAT extends Sat {
       baseURL: this.config.baseURL,
       keys: this.config.key,
       appointModel: this.config.appointModel,
-      max_tokens: this.config.max_tokens,
+      content_max_tokens: this.config.content_max_tokens,
       temperature: this.config.temperature
     }
   }
@@ -86,8 +88,69 @@ export class SAT extends Sat {
 
   private async handleSatCommand(session: Session, prompt: string) {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
-    // 处理固定对话
-    const fixedResponse = await handleFixedDialogues(
+
+    // 好感度阻断检查
+    const favorabilityBlock = await this.checkFavorabilityBlock(session)
+    if (favorabilityBlock) return favorabilityBlock
+    // 前置检查
+    const preCheckResult = this.performPreChecks(session, prompt)
+    if (preCheckResult) return preCheckResult
+    // 获取频道记忆
+    const channelId = session.channelId
+    const recentDialogues = this.memoryManager.getChannelMemory(channelId).slice(-10)
+    // 重复对话检查
+    const duplicateCheck = await this.checkDuplicateDialogue(session, prompt, recentDialogues, user)
+    if (duplicateCheck) return duplicateCheck
+    // 固定对话处理
+    const fixedResponse = await this.handleFixedDialoguesCheck(session, user)
+    if (fixedResponse) return fixedResponse
+
+    // 处理记忆和上下文
+    logger.info(`用户 ${session.username}：${prompt}`)
+    const processedPrompt = await this.processInput(session, prompt)
+    const response = await this.generateResponse(session, processedPrompt)
+    logger.info(`Satori AI：${response}`)
+    // 更新记忆
+    await this.updateMemories(session, processedPrompt, response)
+    return this.formatResponse(session, response)
+  }
+
+  // 好感度阻断检查
+  private async checkFavorabilityBlock(session: Session): Promise<string | void> {
+    if (!this.config.enable_favorability) return null
+    return await handleFavorabilitySystem(this.ctx, session, this.config)
+  }
+
+  // 前置检查
+  private performPreChecks(session: Session, prompt: string): string {
+    if (this.config.blockuser.includes(session.userId))
+      return session.text('commands.sat.messages.block1')
+    if (this.config.blockchannel.includes(session.channelId))
+      return session.text('commands.sat.messages.block2')
+    if (!prompt)
+      return session.text('commands.sat.messages.no-prompt')
+    if (prompt.length > this.config.max_tokens)
+      return session.text('commands.sat.messages.tooLong')
+    return null
+  }
+
+  // 重复对话检查
+  private async checkDuplicateDialogue(session: Session, prompt: string, recentDialogues: Sat.Msg[], user: User): Promise<string> {
+    let duplicateDialogue: Sat.Msg
+    if (prompt.length <= 6)
+      duplicateDialogue = recentDialogues.find(msg => msg.content.includes(prompt) || prompt.includes(msg.content))
+    else
+      duplicateDialogue = recentDialogues.find(msg => msg.content.includes(prompt))
+    if (!duplicateDialogue) return null
+
+    if (this.config.enable_favorability)
+      updateFavorability(this.ctx, user, -1)
+    return session.text('commands.sat.messages.duplicate-dialogue')
+  }
+
+  // 处理固定对话
+  private async handleFixedDialoguesCheck(session: Session, user: User): Promise<string> {
+    return await handleFixedDialogues(
       this.ctx,
       session,
       user,
@@ -97,20 +160,6 @@ export class SAT extends Sat {
         enable_fixed_dialogues: this.config.enable_fixed_dialogues
       }
     )
-    if (fixedResponse) return fixedResponse
-    // 处理好感度系统
-    if (this.config.enable_favorability) {
-      const blockMessage = await handleFavorabilitySystem(this.ctx, session, this.config)
-      if (blockMessage) return blockMessage
-    }
-    // 处理记忆和上下文
-    logger.info(`用户 ${session.username}：${prompt}`)
-    const processedPrompt = await this.processInput(session, prompt)
-    const response = await this.generateResponse(session, processedPrompt)
-    logger.info(`Satori AI：${response}`)
-    // 更新记忆
-    await this.updateMemories(session, processedPrompt, response)
-    return this.formatResponse(session, response)
   }
 
   // 处理输入
@@ -144,10 +193,11 @@ export class SAT extends Sat {
     // 添加上下文记忆
     const channelMemory = this.memoryManager.getChannelContext(session.channelId)
     messages.push(...channelMemory)
+
     // 添加当前对话
     messages.push({
       role: 'user',
-      content: prompt
+      content: session.username + ':' + prompt
     })
     return messages
   }
@@ -174,7 +224,7 @@ export class SAT extends Sat {
   // 更新记忆
   private async updateMemories(session: Session, prompt: string, response: string) {
     // 更新短期记忆
-    this.memoryManager.handleChannelMemory(session, prompt, response)
+    this.memoryManager.updateChannelMemory(session, prompt, response)
     // 保存长期记忆
     if (this.shouldRemember(prompt)) {
       await this.memoryManager.saveLongTermMemory(session, [{
@@ -186,8 +236,7 @@ export class SAT extends Sat {
 
   // 是否应当记忆
   private shouldRemember(content: string): boolean {
-    return content.length >= this.config.remember_min_length &&
-      !this.config.memory_block_words.some(word => content.includes(word))
+    return content.length >= this.config.remember_min_length && !this.config.memory_block_words.some(word => content.includes(word))
   }
 
   // 格式化回复

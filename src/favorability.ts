@@ -5,27 +5,20 @@ import { getUser, updateFavorability, ensureUserExists } from './database'
 
 const logger = new Logger('satori-ai')
 
-export async function handleFavorabilitySystem(
-  ctx: Context,
-  session: Session,
-  config: FavorabilityConfig
-): Promise<string | void> {
-  // 确保用户存在
-  const user = await ensureUserExists(ctx, session.userId, session.username)
+export async function handleFavorabilitySystem(ctx: Context, session: Session, config: FavorabilityConfig): Promise<string | void> {
+  const user = await ensureUserExists(ctx, session.userId, session.username);
   // 初始好感度检查
   if (user.favorability < config.favorability_div_1 - 20 && user.favorability > -900) {
-    return session.text('commands.sat.messages.block1')
+    return session.text('commands.sat.messages.block1');
   }
   // 英语内容检查
-  const englishCount = (session.content.match(/[a-zA-Z]/g) || []).length
+  const englishCount = (session.content.match(/[a-zA-Z]/g) || []).length;
   if (user.favorability < 50 && englishCount > 8) {
-    return session.text('commands.sat.messages.tooManyEnglishLetters')
+    return session.text('commands.sat.messages.tooManyEnglishLetters');
   }
   // 获取当前好感度等级
-  const level = getFavorabilityLevel(user.favorability, config)
-  logger.info(`[好感度] 用户 ${session.username} 等级 ${level}`)
-  // 生成等级提示
-  return generateLevelPrompt(level, config)
+  const level = getFavorabilityLevel(user.favorability, config);
+  return;
 }
 
 // 获取好感度等级
@@ -56,35 +49,29 @@ export function generateLevelPrompt(
 }
 
 // 处理好感度检查
-export async function handleContentCheck(
-  ctx: Context,
-  content: string,
-  userId: string
-): Promise<number> {
-  const user = await getUser(ctx, userId)
+export async function handleContentCheck(ctx: Context, content: string, userid: string): Promise<number> {
+  const user = await getUser(ctx, userid)
   if (!user) return 0
-
   // 敏感词检测
   const regex = /\*\*/g
   const hasCensor = regex.test(content)
-
   if (hasCensor) {
-    await updateFavorability(ctx, userId, -15)
+    await updateFavorability(ctx, user, -15)
     return -15
   }
 
   // 正常情况增加1点
-  await updateFavorability(ctx, userId, 1)
+  await updateFavorability(ctx, user, 1)
   return 1
 }
 
 // 应用好感度效果
 export async function applyFavorabilityEffect(
   ctx: Context,
-  userId: string,
+  user: User,
   effect: number
 ): Promise<void> {
-  await updateFavorability(ctx, userId, effect)
+  await updateFavorability(ctx, user, effect)
 }
 
 // 实现自定义好感度效果
@@ -93,14 +80,7 @@ interface FavorabilityEffect {
   value: number
 }
 // 应用自定义效果
-export async function applyCustomEffect(
-  ctx: Context,
-  userId: string,
-  effect: FavorabilityEffect
-) {
-  const user = await getUser(ctx, userId)
-  if (!user) return
-
+export async function applyCustomEffect(ctx: Context, user: User, effect: FavorabilityEffect) {
   let newValue = user.favorability
   switch (effect.type) {
     case 'add':
@@ -114,7 +94,7 @@ export async function applyCustomEffect(
       break
   }
 
-  await updateFavorability(ctx, userId, newValue)
+  await updateFavorability(ctx, user, newValue)
 }
 
 // 实现好感度策略

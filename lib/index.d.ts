@@ -10,6 +10,10 @@ export declare class SAT extends Sat {
     private getMiddlewareConfig;
     private registerCommands;
     private handleSatCommand;
+    private checkFavorabilityBlock;
+    private performPreChecks;
+    private checkDuplicateDialogue;
+    private handleFixedDialoguesCheck;
     private processInput;
     private generateResponse;
     private buildMessages;

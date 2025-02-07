@@ -24,25 +24,17 @@ export async function createUser(ctx: Context, user: Omit<User, 'id'>): Promise<
   })
 }
 
-export async function updateFavorability(
-  ctx: Context,
-  userId: string,
-  adjustment: FavorabilityAdjustment
-): Promise<void> {
-  const user = await getUser(ctx, userId)
+// 更新好感度,参数（上下文，用户id，好感度调整值）
+export async function updateFavorability(ctx: Context, user: User, adjustment: FavorabilityAdjustment): Promise<void> {
   if (!user) return
 
   let newValue: number
-  if (typeof adjustment === 'number') {
+  if (typeof adjustment === 'number')
     newValue = user.favorability + adjustment
-  } else {
+  else
     newValue = adjustment.absolute
-  }
 
-  await ctx.database.set('p_system',
-    { userid: userId },
-    { favorability: Math.max(newValue, -1000) }
-  )
+  await ctx.database.set('p_system', { userid: user.userid }, { favorability: newValue })
 }
 
 export async function getUser(ctx: Context, userId: string): Promise<User | null> {
@@ -50,11 +42,7 @@ export async function getUser(ctx: Context, userId: string): Promise<User | null
   return users[0] || null
 }
 
-export async function ensureUserExists(
-  ctx: Context,
-  userId: string,
-  username: string
-): Promise<User> {
+export async function ensureUserExists(ctx: Context, userId: string, username: string): Promise<User> {
   const exists = await isTargetIdExists(ctx, userId)
   if (exists) {
     await createUser(ctx, {

@@ -63,7 +63,7 @@ export interface APIConfig {
   baseURL: string
   keys: string[]
   appointModel: string
-  max_tokens: number
+  content_max_tokens: number
   temperature: number
   timeout?: number
 }

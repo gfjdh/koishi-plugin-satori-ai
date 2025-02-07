@@ -1,16 +1,10 @@
 
 // src/api.ts
 import { Context, Logger } from 'koishi'
-import { trimSlash, probabilisticCheck, isErrorWithMessage } from './utils'
+import { trimSlash, isErrorWithMessage } from './utils'
 import { APIConfig, APIError, Sat } from './types'
 
 const logger = new Logger('satori-api')
-// 错误处理策略
-const ERROR_RETRY_MAP = {
-  429: { retryAfter: 5000 }, // 5秒后重试
-  502: { retryAfter: 1000 }, // 1秒后重试
-  503: { retryAfter: 2000 }  // 2秒后重试
-}
 
 export class APIClient {
   private currentKeyIndex = 0
@@ -31,13 +25,13 @@ export class APIClient {
   // 发送聊天请求
   public async chat(messages: Sat.Msg[]): Promise<string> {
     const payload = this.createPayload(messages)
-
+    logger.info('Sending chat request:', payload)
     for (let i = 0; i < this.config.keys.length; i++) {
       try {
         return await this.tryRequest(payload)
       } catch (error) {
         this.rotateKey()
-        this.handleAPIError(error as APIError)
+        return this.handleAPIError(error as APIError)
       }
     }
 
@@ -49,7 +43,7 @@ export class APIClient {
     return {
       model: this.config.appointModel,
       messages,
-      max_tokens: this.config.max_tokens,
+      max_tokens: this.config.content_max_tokens,
       temperature: this.config.temperature,
       top_p: 1,
       frequency_penalty: 0.5,
@@ -61,16 +55,12 @@ export class APIClient {
   private async tryRequest(payload: any): Promise<string> {
     const url = `${trimSlash(this.config.baseURL)}/v1/chat/completions`
     const headers = this.createHeaders()
-    try {
-      const response = await this.ctx.http.post(url, payload, {
-        headers,
-        timeout: this.config.timeout
-      })
-      this.retryCount = 0
-      return response.choices[0].message.content
-    } catch (error) {
-      return this.handleAPIError(error)
-    }
+    const response = await this.ctx.http.post(url, payload, {
+      headers,
+      timeout: this.config.timeout
+    })
+    this.retryCount = 0
+    return response.choices[0].message.content
   }
 
   // 生成请求头
@@ -82,24 +72,41 @@ export class APIClient {
   }
 
   // 处理API错误
-  private handleAPIError(error: unknown): never {
-    if (!isErrorWithMessage(error)) throw error
+  private handleAPIError(error: unknown): string {
+    if (!isErrorWithMessage(error)) throw error;
 
-    const status = error.response?.status || 500
-    const errorCode = error.response?.data?.error?.code || 'unknown'
-    const message = error.response?.data?.error?.message || error.message
+    const status = error.response?.status || 500;
+    const errorCode = error.response?.data?.error?.code || 'unknown';
+    const message = error.response?.data?.error?.message || error.message;
 
-    logger.error(`API Error [${status}]: ${errorCode} - ${message}`)
+    logger.error(`API Error [${status}]: ${errorCode} - ${message}`);
 
-    if (status === 429) {
-      if (probabilisticCheck(0.3)) this.rotateKey()
-      throw new Error('Rate limit exceeded')
+    switch (status) {
+      case 400:
+        logger.error(`请求体格式错误: ${message}`);
+        return '请求体格式错误';
+      case 401:
+        logger.error('API key 错误，认证失败');
+        return 'API key 错误，认证失败';
+      case 402:
+        logger.error('账号余额不足');
+        return '账号余额不足';
+      case 422:
+        logger.error(`请求体参数错误: ${message}`);
+        return '请求体参数错误';
+      case 429:
+        logger.error('请求速率（TPM 或 RPM）达到上限');
+        return '请求速率（TPM 或 RPM）达到上限';
+      case 500:
+        logger.error('api服务器内部故障');
+        return 'api服务器内部故障, 美国人太坏了';
+      case 503:
+        logger.error('api服务器负载过高');
+        return 'api服务器负载过高, 美国人太坏了';
+      default:
+        logger.error('未知错误');
+        throw error;
     }
-    if (status === 401) {
-      this.rotateKey()
-      throw new Error('Invalid API key')
-    }
-    throw error
   }
 
   // 切换API密钥
