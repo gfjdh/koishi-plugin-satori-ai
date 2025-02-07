@@ -28,6 +28,7 @@ export class APIClient {
     }
   }
 
+  // 发送聊天请求
   public async chat(messages: Sat.Msg[]): Promise<string> {
     const payload = this.createPayload(messages)
 

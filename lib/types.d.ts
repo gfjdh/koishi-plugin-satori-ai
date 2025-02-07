@@ -1,5 +1,79 @@
 import { Context, Dict, Schema, Service } from 'koishi';
 export declare const usage = "\u4F7F\u7528\u8BF4\u660E\u89C1\u63D2\u4EF6\u4E3B\u9875";
+export interface User {
+    id?: number;
+    userid: string;
+    usersname: string;
+    p: number;
+    favorability: number;
+    time: Date;
+}
+export type FavorabilityAdjustment = number | {
+    absolute: number;
+};
+export interface FavorabilityConfig {
+    enable_favorability: boolean;
+    prompt_0: string;
+    favorability_div_1: number;
+    prompt_1: string;
+    favorability_div_2: number;
+    prompt_2: string;
+    favorability_div_3: number;
+    prompt_3: string;
+    favorability_div_4: number;
+    prompt_4: string;
+}
+export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人';
+export interface MemoryEntry {
+    role: string;
+    content: string;
+    timestamp?: number;
+}
+export interface ChannelMemory {
+    dialogues: MemoryEntry[];
+    updatedAt: number;
+}
+export interface MemoryConfig {
+    dataDir: string;
+    message_max_length: number;
+    memory_block_words: string[];
+    enable_self_memory: boolean;
+    remember_min_length: number;
+}
+export interface MiddlewareConfig {
+    private: boolean;
+    mention: boolean;
+    random_min_tokens: number;
+    randnum: number;
+    max_tokens: number;
+}
+export interface APIConfig {
+    baseURL: string;
+    keys: string[];
+    appointModel: string;
+    max_tokens: number;
+    temperature: number;
+    timeout?: number;
+}
+export interface APIError extends Error {
+    response?: {
+        status: number;
+        data: {
+            error?: {
+                code: string;
+                message: string;
+            };
+        };
+    };
+}
+export interface FixedDialogue {
+    triggers: string[];
+    favorabilityRange?: [number, number];
+    probability: number;
+    timeRange?: [string, string];
+    response: string;
+    favorability?: number;
+}
 export declare class Sat extends Service {
     static inject: {
         required: string[];
