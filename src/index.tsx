@@ -234,10 +234,10 @@ export class SAT extends Sat {
     if (this.config.reply_pointing && this.getChannelParallelCount(session) > 1) {
       response = `@${session.username} ` + response
     }
+    this.updateChannelParallelCount(session, -1)
     if (this.config.sentences_divide) {
       return splitSentences(response).map(text => h.text(text))
     }
-    this.updateChannelParallelCount(session, -1)
     return response
   }
 
