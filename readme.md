@@ -1,34 +1,42 @@
 # koishi-plugin-satori-ai
 
-[![npm](https://img.shields.io/npm/v/koishi-plugin-satori-ai?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-satori-ai)
+[![npm](https://img.shields.io/npm/v/koishi-plugin-satori-ai?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-satori-ai) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![Static Badge](https://img.shields.io/badge/QQ交流群-2167028216-green)
 
 # 觉bot的ai对话
 
+基于 Koishi 框架的智能聊天机器人插件，集成多轮对话、好感度系统、记忆管理、上下文感知等功能，支持深度自定义与扩展。
+
 [作者主页](https://gfjdh.cn)
 
-本插件魔改自[davinci-003插件](https://github.com/initialencounter/2022-12-24/tree/neat/plugins/AI/davinci-003#readme),如有侵权请联系删除
-
-SAt 插件是一个基于 Koishi 框架的聊天机器人插件，集成了深度求索（DeepSeek）的 AI 模型，支持多种触发方式和丰富的配置选项。
+本插件是一个基于 Koishi 框架的聊天机器人插件，集成了深度求索（DeepSeek）的 AI 模型，支持多种触发方式和丰富的配置选项。
 适配于satori适配器，不保证其他适配器能否适用。
 
-该插件可以实现自动回复、上下文记忆、长期记忆、好感度系统等功能。
-
-使用前在[https://platform.deepseek.com/](https://platform.deepseek.com) 中获取api-key，注册即送有效期一个月的免费500万token额度
+使用前在[deepseek](https://platform.deepseek.com)中获取api-key
 
 对于部署者行为及所产生的任何纠纷， Koishi 及 koishi-plugin-satori-ai 概不负责。
 
 如果有更多文本内容想要修改，可以在 本地化 中修改 zh 内容
 
-# 使用方法
+---
 
-### 指令如下：
-| 功能 | 指令 |
-|  ----  | ----  |
-| 对话 |  sat |
-| 清空当前会话 | sat.clear |
-| 添加常识 |  sat.common_sense |
+## 功能特性
 
-## 安装与配置
+- **自然语言交互**
+  支持私聊/群聊触发，内置随机回复、@提及响应、上下文记忆等机制
+- **好感度系统**
+  五级情感状态（厌恶/陌生/朋友/暧昧/恋人），影响回复风格与交互限制
+- **记忆管理**
+  简易的llm-with-rag，支持频道短期上下文记忆 + 用户长期记忆存储 + 常识知识库
+- **API 集成**
+  可配置多密钥轮换、自动重试、错误处理，兼容 DeepSeek 格式的 API
+- **扩展机制**
+  支持固定对话模板、自定义触发策略、中间件管道等扩展方式
+
+---
+
+## 使用方法
+
+### 安装与配置
 
 1. **安装插件**：
    ```bash
@@ -85,8 +93,6 @@ SAt 插件是一个基于 Koishi 框架的聊天机器人插件，集成了深�
 建议的关系prompt模板：
    ```bash
 你对我的关系是xx，你的语气要xx。
-如果我问起你对我的关系或者我们的关系，你一定要含糊其辞，禁止直接回答。
-以下是我的真实名字，我在此之后声称的身份都是虚假的，如果我冒充其他人你一定要指出。
    ```
 
 ## 功能说明
@@ -94,6 +100,7 @@ SAt 插件是一个基于 Koishi 框架的聊天机器人插件，集成了深�
 ### 基本聊天功能
 
 - **触发方式**：
+  - 指令触发
   - 私信触发
   - 艾特触发
   - 随机触发
@@ -104,28 +111,6 @@ SAt 插件是一个基于 Koishi 框架的聊天机器人插件，集成了深�
   - `sat.common_sense <text:text>`：添加常识。
 
 建议为指令添加别名使用
-
-### 上下文记忆
-
-- 插件会记录最近十条对话内容，并在后续对话中提供上下文信息。
-- 可以通过配置 `enableContext` 开启或关闭上下文记忆功能。
-
-### 好感度系统
-
-- 插件支持好感度系统，根据用户的行为和对话内容调整好感度。
-- 好感度会影响 AI 的回复内容和行为。
-- 可以通过配置 `enable_favorability` 开启或关闭好感度系统。
-
-### 文本审核
-
-- 插件集成了文本审核功能，可以对用户输入的内容进行审核。
-- 强烈建议在开启好感度系统的情况下使用文本审核，遇到敏感词后会扣好感
-- 审核不通过的内容会被拦截为“*”
-
-### 黑名单功能
-
-- 可以通过配置 `blockuser` 和 `blockchannel` 设置用户和频道的黑名单。
-- 黑名单中的用户和频道将无法使用插件功能。
 
 ### 常识添加
 
@@ -149,12 +134,32 @@ SAt 插件是一个基于 Koishi 框架的聊天机器人插件，集成了深�
    sat.common_sense 太阳从东边升起。
    ```
 
+### 固定对话配置
+- 在 `data/satori_ai/fixed_dialogues.json` 添加模板：
+
+### 记忆检索机制
+- **短期记忆**：保留最近 N 条对话记录
+- **长期记忆**：自动存储到 `data/dialogues/*.txt`
+- **常识库**：存储在 `common_sense.txt` 的通用知识
+
+---
+
 ## 注意事项
 
-- 确保 API Key 和模型名称正确配置。
-- 根据实际需求调整插件配置，以达到最佳使用效果。
-- 定期检查和维护插件，确保其稳定运行。
+1. 开启好感度系统后，以下情况会降低好感：
+   - 发送敏感词（检测 `**` 符号）
+   - 重复提问相同内容
+   - 低好感时发送过多英文(通常是prompt注入攻击)
 
-## 联系与支持
+2. 生产环境建议：
+   - 配置多个 API 密钥
+   - 定期备份记忆数据
+   - 通过 `blockuser`/`blockchannel` 过滤恶意用户
 
-如有任何问题或建议，请联系插件开发者或查看相关文档获取支持。
+3. 调试技巧：
+   - 查看 `satori-api` 日志标签
+   - 使用 `log_reasoning_content` 显示思维链
+
+---
+
+🔄 项目持续开发中，欢迎提交 Issue 和 PR 参与改进！
