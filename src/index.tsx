@@ -40,6 +40,7 @@ export class SAT extends Sat {
       keys: this.config.key,
       appointModel: this.config.appointModel,
       content_max_tokens: this.config.content_max_tokens,
+      maxRetryTimes: this.config.maxRetryTimes,
       temperature: this.config.temperature
     }
   }
@@ -93,10 +94,8 @@ export class SAT extends Sat {
     // 前置检查
     const preCheckResult = this.performPreChecks(session, prompt)
     if (preCheckResult) return preCheckResult
-    // 获取频道记忆
-    const channelId = session.channelId
-    const recentDialogues = this.memoryManager.getChannelMemory(channelId).slice(-10)
     // 重复对话检查
+    const recentDialogues = this.memoryManager.getChannelMemory(session.channelId).slice(-10)
     const duplicateCheck = await this.checkDuplicateDialogue(session, prompt, recentDialogues, user)
     if (duplicateCheck) return duplicateCheck
     // 固定对话处理
@@ -107,10 +106,10 @@ export class SAT extends Sat {
     logger.info(`用户 ${session.username}：${prompt}`)
     const processedPrompt = await this.processInput(session, prompt)
     const response = await this.generateResponse(session, processedPrompt)
-    logger.info(`Satori AI：${response}`)
+    logger.info(`Satori AI：${response.content}`)
     // 更新记忆
     await this.memoryManager.updateMemories(session, processedPrompt, response)
-    return this.formatResponse(session, response)
+    return this.formatResponse(session, response.content)
   }
 
   // 好感度阻断检查
@@ -174,7 +173,7 @@ export class SAT extends Sat {
   // 生成回复
   private async generateResponse(session: Session, prompt: string) {
     const messages = this.buildMessages(session, prompt)
-    return this.apiClient.chat(await messages)
+    return await this.apiClient.chat(await messages)
   }
 
   // 构建消息

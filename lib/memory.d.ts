@@ -4,7 +4,12 @@ export declare class MemoryManager {
     private config;
     private channelMemories;
     constructor(config: MemoryConfig);
-    updateChannelMemory(session: Session, prompt: string, response?: string): void;
+    updateMemories(session: Session, prompt: string, response: {
+        content: string;
+        error: boolean;
+    }): Promise<void>;
+    private shouldRemember;
+    private updateChannelMemory;
     clearChannelMemory(channelId: string): void;
     getChannelMemory(channelId: string): MemoryEntry[];
     saveLongTermMemory(session: Session, dialogues: MemoryEntry[], filePath?: string): Promise<void>;

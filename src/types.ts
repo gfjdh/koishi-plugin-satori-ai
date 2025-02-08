@@ -64,6 +64,7 @@ export interface APIConfig {
   appointModel: string
   content_max_tokens: number
   temperature: number
+  maxRetryTimes?: number
   timeout?: number
 }
 // API响应

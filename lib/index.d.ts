@@ -18,8 +18,6 @@ export declare class SAT extends Sat {
     private generateResponse;
     private buildMessages;
     private buildSystemPrompt;
-    private updateMemories;
-    private shouldRemember;
     private formatResponse;
     private clearSession;
     private addCommonSense;

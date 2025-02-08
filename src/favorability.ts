@@ -14,8 +14,6 @@ export async function handleFavorabilitySystem(ctx: Context, session: Session, c
   if (user.favorability < 50 && englishCount > 8) {
     return session.text('commands.sat.messages.tooManyEnglishLetters');
   }
-  // 获取当前好感度等级
-  const level = getFavorabilityLevel(user.favorability, config);
   return;
 }
 

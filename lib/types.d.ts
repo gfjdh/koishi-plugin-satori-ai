@@ -52,6 +52,7 @@ export interface APIConfig {
     appointModel: string;
     content_max_tokens: number;
     temperature: number;
+    maxRetryTimes?: number;
     timeout?: number;
 }
 export interface APIError extends Error {

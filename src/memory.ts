@@ -14,9 +14,10 @@ export class MemoryManager {
   ) {}
 
   // 更新记忆
-  public async updateMemories(session: Session, prompt: string, response: string) {
+  public async updateMemories(session: Session, prompt: string, response: {content:string, error: boolean}) {
+    if (response.error) return
     // 更新短期记忆
-    this.updateChannelMemory(session, prompt, response)
+    this.updateChannelMemory(session, prompt, response.content)
     // 保存长期记忆
     if (this.shouldRemember(prompt)) {
       await this.saveLongTermMemory(session, [{
