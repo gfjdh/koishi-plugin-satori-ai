@@ -38,6 +38,8 @@ export interface MemoryConfig {
     memory_block_words: string[];
     enable_self_memory: boolean;
     remember_min_length: number;
+    common_topN: number;
+    dailogues_topN: number;
 }
 export interface MiddlewareConfig {
     private: boolean;
@@ -52,8 +54,10 @@ export interface APIConfig {
     appointModel: string;
     content_max_tokens: number;
     temperature: number;
+    frequency_penalty: number;
+    presence_penalty: number;
     maxRetryTimes?: number;
-    timeout?: number;
+    reasoning_content?: boolean;
 }
 export interface APIError extends Error {
     response?: {
@@ -106,7 +110,6 @@ export declare namespace Sat {
         presence_penalty: number;
     }
     interface Config {
-        enableContext: boolean;
         baseURL: string;
         key: string[];
         appointModel: string;
@@ -115,19 +118,25 @@ export declare namespace Sat {
         content_max_tokens: number;
         message_max_length: number;
         remember_min_length: number;
+        temperature: number;
+        frequency_penalty: number;
+        presence_penalty: number;
+        log_reasoning_content: boolean;
+        authority: number;
+        alias: string[];
+        dataDir: string;
         enable_self_memory: boolean;
         memory_block_words: string[];
-        dataDir: string;
-        temperature: number;
-        authority: number;
+        common_topN: number;
+        dailogues_topN: number;
         enable_fixed_dialogues: boolean;
-        alias: string[];
         private: boolean;
         mention: boolean;
         random_min_tokens: number;
         randnum: number;
         sentences_divide: boolean;
         time_interval: number;
+        reply_pointing: boolean;
         enable_favorability: boolean;
         prompt_0: string;
         favorability_div_1: number;

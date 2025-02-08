@@ -4,6 +4,7 @@ export declare class SAT extends Sat {
     config: Sat.Config;
     private apiClient;
     private memoryManager;
+    private ChannelParallelCount;
     constructor(ctx: Context, config: Sat.Config);
     private getAPIConfig;
     private getMemoryConfig;
@@ -14,6 +15,8 @@ export declare class SAT extends Sat {
     private performPreChecks;
     private checkDuplicateDialogue;
     private handleFixedDialoguesCheck;
+    private updateChannelParallelCount;
+    private getChannelParallelCount;
     private processInput;
     private generateResponse;
     private buildMessages;

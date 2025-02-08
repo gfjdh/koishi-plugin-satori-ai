@@ -9,13 +9,14 @@ import { handleFavorabilitySystem, handleContentCheck, generateLevelPrompt, getF
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
-import { splitSentences, getTimeOfDay } from './utils'
+import { splitSentences } from './utils'
 
 const logger = new Logger('satori-ai')
 
 export class SAT extends Sat {
   private apiClient: APIClient
   private memoryManager: MemoryManager
+  private ChannelParallelCount: Map<string, number> = new Map()
 
   // 重写构造函数
   constructor(ctx: Context, public config: Sat.Config) {
@@ -41,7 +42,10 @@ export class SAT extends Sat {
       appointModel: this.config.appointModel,
       content_max_tokens: this.config.content_max_tokens,
       maxRetryTimes: this.config.maxRetryTimes,
-      temperature: this.config.temperature
+      temperature: this.config.temperature,
+      frequency_penalty: this.config.frequency_penalty,
+      presence_penalty: this.config.presence_penalty,
+      reasoning_content: this.config.log_reasoning_content
     }
   }
   private getMemoryConfig(): MemoryConfig {
@@ -50,7 +54,9 @@ export class SAT extends Sat {
       message_max_length: this.config.message_max_length,
       memory_block_words: this.config.memory_block_words,
       enable_self_memory: this.config.enable_self_memory,
-      remember_min_length: this.config.remember_min_length
+      remember_min_length: this.config.remember_min_length,
+      common_topN: this.config.common_topN,
+      dailogues_topN: this.config.dailogues_topN
     }
   }
   private getMiddlewareConfig(): MiddlewareConfig & FavorabilityConfig {
@@ -87,7 +93,6 @@ export class SAT extends Sat {
 
   private async handleSatCommand(session: Session, prompt: string) {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
-
     // 好感度阻断检查
     const favorabilityBlock = await this.checkFavorabilityBlock(session)
     if (favorabilityBlock) return favorabilityBlock
@@ -104,6 +109,8 @@ export class SAT extends Sat {
 
     // 处理记忆和上下文
     logger.info(`用户 ${session.username}：${prompt}`)
+    // 更新频道并发数
+    await this.updateChannelParallelCount(session, 1)
     const processedPrompt = await this.processInput(session, prompt)
     const response = await this.generateResponse(session, processedPrompt)
     logger.info(`Satori AI：${response.content}`)
@@ -154,6 +161,15 @@ export class SAT extends Sat {
         enable_fixed_dialogues: this.config.enable_fixed_dialogues
       }
     )
+  }
+
+  // 更新频道并发数
+  private async updateChannelParallelCount(session: Session, value: number): Promise<void> {
+    this.ChannelParallelCount.set(session.channelId, (this.ChannelParallelCount.get(session.channelId) || 0) + value)
+  }
+  // 获取频道并发数
+  private getChannelParallelCount(session: Session): number {
+    return this.ChannelParallelCount.get(session.channelId) || 0
   }
 
   // 处理输入
@@ -214,16 +230,21 @@ export class SAT extends Sat {
   }
 
   // 格式化回复
-  private formatResponse(session: Session, response: string) {
+  private formatResponse(session: Session,response: string) {
+    if (this.config.reply_pointing && this.getChannelParallelCount(session) > 1) {
+      response = `@${session.username} ` + response
+    }
     if (this.config.sentences_divide) {
       return splitSentences(response).map(text => h.text(text))
     }
+    this.updateChannelParallelCount(session, -1)
     return response
   }
 
   // 清空会话
   private clearSession(session: Session) {
     this.memoryManager.clearChannelMemory(session.channelId)
+    this.ChannelParallelCount.set(session.channelId, 0)
     return session.text('commands.sat.clear.messages.clean')
   }
 

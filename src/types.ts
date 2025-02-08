@@ -46,6 +46,8 @@ export interface MemoryConfig {
   memory_block_words: string[]
   enable_self_memory: boolean
   remember_min_length: number
+  common_topN: number
+  dailogues_topN: number
 }
 
 // 中间件配置
@@ -64,8 +66,10 @@ export interface APIConfig {
   appointModel: string
   content_max_tokens: number
   temperature: number
+  frequency_penalty: number
+  presence_penalty: number
   maxRetryTimes?: number
-  timeout?: number
+  reasoning_content?: boolean
 }
 // API响应
 export interface APIError extends Error {
@@ -128,7 +132,6 @@ export namespace Sat {
   }
 
   export interface Config {
-    enableContext: boolean
     baseURL: string
     key: string[]
     appointModel: string
@@ -138,14 +141,19 @@ export namespace Sat {
     content_max_tokens: number
     message_max_length: number
     remember_min_length: number
-    enable_self_memory: boolean
-    memory_block_words: string[]
-    dataDir: string
     temperature: number
+    frequency_penalty: number
+    presence_penalty: number
+    log_reasoning_content: boolean
     authority: number
-    enable_fixed_dialogues: boolean
 
     alias: string[]
+    dataDir: string
+    enable_self_memory: boolean
+    memory_block_words: string[]
+    common_topN: number
+    dailogues_topN: number
+    enable_fixed_dialogues: boolean
 
     private: boolean
     mention: boolean
@@ -153,6 +161,8 @@ export namespace Sat {
     randnum: number
     sentences_divide: boolean
     time_interval: number
+    reply_pointing: boolean
+
     enable_favorability: boolean
     prompt_0: string
     favorability_div_1: number
@@ -175,35 +185,45 @@ export namespace Sat {
         Schema.array(String).role('secret'),
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('api_key'),
-      enableContext: Schema.boolean().default(true).description('是否启用上下文, 关闭后将减少 token 消耗(无人格)'),
       appointModel: Schema.string().default('deepseek-chat').description('模型'),
       prompt: Schema.string().role('textarea').description('人格设定')
     }).description('基础设置'),
 
     Schema.object({
-      max_tokens: Schema.number().description('最大请求长度').default(50),
-      content_max_tokens: Schema.number().description('最大回答长度').default(100),
-      message_max_length: Schema.number().description('最大频道上下文长度').default(10),
-      enable_self_memory: Schema.boolean().default(true).description('是否启用自发言记忆（启用容易发生复读）'),
+      alias: Schema.array(String).default(['ai']).description('触发命令;别名'),
+      authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
+      max_tokens: Schema.number().description('最大请求长度（token）').default(100),
+      content_max_tokens: Schema.number().description('最大回答长度（token）').default(1024),
+      message_max_length: Schema.number().description('最大频道上下文长度（条数）').default(10),
+      temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
+      frequency_penalty: Schema.number().default(0.0).description('频率惩罚'),
+      presence_penalty: Schema.number().default(0.0).description('存在惩罚'),
+      maxRetryTimes: Schema.number().default(30).description('报错后最大重试次数'),
+      log_reasoning_content: Schema.boolean().default(true).description('是否在日志中输出思维链（deepseek-r1）')
+    }).description('请求设置'),
+
+    Schema.object({
+      enable_self_memory: Schema.boolean().default(true).description('是否启用模型自发言记忆（仅短期）'),
+      dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
       memory_block_words: Schema.array(String).default(['好感']).description('记忆屏蔽词'),
       remember_min_length: Schema.number().description('触发保存到记忆的长度').default(20),
-      dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
-      temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
-      authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
+      common_topN: Schema.number().default(5).description('常识记忆检索最大匹配数'),
+      dailogues_topN: Schema.number().default(5).description('对话记忆检索最大匹配数'),
       enable_fixed_dialogues: Schema.boolean().default(false).description('是否启用固定对话（在dataDir中的fixed_dialogues.json修改）'),
-      alias: Schema.array(String).default(['ai']).description('触发命令;别名'),
+    }).description('记忆设置'),
 
+    Schema.object({
       private: Schema.boolean().default(true).description('开启后私聊AI可触发对话, 不需要使用指令'),
       mention: Schema.boolean().default(true).description('开启后机器人被提及(at/引用)可触发对话'),
-      random_min_tokens: Schema.number().default(20).description('随机触发的最小长度'),
+      random_min_tokens: Schema.number().default(20).description('随机触发对话的最小长度'),
       randnum: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('在群聊中随机触发对话的概率，如需关闭可设置为 0'),
       sentences_divide: Schema.boolean().default(true).description('是否分句发送'),
       time_interval: Schema.number().default(1000).description('每句话的时间间隔'),
-      maxRetryTimes: Schema.number().default(30).description('报错后最大重试次数')
-    }).description('进阶设置'),
+      reply_pointing: Schema.boolean().default(true).description('是否在与多人同时对话时显示回复指向'),
+    }).description('对话设置'),
 
     Schema.object({
-      enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统（建议添加p-qiandao插件）'),
+      enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统'),
       prompt_0: Schema.string().role('textarea').description('厌恶好感补充设定'),
       favorability_div_1: Schema.number().default(15).description('厌恶-陌生分界线'),
       prompt_1: Schema.string().role('textarea').description('陌生好感补充设定'),

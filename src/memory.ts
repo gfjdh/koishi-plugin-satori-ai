@@ -1,11 +1,10 @@
 // src/memory.ts
-import { Session, Logger, User } from 'koishi'
+import { Session } from 'koishi'
 import { MemoryEntry, MemoryConfig, ChannelMemory } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
-import { escapeRegExp } from './utils'
+import { escapeRegExp, getTimeOfDay } from './utils'
 
-const logger = new Logger('satori-ai')
 export class MemoryManager {
   private channelMemories: Map<string, ChannelMemory> = new Map()
 
@@ -82,22 +81,21 @@ export class MemoryManager {
 
   // 记忆检索
   public async searchMemories(session: Session, prompt: string, type: 'user' | 'common' = 'user'): Promise<string> {
-    let filePath = ""
-    switch (type) {
-      case 'user':
-        filePath = this.getUserMemoryPath(session.userId)
-        break
-      case 'common':
-        filePath = path.join(this.config.dataDir, 'common_sense.txt')
-        break
+    const filePathMap = {
+      'user': this.getUserMemoryPath(session.userId),
+      'common': path.join(this.config.dataDir, 'common.txt')
     }
-    if (!fs.existsSync(filePath)) return ''//如果记忆文件不存在,返回空字符串
+    const topNMap = {
+      'user': this.config.dailogues_topN,
+      'common': this.config.common_topN
+    }
+    if (!fs.existsSync(filePathMap[type])) return ''//如果记忆文件不存在,返回空字符串
 
     const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
     const keywords = prompt.split('').filter(word => !charactersToRemove.includes(word));
 
-    const entries = await this.loadMemoryFile(filePath)
-    const matched = this.findBestMatches(entries, keywords)
+    const entries = await this.loadMemoryFile(filePathMap[type])
+    const matched = this.findBestMatches(entries, keywords, topNMap[type])
     const result = this.formatMatches(matched, type)
     return result
   }
@@ -147,10 +145,11 @@ export class MemoryManager {
       'user': '以下是较久之前用户说过的话：'
     };
     // 添加时间信息
-    const time = `\n当前日期和时间：${new Date().toLocaleString()}`
+    const time = `\n时段：${getTimeOfDay(new Date().getHours())}`
+    const date = `\n当前日期和时间：${new Date().toLocaleString()} ${time}`
     if (matched.length > 0) {
       if (type === 'common') {
-          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}\n${time}`
+          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}\n${date}`
           return result
       } else {
           const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}\n`

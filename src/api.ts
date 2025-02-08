@@ -44,8 +44,8 @@ export class APIClient {
       max_tokens: this.config.content_max_tokens,
       temperature: this.config.temperature,
       top_p: 1,
-      frequency_penalty: 1.0,
-      presence_penalty: 0.5
+      frequency_penalty: this.config.frequency_penalty,
+      presence_penalty: this.config.presence_penalty
     }
   }
 
@@ -55,13 +55,14 @@ export class APIClient {
     const headers = this.createHeaders()
 
     let content: string
-    for (let i = 0; i < this.config.maxRetryTimes; i++) {
+    for (let i = 1; i <= this.config.maxRetryTimes; i++) {
       try {
         const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
         content = response.choices[0].message.content
+        if (this.config.reasoning_content) logger.info(`思维链: ${response.choices[0].message.reasoning_content || '无'}`)
         return { content: content, error: false }
       } catch (error) {
-        if (i == this.config.maxRetryTimes - 1) {
+        if (i == this.config.maxRetryTimes) {
           return this.handleAPIError(error)
         }
         this.handleAPIError(error)
@@ -87,42 +88,25 @@ export class APIClient {
     const status = error.response?.status || 0;
     const errorCode = error.response?.data?.error?.code || 'unknown';
     const message = error.response?.data?.error?.message || error.message;
-    let errorData: any;
-    try {
-      // 尝试解析JSON，若失败则捕获原始内容
-      errorData = typeof error.response?.data === 'string'
-        ? JSON.parse(error.response.data)
-        : error.response?.data;
-    } catch (e) {
-      errorData = error.response?.data; // 保持原始数据
-    }
-    logger.error(`API原始响应: ${JSON.stringify(errorData)}`);
+
     logger.error(`API Error [${status}]: ${errorCode} - ${message}`);
 
     switch (status) {
       case 400:
-        logger.error(`请求体格式错误: ${message}`);
         return {content: '请求体格式错误', error: true};
       case 401:
-        logger.error('API key 错误，认证失败');
         return {content: 'API key 错误，认证失败', error: true};
       case 402:
-        logger.error('账号余额不足');
         return {content: '账号余额不足', error: true};
       case 422:
-        logger.error(`请求体参数错误: ${message}`);
         return {content: '请求体参数错误', error: true};
       case 429:
-        logger.error('请求速率（TPM 或 RPM）达到上限');
         return {content: '请求速率（TPM 或 RPM）达到上限', error: true};
       case 500:
-        logger.error('api服务器内部故障');
-        return {content: `api服务器内部故障(${message})`, error: true};
+        return {content: `api服务器内部故障`, error: true};
       case 503:
-        logger.error('api服务器负载过高');
         return {content: 'api服务器负载过高', error: true};
       default:
-        logger.error(message);
         return {content: message, error: true};
     }
   }
