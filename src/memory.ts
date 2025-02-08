@@ -13,8 +13,26 @@ export class MemoryManager {
     private config: MemoryConfig
   ) {}
 
+  // 更新记忆
+  public async updateMemories(session: Session, prompt: string, response: string) {
+    // 更新短期记忆
+    this.updateChannelMemory(session, prompt, response)
+    // 保存长期记忆
+    if (this.shouldRemember(prompt)) {
+      await this.saveLongTermMemory(session, [{
+        role: 'user',
+        content: prompt
+      }])
+    }
+  }
+
+  // 是否应当记忆
+  private shouldRemember(content: string): boolean {
+    return content.length >= this.config.remember_min_length && !this.config.memory_block_words.some(word => content.includes(word))
+  }
+
   // 更新短期记忆
-  public updateChannelMemory(session: Session, prompt: string, response?: string): void {
+  private updateChannelMemory(session: Session, prompt: string, response?: string): void {
     const channelId = session.channelId
     if (!this.channelMemories.has(channelId)) {
       this.channelMemories.set(channelId, {
@@ -28,6 +46,8 @@ export class MemoryManager {
 
     if (this.config.enable_self_memory && response) {
       memory.dialogues.push({ role: 'assistant', content: response })
+    } else{
+      memory.dialogues.push({ role: 'assistant', content: '...' })
     }
 
     // 保持记忆长度
@@ -82,7 +102,7 @@ export class MemoryManager {
   }
 
   // 记忆检索
-  private findBestMatches(entries: MemoryEntry[], keywords: string[], topN = 10): MemoryEntry[] {
+  private findBestMatches(entries: MemoryEntry[], keywords: string[], topN = 5): MemoryEntry[] {
     return entries
       .map(entry => ({ entry, ...this.calculateMatchScore(entry.content, keywords) })) //计算匹配度
       .filter(({ count }) => count > 1)    // 过滤低权重匹配

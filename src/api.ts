@@ -25,7 +25,6 @@ export class APIClient {
   // 发送聊天请求
   public async chat(messages: Sat.Msg[]): Promise<string> {
     const payload = this.createPayload(messages)
-    logger.info('Sending chat request:', payload)
     for (let i = 0; i < this.config.keys.length; i++) {
       try {
         return await this.tryRequest(payload)
@@ -46,7 +45,7 @@ export class APIClient {
       max_tokens: this.config.content_max_tokens,
       temperature: this.config.temperature,
       top_p: 1,
-      frequency_penalty: 0.5,
+      frequency_penalty: 1.5,
       presence_penalty: 0.5
     }
   }

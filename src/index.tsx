@@ -43,7 +43,6 @@ export class SAT extends Sat {
       temperature: this.config.temperature
     }
   }
-
   private getMemoryConfig(): MemoryConfig {
     return {
       dataDir: this.config.dataDir,
@@ -53,7 +52,6 @@ export class SAT extends Sat {
       remember_min_length: this.config.remember_min_length
     }
   }
-
   private getMiddlewareConfig(): MiddlewareConfig & FavorabilityConfig {
       return {
         private: this.config.private,
@@ -111,7 +109,7 @@ export class SAT extends Sat {
     const response = await this.generateResponse(session, processedPrompt)
     logger.info(`Satori AI：${response}`)
     // 更新记忆
-    await this.updateMemories(session, processedPrompt, response)
+    await this.memoryManager.updateMemories(session, processedPrompt, response)
     return this.formatResponse(session, response)
   }
 
@@ -214,24 +212,6 @@ export class SAT extends Sat {
       systemPrompt += generateLevelPrompt(getFavorabilityLevel(user.favorability, this.config), this.config)
     }
     return systemPrompt
-  }
-
-  // 更新记忆
-  private async updateMemories(session: Session, prompt: string, response: string) {
-    // 更新短期记忆
-    this.memoryManager.updateChannelMemory(session, prompt, response)
-    // 保存长期记忆
-    if (this.shouldRemember(prompt)) {
-      await this.memoryManager.saveLongTermMemory(session, [{
-        role: 'user',
-        content: prompt
-      }])
-    }
-  }
-
-  // 是否应当记忆
-  private shouldRemember(content: string): boolean {
-    return content.length >= this.config.remember_min_length && !this.config.memory_block_words.some(word => content.includes(word))
   }
 
   // 格式化回复
