@@ -18,6 +18,9 @@ export type FavorabilityAdjustment =
 //好感度配置
 export interface FavorabilityConfig {
   enable_favorability: boolean
+  censor_favorability: boolean
+  value_of_favorability: number
+  enable_auxiliary_LLM: boolean
   prompt_0: string
   favorability_div_1: number
   prompt_1: string
@@ -64,11 +67,15 @@ export interface APIConfig {
   baseURL: string
   keys: string[]
   appointModel: string
+  auxiliary_LLM_URL: string
+  auxiliary_LLM: string
+  auxiliary_LLM_key: string[]
   content_max_tokens: number
   temperature: number
   frequency_penalty: number
   presence_penalty: number
   maxRetryTimes?: number
+  retry_delay_time?: number
   reasoning_content?: boolean
 }
 // API响应
@@ -135,6 +142,9 @@ export namespace Sat {
     baseURL: string
     key: string[]
     appointModel: string
+    auxiliary_LLM_URL: string
+    auxiliary_LLM: string
+    auxiliary_LLM_key: string[]
     prompt: string
 
     max_tokens: number
@@ -165,6 +175,10 @@ export namespace Sat {
     reply_pointing: boolean
 
     enable_favorability: boolean
+    censor_favorability: boolean
+    value_of_favorability: number
+    enable_auxiliary_LLM: boolean
+    visible_favorability: boolean
     prompt_0: string
     favorability_div_1: number
     prompt_1: string
@@ -177,6 +191,7 @@ export namespace Sat {
     blockuser: string[]
     blockchannel: string[]
     maxRetryTimes: number
+    retry_delay_time: number
   }
 
   export const Config: Schema<Config> = Schema.intersect([
@@ -186,7 +201,13 @@ export namespace Sat {
         Schema.array(String).role('secret'),
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('api_key'),
-      appointModel: Schema.string().default('deepseek-chat').description('模型'),
+      appointModel: Schema.string().default('deepseek-reasoner').description('主模型'),
+      auxiliary_LLM_URL: Schema.string().default('https://api.deepseek.com').description('辅助模型请求地址'),
+      auxiliary_LLM: Schema.string().default('deepseek-chat').description('辅助模型(用于好感度调整等功能，如不需要可不填，建议使用低成本模型'),
+      auxiliary_LLM_key: Schema.union([
+        Schema.array(String).role('secret'),
+        Schema.transform(String, value => [value]),
+      ]).default([]).role('secret').description('辅助模型api_key'),
       prompt: Schema.string().role('textarea').description('人格设定')
     }).description('基础设置'),
 
@@ -199,9 +220,10 @@ export namespace Sat {
       temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
       frequency_penalty: Schema.number().default(0.0).description('频率惩罚'),
       presence_penalty: Schema.number().default(0.0).description('存在惩罚'),
-      maxRetryTimes: Schema.number().default(30).description('报错后最大重试次数'),
+      maxRetryTimes: Schema.number().default(10).description('报错后最大重试次数'),
+      retry_delay_time: Schema.number().default(5000).description('每次重试延迟时间'),
       log_system_prompt: Schema.boolean().default(false).description('是否在日志中输出系统提示'),
-      log_reasoning_content: Schema.boolean().default(true).description('是否在日志中输出思维链（deepseek-r1）')
+      log_reasoning_content: Schema.boolean().default(true).description('是否在日志中输出思维链')
     }).description('请求设置'),
 
     Schema.object({
@@ -225,7 +247,11 @@ export namespace Sat {
     }).description('对话设置'),
 
     Schema.object({
-      enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统'),
+      enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统(每次对话+1好感度)'),
+      censor_favorability: Schema.boolean().default(false).description('是否开启好感度审查(通过屏蔽词扣除好感)'),
+      value_of_favorability: Schema.number().default(15).description('屏蔽词每次扣除的好感度'),
+      enable_auxiliary_LLM: Schema.boolean().default(false).description('是否使用辅助模型判断(通过大模型进行额外的好感度增减,量与value_of_favorability相关)'),
+      visible_favorability: Schema.boolean().default(true).description('是否开启好感度升降显示'),
       prompt_0: Schema.string().role('textarea').description('厌恶好感补充设定'),
       favorability_div_1: Schema.number().default(15).description('厌恶-陌生分界线'),
       prompt_1: Schema.string().role('textarea').description('陌生好感补充设定'),

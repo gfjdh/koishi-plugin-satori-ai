@@ -5,7 +5,7 @@ import * as path from 'path'
 import { APIClient } from './api'
 import { MemoryManager } from './memory'
 import { handleFixedDialogues } from './fixed-dialogues'
-import { handleFavorabilitySystem, handleContentCheck, generateLevelPrompt, getFavorabilityLevel } from './favorability'
+import { handleFavorabilitySystem, handleContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult } from './favorability'
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
@@ -40,8 +40,12 @@ export class SAT extends Sat {
       baseURL: this.config.baseURL,
       keys: this.config.key,
       appointModel: this.config.appointModel,
+      auxiliary_LLM_URL: this.config.auxiliary_LLM_URL,
+      auxiliary_LLM: this.config.auxiliary_LLM,
+      auxiliary_LLM_key: this.config.auxiliary_LLM_key,
       content_max_tokens: this.config.content_max_tokens,
       maxRetryTimes: this.config.maxRetryTimes,
+      retry_delay_time: this.config.retry_delay_time,
       temperature: this.config.temperature,
       frequency_penalty: this.config.frequency_penalty,
       presence_penalty: this.config.presence_penalty,
@@ -67,6 +71,9 @@ export class SAT extends Sat {
         randnum: this.config.randnum,
         max_tokens: this.config.max_tokens,
         enable_favorability: this.config.enable_favorability,
+        censor_favorability: this.config.censor_favorability,
+        value_of_favorability: this.config.value_of_favorability,
+        enable_auxiliary_LLM: this.config.enable_auxiliary_LLM,
         prompt_0: this.config.prompt_0,
         favorability_div_1: this.config.favorability_div_1,
         prompt_1: this.config.prompt_1,
@@ -77,6 +84,23 @@ export class SAT extends Sat {
         favorability_div_4: this.config.favorability_div_4,
         prompt_4: this.config.prompt_4
       }
+  }
+  private getFavorabilityConfig(): FavorabilityConfig {
+    return {
+      enable_favorability: this.config.enable_favorability,
+      censor_favorability: this.config.censor_favorability,
+      value_of_favorability: this.config.value_of_favorability,
+      enable_auxiliary_LLM: this.config.enable_auxiliary_LLM,
+      prompt_0: this.config.prompt_0,
+      favorability_div_1: this.config.favorability_div_1,
+      prompt_1: this.config.prompt_1,
+      favorability_div_2: this.config.favorability_div_2,
+      prompt_2: this.config.prompt_2,
+      favorability_div_3: this.config.favorability_div_3,
+      prompt_3: this.config.prompt_3,
+      favorability_div_4: this.config.favorability_div_4,
+      prompt_4: this.config.prompt_4
+    }
   }
 
   private registerCommands(ctx: Context) {
@@ -114,15 +138,34 @@ export class SAT extends Sat {
     const processedPrompt = await this.processInput(session, prompt)
     const response = await this.generateResponse(session, processedPrompt)
     logger.info(`Satori AI：${response.content}`)
+    const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response.content)
     // 更新记忆
     await this.memoryManager.updateMemories(session, processedPrompt, response)
-    return this.formatResponse(session, response.content)
+    return this.formatResponse(session, response.content, auxiliaryResult)
+  }
+
+  // 处理辅助判断
+  private async handleAuxiliaryDialogue(session: Session, prompt: string, responseConent: string) {
+    const regex = /\*\*/g
+    const censor = prompt.match(regex)?.length
+    if (censor) return "(好感度↓↓)"
+    if (this.config.enable_auxiliary_LLM && responseConent) {
+      const messages = generateAuxiliaryPrompt(prompt, responseConent)
+      const result = await this.apiClient.auxiliaryChat(messages)
+      if (result.error) {
+        logger.error(`辅助判断失败：${result.content}`)
+      } else {
+        logger.info(`辅助判断：${result.content}`)
+        return handleAuxiliaryResult(this.ctx, session, this.getFavorabilityConfig(), result.content)
+      }
+    }
+    return null
   }
 
   // 好感度阻断检查
   private async checkFavorabilityBlock(session: Session): Promise<string | void> {
     if (!this.config.enable_favorability) return null
-    return await handleFavorabilitySystem(this.ctx, session, this.config)
+    return await handleFavorabilitySystem(this.ctx, session, this.getFavorabilityConfig())
   }
 
   // 前置检查
@@ -224,19 +267,23 @@ export class SAT extends Sat {
     // 添加好感度提示
     if (this.config.enable_favorability) {
       const user = await ensureUserExists(this.ctx, session.userId, session.username)
-      systemPrompt += generateLevelPrompt(getFavorabilityLevel(user.favorability, this.config), this.config)
+      systemPrompt += generateLevelPrompt(getFavorabilityLevel(user.favorability, this.getFavorabilityConfig()), this.getFavorabilityConfig())
     }
     if (this.config.log_system_prompt) logger.info(`系统提示：${systemPrompt}`)
       return systemPrompt
   }
 
   // 格式化回复
-  private formatResponse(session: Session,response: string) {
-    if (this.config.reply_pointing && this.getChannelParallelCount(session) > 1) {
+  private formatResponse(session: Session, response: string, auxiliaryResult: string | void) {
+    this.updateChannelParallelCount(session, -1)
+    if (!response) return session.text('commands.sat.messages.no-response')
+    if (this.config.reply_pointing && this.getChannelParallelCount(session) > 0) {
       response = `@${session.username} ` + response
     }
-    this.updateChannelParallelCount(session, -1)
-    if (this.config.sentences_divide) {
+    if (auxiliaryResult && this.config.visible_favorability) {
+      response += auxiliaryResult
+    }
+    if (this.config.sentences_divide && response.length > 10) {
       return splitSentences(response).map(text => h.text(text))
     }
     return response

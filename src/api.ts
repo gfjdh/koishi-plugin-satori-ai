@@ -27,7 +27,22 @@ export class APIClient {
     const payload = this.createPayload(messages)
     for (let i = 0; i < this.config.keys.length; i++) {
       try {
-        return await this.tryRequest(payload)
+        return await this.tryRequest(this.config.baseURL, payload, this.config.keys)
+      } catch (error) {
+        if (i == this.config.keys.length - 1) {
+          return this.handleAPIError(error as APIError)
+        }
+        this.rotateKey()
+      }
+    }
+  }
+
+  // 发送辅助聊天请求
+  public async auxiliaryChat(messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
+    const AuxiliaryPayload = this.createAuxiliaryPayload(messages)
+    for (let i = 0; i < this.config.keys.length; i++) {
+      try {
+        return await this.tryRequest(this.config.auxiliary_LLM_URL, AuxiliaryPayload, this.config.auxiliary_LLM_key)
       } catch (error) {
         if (i == this.config.keys.length - 1) {
           return this.handleAPIError(error as APIError)
@@ -38,7 +53,7 @@ export class APIClient {
   }
 
   // 生成请求体
-  protected createPayload(messages: Sat.Msg[]): any {
+  private createPayload(messages: Sat.Msg[]): any {
     return {
       model: this.config.appointModel,
       messages,
@@ -50,10 +65,19 @@ export class APIClient {
     }
   }
 
+  // 生成辅助请求体
+  private createAuxiliaryPayload(messages: Sat.Msg[]): any {
+    return {
+      model: this.config.auxiliary_LLM,
+      messages,
+      temperature: 0.1
+    }
+  }
+
   // 尝试请求
-  private async tryRequest(payload: any): Promise<{ content: string; error: boolean }> {
-    const url = `${trimSlash(this.config.baseURL)}/chat/completions`
-    const headers = this.createHeaders()
+  private async tryRequest(URL: string, payload: any, keys: string[]): Promise<{ content: string; error: boolean }> {
+    const url = `${trimSlash(URL)}/chat/completions`
+    const headers = this.createHeaders(keys)
 
     let content: string
     for (let i = 1; i <= this.config.maxRetryTimes; i++) {
@@ -66,6 +90,8 @@ export class APIClient {
         if (i == this.config.maxRetryTimes) {
           return this.handleAPIError(error)
         }
+        //等待后重试
+        await new Promise(resolve => setTimeout(resolve, this.config.retry_delay_time || 5000))
         logger.warn(`API请求失败(${error})，重试(第${i}次)中...`)
         continue
       }
@@ -74,9 +100,9 @@ export class APIClient {
   }
 
   // 生成请求头
-  private createHeaders() {
+  private createHeaders(keys: string[]): Record<string, string> {
     return {
-      Authorization: `Bearer ${this.config.keys[this.currentKeyIndex]}`,
+      Authorization: `Bearer ${keys[this.currentKeyIndex]}`,
       'Content-Type': 'application/json'
     }
   }
@@ -120,7 +146,7 @@ export class APIClient {
   // 测试连接
   public async testConnection(): Promise<boolean> {
     try {
-      await this.ctx.http.get(`${trimSlash(this.config.baseURL)}/models`, { headers: this.createHeaders() })
+      await this.ctx.http.get(`${trimSlash(this.config.baseURL)}/models`, { headers: this.createHeaders(this.config.keys) })
       logger.info('API connection test succeeded')
       return true
     } catch (error) {

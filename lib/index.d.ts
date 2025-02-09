@@ -9,8 +9,10 @@ export declare class SAT extends Sat {
     private getAPIConfig;
     private getMemoryConfig;
     private getMiddlewareConfig;
+    private getFavorabilityConfig;
     private registerCommands;
     private handleSatCommand;
+    private handleAuxiliaryDialogue;
     private checkFavorabilityBlock;
     private performPreChecks;
     private checkDuplicateDialogue;

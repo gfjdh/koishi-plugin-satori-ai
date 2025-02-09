@@ -1,8 +1,11 @@
 import { Context, Session } from 'koishi';
 import { User, FavorabilityLevel, FavorabilityConfig } from './types';
+import { Sat } from './types';
 export declare function handleFavorabilitySystem(ctx: Context, session: Session, config: FavorabilityConfig): Promise<string | void>;
 export declare function getFavorabilityLevel(favorability: number, config: FavorabilityConfig): FavorabilityLevel;
 export declare function generateLevelPrompt(level: FavorabilityLevel, config: FavorabilityConfig): string;
+export declare function generateAuxiliaryPrompt(prompt: string, responseContent: string): Sat.Msg[];
+export declare function handleAuxiliaryResult(ctx: Context, session: Session, config: FavorabilityConfig, responseContent: string): Promise<string | void>;
 export declare function handleContentCheck(ctx: Context, content: string, userid: string): Promise<number>;
 export declare function applyFavorabilityEffect(ctx: Context, user: User, effect: number): Promise<void>;
 interface FavorabilityEffect {

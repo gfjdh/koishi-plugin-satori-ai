@@ -13,6 +13,9 @@ export type FavorabilityAdjustment = number | {
 };
 export interface FavorabilityConfig {
     enable_favorability: boolean;
+    censor_favorability: boolean;
+    value_of_favorability: number;
+    enable_auxiliary_LLM: boolean;
     prompt_0: string;
     favorability_div_1: number;
     prompt_1: string;
@@ -52,11 +55,15 @@ export interface APIConfig {
     baseURL: string;
     keys: string[];
     appointModel: string;
+    auxiliary_LLM_URL: string;
+    auxiliary_LLM: string;
+    auxiliary_LLM_key: string[];
     content_max_tokens: number;
     temperature: number;
     frequency_penalty: number;
     presence_penalty: number;
     maxRetryTimes?: number;
+    retry_delay_time?: number;
     reasoning_content?: boolean;
 }
 export interface APIError extends Error {
@@ -113,6 +120,9 @@ export declare namespace Sat {
         baseURL: string;
         key: string[];
         appointModel: string;
+        auxiliary_LLM_URL: string;
+        auxiliary_LLM: string;
+        auxiliary_LLM_key: string[];
         prompt: string;
         max_tokens: number;
         content_max_tokens: number;
@@ -139,6 +149,10 @@ export declare namespace Sat {
         time_interval: number;
         reply_pointing: boolean;
         enable_favorability: boolean;
+        censor_favorability: boolean;
+        value_of_favorability: number;
+        enable_auxiliary_LLM: boolean;
+        visible_favorability: boolean;
         prompt_0: string;
         favorability_div_1: number;
         prompt_1: string;
@@ -151,6 +165,7 @@ export declare namespace Sat {
         blockuser: string[];
         blockchannel: string[];
         maxRetryTimes: number;
+        retry_delay_time: number;
     }
     const Config: Schema<Config>;
 }

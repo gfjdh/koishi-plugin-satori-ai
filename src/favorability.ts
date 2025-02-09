@@ -2,6 +2,7 @@
 import { Context, Session } from 'koishi'
 import { User, FavorabilityLevel, FavorabilityConfig } from './types'
 import { getUser, updateFavorability, ensureUserExists } from './database'
+import { Sat } from './types'
 
 export async function handleFavorabilitySystem(ctx: Context, session: Session, config: FavorabilityConfig): Promise<string | void> {
   const user = await ensureUserExists(ctx, session.userId, session.username);
@@ -44,6 +45,46 @@ export function generateLevelPrompt(
   return `\n${prompts[level]}\n`
 }
 
+// 生成辅助提示
+export function generateAuxiliaryPrompt(prompt: string, responseContent: string): Sat.Msg[] {
+  const messages: Sat.Msg[] = []
+  // 添加系统提示
+  messages.push({
+    role: 'system',
+    content: "请你评价我之后给你的对话，你需要从回答者的角度考虑其听到此问题和做出此回答的感受，然后返回判断。你返回的应当是‘愤怒’，‘平淡’，‘愉悦’中的一个，你只需要返回这几个词之一，不要补充其他内容"
+  })
+  // 添加当前对话
+  messages.push({
+    role: 'user',
+    content: `问题：${prompt}，回答：${responseContent}`
+  })
+  return messages
+}
+
+// 处理辅助结果
+export async function handleAuxiliaryResult(ctx: Context, session: Session, config: FavorabilityConfig, responseContent: string): Promise<string | void> {
+  const user = await ensureUserExists(ctx, session.userId, session.username);
+
+  const effectMap = {
+    '愤怒': Math.floor(-1 * config.value_of_favorability),
+    '轻松': 0,
+    '愉悦': Math.floor(0.5 * config.value_of_favorability)
+  }
+  // 正则匹配responseContent中的关键词
+  const regex = /愤怒|平淡|愉悦/g
+  const KeyWord = responseContent.match(regex)?.[0]
+  // 处理好感度检查
+  const favorabilityEffect = effectMap[KeyWord]
+  // 应用好感度效果
+  await applyFavorabilityEffect(ctx, user, favorabilityEffect)
+  if (favorabilityEffect < 0) {
+    return "(好感度↓)";
+  }
+  if (favorabilityEffect > 0) {
+    return "(好感度↑)";
+  }
+}
+
 // 处理好感度检查
 export async function handleContentCheck(ctx: Context, content: string, userid: string): Promise<number> {
   const user = await getUser(ctx, userid)
@@ -51,9 +92,10 @@ export async function handleContentCheck(ctx: Context, content: string, userid: 
   // 敏感词检测
   const regex = /\*\*/g
   const hasCensor = regex.test(content)
-  if (hasCensor) {
-    await updateFavorability(ctx, user, -15)
-    return -15
+
+  if (hasCensor && this.config.censor_favorability) {
+    await updateFavorability(ctx, user, -1 * this.config.value_of_favorability)
+    return -1 * this.config.value_of_favorability
   }
 
   // 正常情况增加1点

@@ -10,7 +10,12 @@ export declare class APIClient {
         content: string;
         error: boolean;
     }>;
-    protected createPayload(messages: Sat.Msg[]): any;
+    auxiliaryChat(messages: Sat.Msg[]): Promise<{
+        content: string;
+        error: boolean;
+    }>;
+    private createPayload;
+    private createAuxiliaryPayload;
     private tryRequest;
     private createHeaders;
     private handleAPIError;
