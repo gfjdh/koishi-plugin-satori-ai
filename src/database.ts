@@ -32,7 +32,7 @@ export async function updateFavorability(ctx: Context, user: User, adjustment: F
   if (typeof adjustment === 'number')
     newValue = user.favorability + adjustment
   else
-    newValue = 0
+    newValue = user.favorability
 
   await ctx.database.set('p_system', { userid: user.userid }, { favorability: newValue })
 }
