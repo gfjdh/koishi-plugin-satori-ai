@@ -52,7 +52,7 @@ export class APIClient {
 
   // 尝试请求
   private async tryRequest(payload: any): Promise<{ content: string; error: boolean }> {
-    const url = `${trimSlash(this.config.baseURL)}/v1/chat/completions`
+    const url = `${trimSlash(this.config.baseURL)}/chat/completions`
     const headers = this.createHeaders()
 
     let content: string
@@ -89,7 +89,7 @@ export class APIClient {
     const errorCode = error.response?.data?.error?.code || 'unknown';
     const message = error.response?.data?.error?.message || error.message;
 
-    logger.error(`Error [${status}]: ${errorCode} - ${message}`);
+    logger.error(`API Error [${status}]: ${errorCode} - ${message}`);
 
     switch (status) {
       case 400:
@@ -120,7 +120,7 @@ export class APIClient {
   // 测试连接
   public async testConnection(): Promise<boolean> {
     try {
-      await this.ctx.http.get(`${trimSlash(this.config.baseURL)}/v1/models`, { headers: this.createHeaders() })
+      await this.ctx.http.get(`${trimSlash(this.config.baseURL)}/models`, { headers: this.createHeaders() })
       logger.info('API connection test succeeded')
       return true
     } catch (error) {

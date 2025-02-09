@@ -226,7 +226,8 @@ export class SAT extends Sat {
       const user = await ensureUserExists(this.ctx, session.userId, session.username)
       systemPrompt += generateLevelPrompt(getFavorabilityLevel(user.favorability, this.config), this.config)
     }
-    return systemPrompt
+    if (this.config.log_system_prompt) logger.info(`系统提示：${systemPrompt}`)
+      return systemPrompt
   }
 
   // 格式化回复

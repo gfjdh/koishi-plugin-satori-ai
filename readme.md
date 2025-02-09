@@ -8,10 +8,14 @@
 
 [作者主页](https://gfjdh.cn)
 
-本插件是一个基于 Koishi 框架的聊天机器人插件，集成了深度求索（DeepSeek）的 AI 模型，支持多种触发方式和丰富的配置选项。
+本插件是一个基于 Koishi 框架的聊天机器人插件，支持多种触发方式和丰富的配置选项。
 适配于satori适配器，不保证其他适配器能否适用。
 
-使用前在[deepseek](https://platform.deepseek.com)中获取api-key
+使用前在[deepseek](https://platform.deepseek.com)或[火山引擎](https://www.volcengine.com/)中获取api-key
+
+如果使用deepseek，你的baseURL应该形如"https://api.deepseek.com"
+如果使用火山引擎，你的baseURL应该形如"https://ark.cn-beijing.volces.com/api/v3"
+需要注意的是，deepseek模型的温度配置范围为0-2，而火山引擎为0-1
 
 对于部署者行为及所产生的任何纠纷， Koishi 及 koishi-plugin-satori-ai 概不负责。
 

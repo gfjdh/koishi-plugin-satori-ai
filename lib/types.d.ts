@@ -121,6 +121,7 @@ export declare namespace Sat {
         temperature: number;
         frequency_penalty: number;
         presence_penalty: number;
+        log_system_prompt: boolean;
         log_reasoning_content: boolean;
         authority: number;
         alias: string[];

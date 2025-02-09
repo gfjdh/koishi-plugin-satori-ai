@@ -144,6 +144,7 @@ export namespace Sat {
     temperature: number
     frequency_penalty: number
     presence_penalty: number
+    log_system_prompt: boolean
     log_reasoning_content: boolean
     authority: number
 
@@ -199,6 +200,7 @@ export namespace Sat {
       frequency_penalty: Schema.number().default(0.0).description('频率惩罚'),
       presence_penalty: Schema.number().default(0.0).description('存在惩罚'),
       maxRetryTimes: Schema.number().default(30).description('报错后最大重试次数'),
+      log_system_prompt: Schema.boolean().default(false).description('是否在日志中输出系统提示'),
       log_reasoning_content: Schema.boolean().default(true).description('是否在日志中输出思维链（deepseek-r1）')
     }).description('请求设置'),
 
