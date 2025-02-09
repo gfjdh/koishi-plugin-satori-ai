@@ -83,7 +83,7 @@ export class MemoryManager {
   public async searchMemories(session: Session, prompt: string, type: 'user' | 'common' = 'user'): Promise<string> {
     const filePathMap = {
       'user': this.getUserMemoryPath(session.userId),
-      'common': path.join(this.config.dataDir, 'common.txt')
+      'common': path.join(this.config.dataDir, 'common_sense.txt')
     }
     const topNMap = {
       'user': this.config.dailogues_topN,

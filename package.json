@@ -40,9 +40,9 @@
     "koishi": "^4.17.10"
   },
   "devDependencies": {
-    "typescript": "^5.0.4",
     "@types/node": "^20.11.0",
-    "koishi": "^4.17.10"
+    "koishi": "^4.17.10",
+    "typescript": "^5.0.4"
   },
   "koishi": {
     "description": {

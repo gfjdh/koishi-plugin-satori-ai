@@ -11,7 +11,9 @@ export class APIClient {
   constructor(
     private ctx: Context,
     private config: APIConfig
-  ) {}
+  ) {
+    this.initialize()
+  }
 
   // 启动时测试连接
   async initialize() {
@@ -22,7 +24,6 @@ export class APIClient {
 
   // 发送聊天请求
   public async chat(messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
-    this.initialize()
     const payload = this.createPayload(messages)
     for (let i = 0; i < this.config.keys.length; i++) {
       try {
@@ -65,8 +66,7 @@ export class APIClient {
         if (i == this.config.maxRetryTimes) {
           return this.handleAPIError(error)
         }
-        this.handleAPIError(error)
-        logger.warn(`API请求失败，重试(第${i}次)中...`)
+        logger.warn(`API请求失败(${error})，重试(第${i}次)中...`)
         continue
       }
     }
@@ -89,7 +89,7 @@ export class APIClient {
     const errorCode = error.response?.data?.error?.code || 'unknown';
     const message = error.response?.data?.error?.message || error.message;
 
-    logger.error(`API Error [${status}]: ${errorCode} - ${message}`);
+    logger.error(`Error [${status}]: ${errorCode} - ${message}`);
 
     switch (status) {
       case 400:
