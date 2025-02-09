@@ -51,7 +51,7 @@ export function generateAuxiliaryPrompt(prompt: string, responseContent: string)
   // 添加系统提示
   messages.push({
     role: 'system',
-    content: "请你评价我之后给你的对话，你需要从回答者的角度考虑其听到此问题和做出此回答的感受，然后返回判断。你返回的应当是‘愤怒’，‘平淡’，‘愉悦’中的一个，你只需要返回这几个词之一，不要补充其他内容"
+    content: "请你评价我之后给你的对话，你需要从回答者的角度考虑其听到此问题和做出此回答的感受，然后返回判断。你返回的应当是‘暴怒’，‘平淡’，‘愉悦’中的一个，你只需要返回这几个词之一，不要补充其他内容"
   })
   // 添加当前对话
   messages.push({
@@ -66,17 +66,17 @@ export async function handleAuxiliaryResult(ctx: Context, session: Session, conf
   const user = await ensureUserExists(ctx, session.userId, session.username);
 
   const effectMap = {
-    '愤怒': Math.floor(-1 * config.value_of_favorability),
-    '轻松': 0,
+    '暴怒': Math.floor(-1 * config.value_of_favorability),
+    '平淡': 0,
     '愉悦': Math.floor(0.5 * config.value_of_favorability)
   }
   // 正则匹配responseContent中的关键词
-  const regex = /愤怒|平淡|愉悦/g
+  const regex = /暴怒|平淡|愉悦/g
   const KeyWord = responseContent.match(regex)?.[0]
   // 处理好感度检查
   const favorabilityEffect = effectMap[KeyWord]
   // 应用好感度效果
-  await applyFavorabilityEffect(ctx, user, favorabilityEffect)
+  await applyFavorabilityEffect(ctx, user, favorabilityEffect ? favorabilityEffect : 0)
   if (favorabilityEffect < 0) {
     return "(好感度↓)";
   }
