@@ -59,6 +59,7 @@ export class SAT extends Sat {
       message_max_length: this.config.message_max_length,
       memory_block_words: this.config.memory_block_words,
       enable_self_memory: this.config.enable_self_memory,
+      personal_memory: this.config.personal_memory,
       remember_min_length: this.config.remember_min_length,
       common_topN: this.config.common_topN,
       dailogues_topN: this.config.dailogues_topN
@@ -139,20 +140,20 @@ export class SAT extends Sat {
     const processedPrompt = await this.processInput(session, prompt)
     const response = await this.generateResponse(session, processedPrompt)
     logger.info(`Satori AI：${response.content}`)
-    const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response.content)
+    const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆
-    await this.memoryManager.updateMemories(session, processedPrompt, response)
+    await this.memoryManager.updateMemories(session, processedPrompt, this.getMemoryConfig(), response)
     return this.formatResponse(session, response.content, auxiliaryResult)
   }
 
   // 处理辅助判断
-  private async handleAuxiliaryDialogue(session: Session, prompt: string, responseConent: string) {
+  private async handleAuxiliaryDialogue(session: Session, prompt: string, response: { content: string, error: boolean}) {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
     const regex = /\*\*/g
     const censor = prompt.match(regex)?.length
     if (censor) return "(好感度↓↓)"
-    if (this.config.enable_auxiliary_LLM && responseConent) {
-      const messages = generateAuxiliaryPrompt(prompt, responseConent, user, this.getFavorabilityConfig())
+    if (this.config.enable_auxiliary_LLM && !response.error && response.content) {
+      const messages = generateAuxiliaryPrompt(prompt, response.content, user, this.getFavorabilityConfig())
       const result = await this.apiClient.auxiliaryChat(messages)
       if (result.error) {
         logger.error(`辅助判断失败：${result.content}`)
@@ -233,7 +234,6 @@ export class SAT extends Sat {
 
   // 生成回复
   private async generateResponse(session: Session, prompt: string) {
-    const messages = this.buildMessages(session, prompt)
     if (this.getChannelParallelCount(session) > this.config.max_parallel_count) {
       logger.info(`频道 ${session.channelId} 并发数过高(${this.getChannelParallelCount(session)})，${session.username}等待中...`)
     }
@@ -242,6 +242,7 @@ export class SAT extends Sat {
       await new Promise(resolve => setTimeout(resolve, 1000))
       this.updateChannelParallelCount(session, 1)
     }
+    const messages = this.buildMessages(session, prompt)
     logger.info(`频道 ${session.channelId} 处理：${session.username},剩余${this.getChannelParallelCount(session)}并发`)
     return await this.apiClient.chat(await messages)
   }

@@ -40,6 +40,7 @@ export interface MemoryConfig {
     message_max_length: number;
     memory_block_words: string[];
     enable_self_memory: boolean;
+    personal_memory: boolean;
     remember_min_length: number;
     common_topN: number;
     dailogues_topN: number;
@@ -140,6 +141,7 @@ export declare namespace Sat {
         dataDir: string;
         enable_self_memory: boolean;
         memory_block_words: string[];
+        personal_memory: boolean;
         common_topN: number;
         dailogues_topN: number;
         enable_fixed_dialogues: boolean;

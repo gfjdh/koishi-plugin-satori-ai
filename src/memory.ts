@@ -14,10 +14,10 @@ export class MemoryManager {
   ) {}
 
   // 更新记忆
-  public async updateMemories(session: Session, prompt: string, response: {content:string, error: boolean}) {
+  public async updateMemories(session: Session, prompt: string, config: MemoryConfig, response: {content:string, error: boolean}) {
     if (response.error) return
     // 更新短期记忆
-    this.updateChannelMemory(session, prompt, response.content)
+    this.updateChannelMemory(session, prompt, config, response.content)
     // 保存长期记忆
     if (this.shouldRemember(prompt)) {
       await this.saveLongTermMemory(session, [{
@@ -33,8 +33,11 @@ export class MemoryManager {
   }
 
   // 更新短期记忆
-  private updateChannelMemory(session: Session, prompt: string, response?: string): void {
-    const channelId = session.channelId
+  private updateChannelMemory(session: Session, prompt: string, config: MemoryConfig, response?: string): void {
+    let channelId = session.channelId
+    if (config.personal_memory) {
+      channelId = session.userId
+    }
     if (!this.channelMemories.has(channelId)) {
       this.channelMemories.set(channelId, {
         dialogues: [],

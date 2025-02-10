@@ -4,7 +4,7 @@ export declare class MemoryManager {
     private config;
     private channelMemories;
     constructor(config: MemoryConfig);
-    updateMemories(session: Session, prompt: string, response: {
+    updateMemories(session: Session, prompt: string, config: MemoryConfig, response: {
         content: string;
         error: boolean;
     }): Promise<void>;

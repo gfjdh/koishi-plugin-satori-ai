@@ -52,7 +52,7 @@ export function generateAuxiliaryPrompt(prompt: string, responseContent: string,
   // 添加系统提示
   messages.push({
     role: 'system',
-    content: "请你评价我之后给你的对话，你需要从回答者的角度，结合两人关系，考虑回答者听到此问题和做出此回答的感受，然后返回判断。你需要谨慎判断回答者是在警告还是在调情，当回答体现出警告时返回‘愤怒’。当回答体现出明显开心时返回‘愉悦’。你返回的应当是‘愤怒’，‘平淡’，‘愉悦’中的一个。你只需要返回这几个词之一，不要补充其他内容"
+    content: "请你评价我之后给你的对话，你需要从回答者的角度，结合两人关系，猜测回答者做出此回答的感受好坏，然后返回打分。你需要谨慎判断回答者是在警告还是在调情。你返回的值应当是从0到9之间的一个数字，数字越大代表感受越幸福，数字越小代表感受越恶心。你只需要返回一个数字，不要补充其他内容"
   })
   // 添加当前对话
   messages.push({
@@ -66,16 +66,17 @@ export function generateAuxiliaryPrompt(prompt: string, responseContent: string,
 export async function handleAuxiliaryResult(ctx: Context, session: Session, config: FavorabilityConfig, responseContent: string): Promise<string | void> {
   const user = await ensureUserExists(ctx, session.userId, session.username);
 
-  const effectMap = {
-    '愤怒': Math.floor(-1 * config.value_of_favorability),
-    '平淡': 0,
-    '愉悦': Math.floor(0.2 * config.value_of_favorability)
-  }
-  // 正则匹配responseContent中的关键词
-  const regex = /愤怒|平淡|愉悦/g
-  const KeyWord = responseContent.match(regex)?.[0]
+  // 正则匹配responseContent中的第一个数字
+  const regex = /\d+/g
+  const value = parseInt(responseContent.match(regex)[0]) ? parseInt(responseContent.match(regex)[0]) : 5
   // 处理好感度检查
-  const favorabilityEffect = effectMap[KeyWord]
+  let favorabilityEffect = value - 5
+  if (favorabilityEffect < 0) {
+    favorabilityEffect = Math.floor(0.3 * config.value_of_favorability * favorabilityEffect)
+  }
+  if (favorabilityEffect > 0) {
+    favorabilityEffect = Math.floor(0.1 * config.value_of_favorability * favorabilityEffect)
+  }
   // 应用好感度效果
   await applyFavorabilityEffect(ctx, user, favorabilityEffect ? favorabilityEffect : 0)
   if (favorabilityEffect < 0) {
@@ -84,6 +85,7 @@ export async function handleAuxiliaryResult(ctx: Context, session: Session, conf
   if (favorabilityEffect > 0) {
     return "(好感度↑)";
   }
+  return;
 }
 
 // 处理好感度检查
@@ -99,9 +101,9 @@ export async function handleContentCheck(ctx: Context, content: string, userid: 
     return -1 * config.value_of_favorability
   }
   // 如果开启辅助LLM
-  // if (config.enable_auxiliary_LLM) {
-  //   return 0
-  // }
+  if (config.enable_auxiliary_LLM) {
+    return 0
+  }
   // 正常情况增加1点
   await updateFavorability(ctx, user, 1)
   return 1

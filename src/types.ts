@@ -48,6 +48,7 @@ export interface MemoryConfig {
   message_max_length: number
   memory_block_words: string[]
   enable_self_memory: boolean
+  personal_memory: boolean
   remember_min_length: number
   common_topN: number
   dailogues_topN: number
@@ -164,6 +165,7 @@ export namespace Sat {
     dataDir: string
     enable_self_memory: boolean
     memory_block_words: string[]
+    personal_memory: boolean
     common_topN: number
     dailogues_topN: number
     enable_fixed_dialogues: boolean
@@ -233,6 +235,7 @@ export namespace Sat {
 
     Schema.object({
       enable_self_memory: Schema.boolean().default(true).description('是否启用模型自发言记忆（仅短期）'),
+      personal_memory: Schema.boolean().default(true).description('是否启用分人记忆（频道内）'),
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
       memory_block_words: Schema.array(String).default(['好感']).description('记忆屏蔽词'),
       remember_min_length: Schema.number().description('触发保存到记忆的长度').default(20),
