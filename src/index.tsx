@@ -233,13 +233,16 @@ export class SAT extends Sat {
 
   // 生成回复
   private async generateResponse(session: Session, prompt: string) {
+    const messages = this.buildMessages(session, prompt)
+    if (this.getChannelParallelCount(session) > this.config.max_parallel_count) {
+      logger.info(`频道 ${session.channelId} 并发数过高(${this.getChannelParallelCount(session)})，${session.username}等待中...`)
+    }
     while (this.getChannelParallelCount(session) > this.config.max_parallel_count) {
-      logger.info(`频道 ${session.channelId} 并发数过高，${session.username}等待中...`)
       this.updateChannelParallelCount(session, -1)
-      await new Promise(resolve => setTimeout(resolve, this.config.retry_delay_time))
+      await new Promise(resolve => setTimeout(resolve, 1000))
       this.updateChannelParallelCount(session, 1)
     }
-    const messages = this.buildMessages(session, prompt)
+    logger.info(`频道 ${session.channelId} 处理：${session.username},剩余${this.getChannelParallelCount(session)}并发`)
     return await this.apiClient.chat(await messages)
   }
 
@@ -285,7 +288,7 @@ export class SAT extends Sat {
   private formatResponse(session: Session, response: string, auxiliaryResult: string | void) {
     this.updateChannelParallelCount(session, -1)
     if (!response) return session.text('commands.sat.messages.no-response')
-    if (this.config.reply_pointing && this.getChannelParallelCount(session) > 0) {
+    if (this.config.reply_pointing && this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1) {
       response = `@${session.username} ` + response
     }
     if (auxiliaryResult && this.config.visible_favorability) {

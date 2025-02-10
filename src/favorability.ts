@@ -52,7 +52,7 @@ export function generateAuxiliaryPrompt(prompt: string, responseContent: string,
   // 添加系统提示
   messages.push({
     role: 'system',
-    content: "请你评价我之后给你的对话，你需要从回答者的角度，结合两人关系，考虑回答者听到此问题和做出此回答的感受，然后返回判断。你需要谨慎判断回答者是在警告还是在调情，当且仅当回答体现出警告时才返回‘愤怒’。当且仅当回答体现出明显开心时才返回‘愉悦’。你返回的应当是‘愤怒’，‘平淡’，‘愉悦’中的一个。你只需要返回这几个词之一，不要补充其他内容"
+    content: "请你评价我之后给你的对话，你需要从回答者的角度，结合两人关系，考虑回答者听到此问题和做出此回答的感受，然后返回判断。你需要谨慎判断回答者是在警告还是在调情，当回答体现出警告时返回‘愤怒’。当回答体现出明显开心时返回‘愉悦’。你返回的应当是‘愤怒’，‘平淡’，‘愉悦’中的一个。你只需要返回这几个词之一，不要补充其他内容"
   })
   // 添加当前对话
   messages.push({
@@ -98,10 +98,10 @@ export async function handleContentCheck(ctx: Context, content: string, userid: 
     await updateFavorability(ctx, user, -1 * config.value_of_favorability)
     return -1 * config.value_of_favorability
   }
-  // 如果开启辅助LLM,则不增加好感度
-  if (config.enable_auxiliary_LLM) {
-    return 0
-  }
+  // 如果开启辅助LLM
+  // if (config.enable_auxiliary_LLM) {
+  //   return 0
+  // }
   // 正常情况增加1点
   await updateFavorability(ctx, user, 1)
   return 1
