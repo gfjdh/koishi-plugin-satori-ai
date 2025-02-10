@@ -146,11 +146,12 @@ export class SAT extends Sat {
 
   // 处理辅助判断
   private async handleAuxiliaryDialogue(session: Session, prompt: string, responseConent: string) {
+    const user = await ensureUserExists(this.ctx, session.userId, session.username)
     const regex = /\*\*/g
     const censor = prompt.match(regex)?.length
     if (censor) return "(好感度↓↓)"
     if (this.config.enable_auxiliary_LLM && responseConent) {
-      const messages = generateAuxiliaryPrompt(prompt, responseConent)
+      const messages = generateAuxiliaryPrompt(prompt, responseConent, user, this.getFavorabilityConfig())
       const result = await this.apiClient.auxiliaryChat(messages)
       if (result.error) {
         logger.error(`辅助判断失败：${result.content}`)
@@ -224,13 +225,19 @@ export class SAT extends Sat {
     }
     // 好感度检查
     if (this.config.enable_favorability) {
-      await handleContentCheck(this.ctx, censored, session.userId)
+      await handleContentCheck(this.ctx, censored, session.userId, this.getFavorabilityConfig())
     }
     return censored
   }
 
   // 生成回复
   private async generateResponse(session: Session, prompt: string) {
+    while (this.getChannelParallelCount(session) > this.config.max_parallel_count) {
+      logger.info(`频道 ${session.channelId} 并发数过高，${session.username}等待中...`)
+      this.updateChannelParallelCount(session, -1)
+      await new Promise(resolve => setTimeout(resolve, this.config.retry_delay_time))
+      this.updateChannelParallelCount(session, 1)
+    }
     const messages = this.buildMessages(session, prompt)
     return await this.apiClient.chat(await messages)
   }

@@ -172,6 +172,7 @@ export namespace Sat {
     randnum: number
     sentences_divide: boolean
     time_interval: number
+    max_parallel_count: number
     reply_pointing: boolean
 
     enable_favorability: boolean
@@ -222,6 +223,7 @@ export namespace Sat {
       presence_penalty: Schema.number().default(0.0).description('存在惩罚'),
       maxRetryTimes: Schema.number().default(10).description('报错后最大重试次数'),
       retry_delay_time: Schema.number().default(5000).description('每次重试延迟时间'),
+      max_parallel_count: Schema.number().default(2).description('频道最大并行请求数'),
       log_system_prompt: Schema.boolean().default(false).description('是否在日志中输出系统提示'),
       log_reasoning_content: Schema.boolean().default(true).description('是否在日志中输出思维链')
     }).description('请求设置'),

@@ -46,17 +46,18 @@ export function generateLevelPrompt(
 }
 
 // 生成辅助提示
-export function generateAuxiliaryPrompt(prompt: string, responseContent: string): Sat.Msg[] {
+export function generateAuxiliaryPrompt(prompt: string, responseContent: string, user: User, config: FavorabilityConfig): Sat.Msg[] {
   const messages: Sat.Msg[] = []
+  const level = getFavorabilityLevel(user.favorability, config)
   // 添加系统提示
   messages.push({
     role: 'system',
-    content: "请你评价我之后给你的对话，你需要从回答者的角度考虑其听到此问题和做出此回答的感受，然后返回判断。你返回的应当是‘暴怒’，‘平淡’，‘愉悦’中的一个，你只需要返回这几个词之一，不要补充其他内容"
+    content: "请你评价我之后给你的对话，你需要从回答者的角度，结合两人关系，考虑回答者听到此问题和做出此回答的感受，然后返回判断。你需要谨慎判断回答者是在警告还是在调情，当且仅当回答体现出警告时才返回‘愤怒’。当且仅当回答体现出明显开心时才返回‘愉悦’。你返回的应当是‘愤怒’，‘平淡’，‘愉悦’中的一个。你只需要返回这几个词之一，不要补充其他内容"
   })
   // 添加当前对话
   messages.push({
     role: 'user',
-    content: `问题：${prompt}，回答：${responseContent}`
+    content: `两人关系：${level}，问题：${prompt}，回答：${responseContent}`
   })
   return messages
 }
@@ -66,12 +67,12 @@ export async function handleAuxiliaryResult(ctx: Context, session: Session, conf
   const user = await ensureUserExists(ctx, session.userId, session.username);
 
   const effectMap = {
-    '暴怒': Math.floor(-1 * config.value_of_favorability),
+    '愤怒': Math.floor(-1 * config.value_of_favorability),
     '平淡': 0,
-    '愉悦': Math.floor(0.5 * config.value_of_favorability)
+    '愉悦': Math.floor(0.2 * config.value_of_favorability)
   }
   // 正则匹配responseContent中的关键词
-  const regex = /暴怒|平淡|愉悦/g
+  const regex = /愤怒|平淡|愉悦/g
   const KeyWord = responseContent.match(regex)?.[0]
   // 处理好感度检查
   const favorabilityEffect = effectMap[KeyWord]
@@ -86,18 +87,21 @@ export async function handleAuxiliaryResult(ctx: Context, session: Session, conf
 }
 
 // 处理好感度检查
-export async function handleContentCheck(ctx: Context, content: string, userid: string): Promise<number> {
+export async function handleContentCheck(ctx: Context, content: string, userid: string, config: FavorabilityConfig): Promise<number> {
   const user = await getUser(ctx, userid)
   if (!user) return 0
   // 敏感词检测
   const regex = /\*\*/g
   const hasCensor = regex.test(content)
 
-  if (hasCensor && this.config.censor_favorability) {
-    await updateFavorability(ctx, user, -1 * this.config.value_of_favorability)
-    return -1 * this.config.value_of_favorability
+  if (hasCensor && config.censor_favorability) {
+    await updateFavorability(ctx, user, -1 * config.value_of_favorability)
+    return -1 * config.value_of_favorability
   }
-
+  // 如果开启辅助LLM,则不增加好感度
+  if (config.enable_auxiliary_LLM) {
+    return 0
+  }
   // 正常情况增加1点
   await updateFavorability(ctx, user, 1)
   return 1

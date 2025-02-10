@@ -147,6 +147,7 @@ export declare namespace Sat {
         randnum: number;
         sentences_divide: boolean;
         time_interval: number;
+        max_parallel_count: number;
         reply_pointing: boolean;
         enable_favorability: boolean;
         censor_favorability: boolean;
