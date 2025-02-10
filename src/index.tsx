@@ -44,6 +44,7 @@ export class SAT extends Sat {
       auxiliary_LLM: this.config.auxiliary_LLM,
       auxiliary_LLM_key: this.config.auxiliary_LLM_key,
       content_max_tokens: this.config.content_max_tokens,
+      content_max_length: this.config.content_max_length,
       maxRetryTimes: this.config.maxRetryTimes,
       retry_delay_time: this.config.retry_delay_time,
       temperature: this.config.temperature,

@@ -59,6 +59,7 @@ export interface APIConfig {
     auxiliary_LLM: string;
     auxiliary_LLM_key: string[];
     content_max_tokens: number;
+    content_max_length: number;
     temperature: number;
     frequency_penalty: number;
     presence_penalty: number;
@@ -126,6 +127,7 @@ export declare namespace Sat {
         prompt: string;
         max_tokens: number;
         content_max_tokens: number;
+        content_max_length: number;
         message_max_length: number;
         remember_min_length: number;
         temperature: number;

@@ -71,6 +71,7 @@ export interface APIConfig {
   auxiliary_LLM: string
   auxiliary_LLM_key: string[]
   content_max_tokens: number
+  content_max_length: number
   temperature: number
   frequency_penalty: number
   presence_penalty: number
@@ -149,6 +150,7 @@ export namespace Sat {
 
     max_tokens: number
     content_max_tokens: number
+    content_max_length: number
     message_max_length: number
     remember_min_length: number
     temperature: number
@@ -216,7 +218,8 @@ export namespace Sat {
       alias: Schema.array(String).default(['ai']).description('触发命令;别名'),
       authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
       max_tokens: Schema.number().description('最大请求长度（token）').default(100),
-      content_max_tokens: Schema.number().description('最大回答长度（token）').default(1024),
+      content_max_tokens: Schema.number().description('最大回答长度（思维链+输出token）').default(4096),
+      content_max_length: Schema.number().description('最大回答长度（仅输出，字符数）').default(100),
       message_max_length: Schema.number().description('最大频道上下文长度（条数）').default(10),
       temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
       frequency_penalty: Schema.number().default(0.0).description('频率惩罚'),

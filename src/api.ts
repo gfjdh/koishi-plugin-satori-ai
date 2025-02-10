@@ -85,6 +85,10 @@ export class APIClient {
         const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
         content = response.choices[0].message.content
         if (this.config.reasoning_content) logger.info(`思维链: ${response.choices[0].message.reasoning_content || '无'}`)
+        if (content.length > this.config.content_max_length) {
+          logger.warn(`返回内容超过最大长度(${content.length} > ${this.config.content_max_length})，重试(第${i}次)中...`)
+          continue
+        }
         return { content: content, error: false }
       } catch (error) {
         if (i == this.config.maxRetryTimes) {
