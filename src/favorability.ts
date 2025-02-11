@@ -3,6 +3,8 @@ import { Context, Session } from 'koishi'
 import { User, FavorabilityLevel, FavorabilityConfig } from './types'
 import { getUser, updateFavorability, ensureUserExists } from './database'
 import { Sat } from './types'
+import * as fs from 'fs'
+import * as path from 'path'
 
 export async function handleFavorabilitySystem(ctx: Context, session: Session, config: FavorabilityConfig): Promise<string | void> {
   const user = await ensureUserExists(ctx, session.userId, session.username);
@@ -81,17 +83,17 @@ export async function handleAuxiliaryResult(ctx: Context, session: Session, conf
   return;
 }
 
-// 处理好感度检查
-export async function handleContentCheck(ctx: Context, content: string, userid: string, config: FavorabilityConfig): Promise<number> {
+// 处理输入好感度检查
+export async function inputContentCheck(ctx: Context, content: string, userid: string, config: FavorabilityConfig): Promise<number> {
   const user = await getUser(ctx, userid)
   if (!user) return 0
   // 敏感词检测
   const regex = /\*\*/g
   const hasCensor = regex.test(content)
 
-  if (hasCensor && config.censor_favorability) {
-    await updateFavorability(ctx, user, -1 * config.value_of_favorability)
-    return -1 * config.value_of_favorability
+  if (hasCensor && config.input_censor_favorability) {
+    await updateFavorability(ctx, user, -1 * config.value_of_input_favorability)
+    return -1 * config.value_of_input_favorability
   }
   // 如果开启辅助LLM
   if (config.enable_auxiliary_LLM) {
@@ -100,6 +102,38 @@ export async function handleContentCheck(ctx: Context, content: string, userid: 
   // 正常情况增加1点
   await updateFavorability(ctx, user, 1)
   return 1
+}
+
+// 处理输出好感度检查
+export async function outputContentCheck(ctx: Context, response: { content: string; error: boolean }, userid: string, config: FavorabilityConfig): Promise<number> {
+  if (response.error) return 0
+  const user = await getUser(ctx, userid)
+  if (!user) return 0
+  if (config.output_censor_favorability) {
+    const content = response.content
+    const filePath = path.join(config.dataDir, 'output_censor.txt')
+    if (!fs.existsSync(filePath)) { return 0 }
+    const censorWords = fs.readFileSync(filePath, 'utf-8').split(',')
+    const censoredContent = censorWords.reduce((acc, cur) => acc.replace(cur, '**'), content)
+    // 敏感词检测
+    const regex = /\*\*/g
+    const hasCensor = regex.test(censoredContent)
+    if (hasCensor) {
+      await updateFavorability(ctx, user, -1 * config.value_of_output_favorability)
+    return -1 * config.value_of_output_favorability
+  }
+  }
+  return 0
+}
+
+// 确保输出屏蔽词文件存在
+export async function ensureCensorFileExists(basePath: string): Promise<void> {
+  const filePath = path.join(basePath, 'output_censor.txt')
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  if (!fs.existsSync(filePath)) {
+    // 写入格式为UTF-8
+    fs.writeFileSync(filePath, '示例屏蔽词1,示例屏蔽词2,示例屏蔽词3', 'utf-8')
+  }
 }
 
 // 应用好感度效果

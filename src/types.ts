@@ -9,7 +9,17 @@ export interface User {
   p: number
   favorability: number
   time: Date
+  item?: Map<string, ItemInfo>;
 }
+
+// 道具数据模型
+interface ItemInfo {
+  count: number;
+  metadata?: {
+    // 扩展字段...
+  };
+}
+
 //好感度调整
 export type FavorabilityAdjustment =
   | number
@@ -18,8 +28,11 @@ export type FavorabilityAdjustment =
 //好感度配置
 export interface FavorabilityConfig {
   enable_favorability: boolean
-  censor_favorability: boolean
-  value_of_favorability: number
+  dataDir: string
+  input_censor_favorability: boolean
+  value_of_input_favorability: number
+  output_censor_favorability: boolean
+  value_of_output_favorability: number
   enable_auxiliary_LLM: boolean
   offset_of_fafavorability: number
   prompt_0: string
@@ -174,6 +187,7 @@ export namespace Sat {
     private: boolean
     mention: boolean
     duplicateDialogueCheck: boolean
+    enable_online_user_check: boolean
     random_min_tokens: number
     randnum: number
     sentences_divide: boolean
@@ -182,8 +196,10 @@ export namespace Sat {
     reply_pointing: boolean
 
     enable_favorability: boolean
-    censor_favorability: boolean
-    value_of_favorability: number
+    input_censor_favorability: boolean
+    value_of_input_favorability: number
+    output_censor_favorability: boolean
+    value_of_output_favorability: number
     enable_auxiliary_LLM: boolean
     offset_of_fafavorability: number
     visible_favorability: boolean
@@ -251,6 +267,7 @@ export namespace Sat {
       private: Schema.boolean().default(true).description('开启后私聊AI可触发对话, 不需要使用指令'),
       mention: Schema.boolean().default(true).description('开启后机器人被提及(at/引用)可触发对话'),
       duplicateDialogueCheck: Schema.boolean().default(true).description('是否检查重复对话'),
+      enable_online_user_check: Schema.boolean().default(true).description('在未回答而再次提问时是否提示用户有未完成的对话'),
       random_min_tokens: Schema.number().default(20).description('随机触发对话的最小长度'),
       randnum: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('在群聊中随机触发对话的概率，如需关闭可设置为 0'),
       sentences_divide: Schema.boolean().default(true).description('是否分句发送'),
@@ -259,12 +276,14 @@ export namespace Sat {
     }).description('对话设置'),
 
     Schema.object({
-      enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统(每次对话+1好感度)'),
-      censor_favorability: Schema.boolean().default(false).description('是否开启好感度审查(通过屏蔽词扣除好感)'),
-      value_of_favorability: Schema.number().default(15).description('屏蔽词每次扣除的好感度'),
-      enable_auxiliary_LLM: Schema.boolean().default(false).description('是否使用辅助大模型判断好感度增减(量与上一项配置相关,不稳定慎用)'),
+      enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统(每次对话默认+1好感度)'),
+      input_censor_favorability: Schema.boolean().default(false).description('是否开启好感度审查(通过输入屏蔽词扣除好感)'),
+      value_of_input_favorability: Schema.number().default(15).description('输入触发屏蔽词每次扣除的好感度'),
+      output_censor_favorability: Schema.boolean().default(false).description('通过输出屏蔽词扣除好感,在dataDir中的output_censor.txt修改)'),
+      value_of_output_favorability: Schema.number().default(15).description('输出触发屏蔽词每次扣除的好感度'),
+      enable_auxiliary_LLM: Schema.boolean().default(false).description('是否使用辅助大模型判断好感度增减(量与输入屏蔽词每次扣除的好感度相关,不稳定，慎用)'),
       offset_of_fafavorability: Schema.number().default(3.5).description('辅助大模型好感度偏移量(越大越容易扣好感度)'),
-      visible_favorability: Schema.boolean().default(true).description('是否开启辅助大模型好感度升降显示'),
+      visible_favorability: Schema.boolean().default(true).description('是否开启好感度升降显示'),
       prompt_0: Schema.string().role('textarea').description('厌恶好感补充设定'),
       favorability_div_1: Schema.number().default(15).description('厌恶-陌生分界线'),
       prompt_1: Schema.string().role('textarea').description('陌生好感补充设定'),

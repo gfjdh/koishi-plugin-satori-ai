@@ -7,14 +7,22 @@ export interface User {
     p: number;
     favorability: number;
     time: Date;
+    item?: Map<string, ItemInfo>;
+}
+interface ItemInfo {
+    count: number;
+    metadata?: {};
 }
 export type FavorabilityAdjustment = number | {
     absolute: number;
 };
 export interface FavorabilityConfig {
     enable_favorability: boolean;
-    censor_favorability: boolean;
-    value_of_favorability: number;
+    dataDir: string;
+    input_censor_favorability: boolean;
+    value_of_input_favorability: number;
+    output_censor_favorability: boolean;
+    value_of_output_favorability: number;
     enable_auxiliary_LLM: boolean;
     offset_of_fafavorability: number;
     prompt_0: string;
@@ -149,6 +157,7 @@ export declare namespace Sat {
         private: boolean;
         mention: boolean;
         duplicateDialogueCheck: boolean;
+        enable_online_user_check: boolean;
         random_min_tokens: number;
         randnum: number;
         sentences_divide: boolean;
@@ -156,8 +165,10 @@ export declare namespace Sat {
         max_parallel_count: number;
         reply_pointing: boolean;
         enable_favorability: boolean;
-        censor_favorability: boolean;
-        value_of_favorability: number;
+        input_censor_favorability: boolean;
+        value_of_input_favorability: number;
+        output_censor_favorability: boolean;
+        value_of_output_favorability: number;
         enable_auxiliary_LLM: boolean;
         offset_of_fafavorability: number;
         visible_favorability: boolean;
@@ -177,3 +188,4 @@ export declare namespace Sat {
     }
     const Config: Schema<Config>;
 }
+export {};

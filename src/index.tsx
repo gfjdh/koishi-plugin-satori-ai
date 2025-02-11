@@ -5,7 +5,7 @@ import * as path from 'path'
 import { APIClient } from './api'
 import { MemoryManager } from './memory'
 import { handleFixedDialogues } from './fixed-dialogues'
-import { handleFavorabilitySystem, handleContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult } from './favorability'
+import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
@@ -17,6 +17,7 @@ export class SAT extends Sat {
   private apiClient: APIClient
   private memoryManager: MemoryManager
   private ChannelParallelCount: Map<string, number> = new Map()
+  private onlineUsers: string[] = []
 
   // 重写构造函数
   constructor(ctx: Context, public config: Sat.Config) {
@@ -29,6 +30,7 @@ export class SAT extends Sat {
     // 初始化模块
     this.apiClient = new APIClient(ctx, this.getAPIConfig())
     this.memoryManager = new MemoryManager(this.getMemoryConfig())
+    ensureCensorFileExists(this.config.dataDir)
     // 注册中间件
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
@@ -73,8 +75,11 @@ export class SAT extends Sat {
         randnum: this.config.randnum,
         max_tokens: this.config.max_tokens,
         enable_favorability: this.config.enable_favorability,
-        censor_favorability: this.config.censor_favorability,
-        value_of_favorability: this.config.value_of_favorability,
+        dataDir: this.config.dataDir,
+        input_censor_favorability: this.config.input_censor_favorability,
+        value_of_input_favorability: this.config.value_of_input_favorability,
+        output_censor_favorability: this.config.output_censor_favorability,
+        value_of_output_favorability: this.config.value_of_output_favorability,
         enable_auxiliary_LLM: this.config.enable_auxiliary_LLM,
         offset_of_fafavorability: this.config.offset_of_fafavorability,
         prompt_0: this.config.prompt_0,
@@ -91,8 +96,11 @@ export class SAT extends Sat {
   private getFavorabilityConfig(): FavorabilityConfig {
     return {
       enable_favorability: this.config.enable_favorability,
-      censor_favorability: this.config.censor_favorability,
-      value_of_favorability: this.config.value_of_favorability,
+      dataDir: this.config.dataDir,
+      input_censor_favorability: this.config.input_censor_favorability,
+      value_of_input_favorability: this.config.value_of_input_favorability,
+      output_censor_favorability: this.config.output_censor_favorability,
+      value_of_output_favorability: this.config.value_of_output_favorability,
       enable_auxiliary_LLM: this.config.enable_auxiliary_LLM,
       offset_of_fafavorability: this.config.offset_of_fafavorability,
       prompt_0: this.config.prompt_0,
@@ -145,15 +153,20 @@ export class SAT extends Sat {
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆
     await this.memoryManager.updateMemories(session, processedPrompt, this.getMemoryConfig(), response)
+    this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
     return this.formatResponse(session, response.content, auxiliaryResult)
   }
 
   // 处理辅助判断
   private async handleAuxiliaryDialogue(session: Session, prompt: string, response: { content: string, error: boolean}) {
+    if (response.error) return null
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
+    const outputCheck = await outputContentCheck(this.ctx, response, session.userId, this.getFavorabilityConfig())
     const regex = /\*\*/g
-    const censor = prompt.match(regex)?.length
-    if (censor && this.config.visible_favorability) return "(好感↓↓)"
+    const inputCensor = prompt.match(regex)?.length
+    const outputCensor = outputCheck < 0
+    if (inputCensor && this.config.visible_favorability) return "(好感↓↓)"
+    if (outputCensor && this.config.visible_favorability) return "(好感↓)"
     if (this.config.enable_auxiliary_LLM && !response.error && response.content) {
       const messages = generateAuxiliaryPrompt(prompt, response.content, user, this.getFavorabilityConfig())
       const result = await this.apiClient.auxiliaryChat(messages)
@@ -183,6 +196,9 @@ export class SAT extends Sat {
       return session.text('commands.sat.messages.no-prompt')
     if (prompt.length > this.config.max_tokens)
       return session.text('commands.sat.messages.tooLong')
+    if (this.onlineUsers.includes(session.userId) && this.config.enable_online_user_check)
+      return session.text('commands.sat.messages.online')
+    this.onlineUsers.push(session.userId)
     return null
   }
 
@@ -230,7 +246,7 @@ export class SAT extends Sat {
     }
     // 好感度检查
     if (this.config.enable_favorability) {
-      await handleContentCheck(this.ctx, censored, session.userId, this.getFavorabilityConfig())
+      await inputContentCheck(this.ctx, censored, session.userId, this.getFavorabilityConfig())
     }
     return censored
   }
@@ -292,7 +308,7 @@ export class SAT extends Sat {
       return systemPrompt
   }
 
-  // 格式化回复
+  // 处理回复
   private formatResponse(session: Session, response: string, auxiliaryResult: string | void) {
     this.updateChannelParallelCount(session, -1)
     if (!response) return session.text('commands.sat.messages.no-response')

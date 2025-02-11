@@ -8,6 +8,7 @@ commands:
       tooLong: 你的话太多了。
       content_tooLong: 这个问题有点复杂，你还是去问别人吧。
       duplicate-dialogue: 这个刚刚说过了吧......
+      online: 我在的，请再等一会！
       no-response: 我不知道你在说什么……
       block1: 我讨厌你！
       block2: 我讨厌你们！

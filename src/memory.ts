@@ -18,6 +18,8 @@ export class MemoryManager {
     if (response.error) return
     // 更新短期记忆
     this.updateChannelMemory(session, prompt, config, response.content)
+    // 将prompt中的“我”替换为用户名
+    prompt = prompt.replace(/我/g, session.username)
     // 保存长期记忆
     if (this.shouldRemember(prompt)) {
       await this.saveLongTermMemory(session, [{
@@ -74,7 +76,6 @@ export class MemoryManager {
     await this.ensureMemoryFile(filePath)
 
     const filtered = dialogues.filter(entry => !this.config.memory_block_words.some(word => entry.content.includes(word)))
-
     if (filtered.length === 0) return
 
     const existing = await this.loadMemoryFile(filePath)
