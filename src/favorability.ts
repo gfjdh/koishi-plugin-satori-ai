@@ -52,12 +52,12 @@ export function generateAuxiliaryPrompt(prompt: string, responseContent: string,
   // 添加系统提示
   messages.push({
     role: 'system',
-    content: "请你评价我之后给你的对话，你需要从回答者的角度，结合两人关系，猜测回答者做出此回答的感受好坏，然后返回打分。你需要谨慎判断回答者是在警告还是在调情。你返回的值应当是从0到9之间的一个数字，数字越大代表感受越幸福，数字越小代表感受越恶心。你只需要返回一个数字，不要补充其他内容"
+    content: "请你评价我之后给你的对话，你需要从回答者的角度，猜测回答者听到此问题和做出此回答的感受好坏，然后返回打分。你需要谨慎判断回答者是在警告还是在调情。你返回的值应当是从0到9之间的一个数字，数字越大代表感受越幸福，数字越小代表感受越恶心。你只需要返回一个数字，不要补充其他内容"
   })
   // 添加当前对话
   messages.push({
     role: 'user',
-    content: `两人关系：${level}，问题：${prompt}，回答：${responseContent}`
+    content: `问题：${prompt}，回答：${responseContent}`
   })
   return messages
 }
@@ -65,25 +65,18 @@ export function generateAuxiliaryPrompt(prompt: string, responseContent: string,
 // 处理辅助结果
 export async function handleAuxiliaryResult(ctx: Context, session: Session, config: FavorabilityConfig, responseContent: string): Promise<string | void> {
   const user = await ensureUserExists(ctx, session.userId, session.username);
-
   // 正则匹配responseContent中的第一个数字
   const regex = /\d+/g
   const value = parseInt(responseContent.match(regex)[0]) ? parseInt(responseContent.match(regex)[0]) : 5
   // 处理好感度检查
-  let favorabilityEffect = value - 5
-  if (favorabilityEffect < 0) {
-    favorabilityEffect = Math.floor(0.3 * config.value_of_favorability * favorabilityEffect)
-  }
-  if (favorabilityEffect > 0) {
-    favorabilityEffect = Math.floor(0.1 * config.value_of_favorability * favorabilityEffect)
-  }
+  let favorabilityEffect = value - config.offset_of_fafavorability
   // 应用好感度效果
   await applyFavorabilityEffect(ctx, user, favorabilityEffect ? favorabilityEffect : 0)
   if (favorabilityEffect < 0) {
-    return "(好感度↓)";
+    return "(好感↓)";
   }
   if (favorabilityEffect > 0) {
-    return "(好感度↑)";
+    return "(好感↑)";
   }
   return;
 }

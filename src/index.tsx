@@ -76,6 +76,7 @@ export class SAT extends Sat {
         censor_favorability: this.config.censor_favorability,
         value_of_favorability: this.config.value_of_favorability,
         enable_auxiliary_LLM: this.config.enable_auxiliary_LLM,
+        offset_of_fafavorability: this.config.offset_of_fafavorability,
         prompt_0: this.config.prompt_0,
         favorability_div_1: this.config.favorability_div_1,
         prompt_1: this.config.prompt_1,
@@ -93,6 +94,7 @@ export class SAT extends Sat {
       censor_favorability: this.config.censor_favorability,
       value_of_favorability: this.config.value_of_favorability,
       enable_auxiliary_LLM: this.config.enable_auxiliary_LLM,
+      offset_of_fafavorability: this.config.offset_of_fafavorability,
       prompt_0: this.config.prompt_0,
       favorability_div_1: this.config.favorability_div_1,
       prompt_1: this.config.prompt_1,
@@ -151,7 +153,7 @@ export class SAT extends Sat {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
     const regex = /\*\*/g
     const censor = prompt.match(regex)?.length
-    if (censor) return "(好感度↓↓)"
+    if (censor && this.config.visible_favorability) return "(好感↓↓)"
     if (this.config.enable_auxiliary_LLM && !response.error && response.content) {
       const messages = generateAuxiliaryPrompt(prompt, response.content, user, this.getFavorabilityConfig())
       const result = await this.apiClient.auxiliaryChat(messages)
@@ -186,6 +188,7 @@ export class SAT extends Sat {
 
   // 重复对话检查
   private async checkDuplicateDialogue(session: Session, prompt: string, recentDialogues: Sat.Msg[], user: User): Promise<string> {
+    if (!this.config.duplicateDialogueCheck) return null
     let duplicateDialogue = recentDialogues.find(msg => msg.content == user.usersname + ':' + prompt)
     if (!duplicateDialogue) return null
 
@@ -256,9 +259,13 @@ export class SAT extends Sat {
       content: await this.buildSystemPrompt(session, prompt)
     })
     // 添加上下文记忆
-    const channelMemory = this.memoryManager.getChannelContext(session.channelId)
-    messages.push(...channelMemory)
-
+    if (this.config.personal_memory) {
+      const userMemory = this.memoryManager.getChannelContext(session.userId)
+      messages.push(...userMemory)
+    } else {
+      const channelMemory = this.memoryManager.getChannelContext(session.channelId)
+      messages.push(...channelMemory)
+    }
     // 添加当前对话
     messages.push({
       role: 'user',

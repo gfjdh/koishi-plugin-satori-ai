@@ -16,6 +16,7 @@ export interface FavorabilityConfig {
     censor_favorability: boolean;
     value_of_favorability: number;
     enable_auxiliary_LLM: boolean;
+    offset_of_fafavorability: number;
     prompt_0: string;
     favorability_div_1: number;
     prompt_1: string;
@@ -147,6 +148,7 @@ export declare namespace Sat {
         enable_fixed_dialogues: boolean;
         private: boolean;
         mention: boolean;
+        duplicateDialogueCheck: boolean;
         random_min_tokens: number;
         randnum: number;
         sentences_divide: boolean;
@@ -157,6 +159,7 @@ export declare namespace Sat {
         censor_favorability: boolean;
         value_of_favorability: number;
         enable_auxiliary_LLM: boolean;
+        offset_of_fafavorability: number;
         visible_favorability: boolean;
         prompt_0: string;
         favorability_div_1: number;
