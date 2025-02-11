@@ -10,8 +10,10 @@ export interface User {
     item?: Map<string, ItemInfo>;
 }
 interface ItemInfo {
-    count: number;
-    metadata?: {};
+    count?: number;
+    price?: number;
+    description?: string;
+    data?: {};
 }
 export type FavorabilityAdjustment = number | {
     absolute: number;

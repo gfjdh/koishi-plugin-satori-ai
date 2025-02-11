@@ -285,7 +285,7 @@ export class SAT extends Sat {
     // 添加当前对话
     messages.push({
       role: 'user',
-      content: session.username + ':' + prompt
+      content: prompt
     })
     return messages
   }
@@ -299,6 +299,8 @@ export class SAT extends Sat {
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
     systemPrompt += commonSense
     systemPrompt += userMemory
+    // 添加用户信息
+    systemPrompt += `用户的名字是：${session.username}, id是：${session.userId}`
     // 添加好感度提示
     if (this.config.enable_favorability) {
       const user = await ensureUserExists(this.ctx, session.userId, session.username)
@@ -333,6 +335,7 @@ export class SAT extends Sat {
 
   // 添加常识
   private async addCommonSense(session: Session, content: string) {
+    if (!content) return session.text('commands.sat.common_sense.messages.no-prompt')
     const filePath = path.join(this.config.dataDir, 'common_sense.txt')
     await this.memoryManager.saveLongTermMemory(session, [{
       role: 'user',

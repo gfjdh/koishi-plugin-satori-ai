@@ -14,8 +14,10 @@ export interface User {
 
 // 道具数据模型
 interface ItemInfo {
-  count: number;
-  metadata?: {
+  count?: number;
+  price?: number;
+  description?: string;
+  data?: {
     // 扩展字段...
   };
 }
