@@ -11,6 +11,7 @@ export declare class MemoryManager {
     private shouldRemember;
     private updateChannelMemory;
     clearChannelMemory(channelId: string): void;
+    clearAllMemories(): void;
     getChannelMemory(channelId: string): MemoryEntry[];
     saveLongTermMemory(session: Session, dialogues: MemoryEntry[], filePath?: string): Promise<void>;
     searchMemories(session: Session, prompt: string, type?: 'user' | 'common'): Promise<string>;

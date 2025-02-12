@@ -9,17 +9,16 @@ export interface User {
   p: number
   favorability: number
   time: Date
-  item?: Map<string, ItemInfo>;
+  items?: Map<string, ItemInfo>;
 }
 
 // 道具数据模型
 interface ItemInfo {
-  count?: number;
-  price?: number;
+  id: string;
+  count: number;
+  price: number;
   description?: string;
-  data?: {
-    // 扩展字段...
-  };
+  favorability_limit?: number;
 }
 
 //好感度调整

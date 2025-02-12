@@ -121,7 +121,8 @@ export class SAT extends Sat {
       .action(async ({ session }, prompt) => this.handleSatCommand(session, prompt))
 
     ctx.command('sat.clear', '清空会话')
-      .action(({ session }) => this.clearSession(session))
+      .option('global', '-g')
+      .action(({ session, options }) => this.clearSession(session, options.global))
 
     ctx.command('sat.common_sense <text:text>', '添加常识')
       .action(async ({ session }, prompt) => this.addCommonSense(session, prompt))
@@ -145,6 +146,7 @@ export class SAT extends Sat {
 
     // 处理记忆和上下文
     logger.info(`用户 ${session.username}：${prompt}`)
+    this.onlineUsers.push(session.userId)
     // 更新频道并发数
     await this.updateChannelParallelCount(session, 1)
     const processedPrompt = await this.processInput(session, prompt)
@@ -198,7 +200,6 @@ export class SAT extends Sat {
       return session.text('commands.sat.messages.tooLong')
     if (this.onlineUsers.includes(session.userId) && this.config.enable_online_user_check)
       return session.text('commands.sat.messages.online')
-    this.onlineUsers.push(session.userId)
     return null
   }
 
@@ -214,8 +215,8 @@ export class SAT extends Sat {
   }
 
   // 处理固定对话
-  private async handleFixedDialoguesCheck(session: Session, user: User, prompt: string): Promise<string> {
-    return await handleFixedDialogues(
+  private async handleFixedDialoguesCheck(session: Session, user: User, prompt: string): Promise<string | void> {
+    const fixedDialogues = await handleFixedDialogues(
       this.ctx,
       session,
       user,
@@ -226,6 +227,10 @@ export class SAT extends Sat {
         enable_fixed_dialogues: this.config.enable_fixed_dialogues
       }
     )
+    if (fixedDialogues){
+      return fixedDialogues
+    }
+    return null
   }
 
   // 更新频道并发数
@@ -327,9 +332,19 @@ export class SAT extends Sat {
   }
 
   // 清空会话
-  private clearSession(session: Session) {
-    this.memoryManager.clearChannelMemory(session.channelId)
-    this.ChannelParallelCount.set(session.channelId, 0)
+  private clearSession(session: Session, global: boolean) {
+    if (global) {
+      this.memoryManager.clearAllMemories()
+      this.ChannelParallelCount.clear()
+      this.onlineUsers = []
+      return session.text('commands.sat.clear.messages.Allclean')
+    } else {
+      if (this.config.personal_memory) {
+        this.memoryManager.clearChannelMemory(session.userId)
+      } else {
+        this.memoryManager.clearChannelMemory(session.channelId)
+      }
+    }
     return session.text('commands.sat.clear.messages.clean')
   }
 

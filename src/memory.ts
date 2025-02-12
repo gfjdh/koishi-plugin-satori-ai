@@ -18,12 +18,14 @@ export class MemoryManager {
     if (response.error) return
     // 更新短期记忆
     this.updateChannelMemory(session, prompt, config, response.content)
-    // 将prompt中的“我”替换为用户名
-    prompt = prompt.replace(/我/g, session.username)
+    // 将prompt中的第一个“我”替换为用户名
+    prompt = prompt.replace('我', session.username)
+    // 添加当前时间
+    const date = ` (对话日期和时间：${new Date().toLocaleString()})`
     // 保存长期记忆
     if (this.shouldRemember(prompt)) {
       await this.saveLongTermMemory(session, [{
-        role: 'user',
+        role: date,
         content: prompt
       }])
     }
@@ -64,6 +66,10 @@ export class MemoryManager {
   // 清除频道记忆
   public clearChannelMemory(channelId: string): void {
     this.channelMemories.delete(channelId)
+  }
+  // 清除全部记忆
+  public clearAllMemories(): void {
+    this.channelMemories.clear()
   }
   // 返回频道记忆
   public getChannelMemory(channelId: string): MemoryEntry[] {
@@ -148,7 +154,7 @@ export class MemoryManager {
   private formatMatches(matched: MemoryEntry[], type: 'user' | 'common'): string {
     const prefixMap = {
       'common': '这是你可能用到的信息：',
-      'user': '以下是较久之前用户说过的话：'
+      'user': '以下是较久之前用户说过的话和对话时间：'
     };
     // 添加时间信息
     const time = `\n时段：${getTimeOfDay(new Date().getHours())}`
@@ -158,7 +164,9 @@ export class MemoryManager {
           const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')} ${date}\n`
           return result
       } else {
-          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}\n`
+          // 这里因为远古屎山代码的原因，所以要判断role是否为user，现在的role是用来存储时间的
+          matched.forEach(entry => entry.content = entry.content + (entry.role === 'user' ? '' : entry.role))
+          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}\n}\n`
           return result
       }
     } else {
@@ -178,7 +186,7 @@ export class MemoryManager {
   // 确保记忆文件存在
   private async ensureMemoryFile(filePath: string): Promise<void> {
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    if (!fs.existsSync(filePath)) { fs.writeFileSync(filePath, '[]') }
+    if (!fs.existsSync(filePath)) { fs.writeFileSync(filePath, '[]', 'utf-8') }
   }
 
   // 加载记忆文件

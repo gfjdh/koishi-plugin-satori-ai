@@ -7,13 +7,13 @@ export interface User {
     p: number;
     favorability: number;
     time: Date;
-    item?: Map<string, ItemInfo>;
+    items?: Map<string, ItemInfo>;
 }
 interface ItemInfo {
-    count?: number;
-    price?: number;
+    count: number;
+    price: number;
     description?: string;
-    data?: {};
+    favorability_limit?: number;
 }
 export type FavorabilityAdjustment = number | {
     absolute: number;

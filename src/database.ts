@@ -64,6 +64,7 @@ export function extendDatabase(ctx: Context) {
     usersname: 'string',
     p: 'integer',
     favorability: 'integer',
-    time: 'timestamp'
+    time: 'timestamp',
+    items: 'object'
   }, { autoInc: true })
 }

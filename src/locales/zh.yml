@@ -16,6 +16,7 @@ commands:
     description: 清空当前频道会话
     messages:
       clean: 已清空当前会话。
+      Allclean: 已清空所有会话。
   sat.common_sense:
     description: 添加常识
     messages:
