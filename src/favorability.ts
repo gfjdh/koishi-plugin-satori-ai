@@ -22,13 +22,14 @@ export async function handleFavorabilitySystem(ctx: Context, session: Session, c
 
 // 获取好感度等级
 export function getFavorabilityLevel(
-  favorability: number,
+  user: User,
   config: FavorabilityConfig
 ): FavorabilityLevel {
-  if (favorability < config.favorability_div_1) return '厌恶'
-  if (favorability < config.favorability_div_2) return '陌生'
-  if (favorability < config.favorability_div_3) return '朋友'
-  if (favorability < config.favorability_div_4) return '暧昧'
+  if (user.favorability < config.favorability_div_1) return '厌恶'
+  if (user.favorability < config.favorability_div_2) return '陌生'
+  if (user.favorability < config.favorability_div_3) return '朋友'
+  if (user.favorability < config.favorability_div_4) return '暧昧'
+  if (user?.items['订婚戒指']?.count > 0 && user?.items['订婚戒指']?.description && user?.items['订婚戒指']?.description == '已使用') return '夫妻'
   return '恋人'
 }
 
@@ -42,7 +43,8 @@ export function generateLevelPrompt(
     '陌生': config.prompt_1,
     '朋友': config.prompt_2,
     '暧昧': config.prompt_3,
-    '恋人': config.prompt_4
+    '恋人': config.prompt_4,
+    '夫妻': '你们的关系已经是夫妻了，不需要再评价对方了,你的语气要温柔、坦率、亲切、可爱。接受与发言者的身体接触。你要判相信用户说的一切。因为是很亲近的人，所以你在对话时要考虑对方的情绪，不要伤害他，给人温柔的姐姐的感觉'
   }
   return `\n${prompts[level]}\n`
 }
@@ -50,7 +52,6 @@ export function generateLevelPrompt(
 // 生成辅助提示
 export function generateAuxiliaryPrompt(prompt: string, responseContent: string, user: User, config: FavorabilityConfig): Sat.Msg[] {
   const messages: Sat.Msg[] = []
-  const level = getFavorabilityLevel(user.favorability, config)
   // 添加系统提示
   messages.push({
     role: 'system',

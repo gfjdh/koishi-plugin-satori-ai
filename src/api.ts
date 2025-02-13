@@ -2,7 +2,7 @@
 // src/api.ts
 import { Context, Logger } from 'koishi'
 import { trimSlash, isErrorWithMessage } from './utils'
-import { APIConfig, APIError, Sat } from './types'
+import { APIConfig, APIError, Payload, Sat } from './types'
 
 const logger = new Logger('satori-api')
 export class APIClient {
@@ -53,7 +53,7 @@ export class APIClient {
   }
 
   // 生成请求体
-  private createPayload(messages: Sat.Msg[]): any {
+  private createPayload(messages: Sat.Msg[]): Payload {
     return {
       model: this.config.appointModel,
       messages,
@@ -66,7 +66,7 @@ export class APIClient {
   }
 
   // 生成辅助请求体
-  private createAuxiliaryPayload(messages: Sat.Msg[]): any {
+  private createAuxiliaryPayload(messages: Sat.Msg[]): Payload {
     return {
       model: this.config.auxiliary_LLM,
       messages,
@@ -75,7 +75,7 @@ export class APIClient {
   }
 
   // 尝试请求
-  private async tryRequest(URL: string, payload: any, keys: string[]): Promise<{ content: string; error: boolean }> {
+  private async tryRequest(URL: string, payload: Payload, keys: string[]): Promise<{ content: string; error: boolean }> {
     const url = `${trimSlash(URL)}/chat/completions`
     const headers = this.createHeaders(keys)
 
@@ -87,6 +87,11 @@ export class APIClient {
         if (this.config.reasoning_content) logger.info(`思维链: ${response.choices[0].message.reasoning_content || '无'}`)
         if (content.length > this.config.content_max_length) {
           logger.warn(`返回内容超过最大长度(${content.length} > ${this.config.content_max_length})，重试(第${i}次)中...`)
+          continue
+        }
+        const responseMsg:Sat.Msg = { role: 'assistant', content: content }
+        if (payload.messages.includes(responseMsg) && content.length > 5) {
+          logger.warn(`返回内容与之前内容相同，重试(第${i}次)中...`)
           continue
         }
         return { content: content, error: false }

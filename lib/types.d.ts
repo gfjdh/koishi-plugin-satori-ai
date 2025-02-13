@@ -16,6 +16,15 @@ export interface ItemInfo {
     description?: string;
     favorability_limit?: number;
 }
+export interface Payload {
+    model: string;
+    messages: Sat.Msg[];
+    max_tokens?: number;
+    temperature: number;
+    top_p?: number;
+    frequency_penalty?: number;
+    presence_penalty?: number;
+}
 export type FavorabilityAdjustment = number | {
     absolute: number;
 };
@@ -38,7 +47,7 @@ export interface FavorabilityConfig {
     favorability_div_4: number;
     prompt_4: string;
 }
-export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人';
+export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人' | '夫妻';
 export interface MemoryEntry {
     role: string;
     content: string;

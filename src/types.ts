@@ -21,6 +21,17 @@ export interface ItemInfo {
   favorability_limit?: number;
 }
 
+// 请求体
+export interface Payload {
+  model: string
+  messages: Sat.Msg[]
+  max_tokens?: number
+  temperature: number
+  top_p?: number
+  frequency_penalty?: number
+  presence_penalty?: number
+}
+
 //好感度调整
 export type FavorabilityAdjustment =
   | number
@@ -47,7 +58,7 @@ export interface FavorabilityConfig {
   prompt_4: string
 }
 //好感度等级
-export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人'
+export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人' | '夫妻'
 
 //记忆配置
 export interface MemoryEntry {
