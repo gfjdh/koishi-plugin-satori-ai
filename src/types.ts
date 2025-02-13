@@ -13,7 +13,7 @@ export interface User {
 }
 
 // 道具数据模型
-interface ItemInfo {
+export interface ItemInfo {
   id: string;
   count: number;
   price: number;

@@ -9,7 +9,8 @@ export interface User {
     time: Date;
     items?: Map<string, ItemInfo>;
 }
-interface ItemInfo {
+export interface ItemInfo {
+    id: string;
     count: number;
     price: number;
     description?: string;
@@ -190,4 +191,3 @@ export declare namespace Sat {
     }
     const Config: Schema<Config>;
 }
-export {};

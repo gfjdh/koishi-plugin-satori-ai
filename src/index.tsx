@@ -7,7 +7,7 @@ import { MemoryManager } from './memory'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
 import { createMiddleware } from './middleware'
-import { extendDatabase, ensureUserExists, updateFavorability } from './database'
+import { extendDatabase, ensureUserExists, updateFavorability, getUser } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
 import { splitSentences } from './utils'
 
@@ -156,7 +156,7 @@ export class SAT extends Sat {
     // 更新记忆
     await this.memoryManager.updateMemories(session, processedPrompt, this.getMemoryConfig(), response)
     this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
-    return this.formatResponse(session, response.content, auxiliaryResult)
+    return await this.formatResponse(session, response.content, auxiliaryResult)
   }
 
   // 处理辅助判断
@@ -316,15 +316,16 @@ export class SAT extends Sat {
   }
 
   // 处理回复
-  private formatResponse(session: Session, response: string, auxiliaryResult: string | void) {
+  private async formatResponse(session: Session, response: string, auxiliaryResult: string | void) {
+    const user = await getUser(this.ctx, session.userId)
     this.updateChannelParallelCount(session, -1)
     if (!response) return session.text('commands.sat.messages.no-response')
     if (this.config.reply_pointing && this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1) {
       response = `@${session.username} ` + response
     }
-    if (auxiliaryResult && this.config.visible_favorability) {
-      response += auxiliaryResult
-    }
+    if (user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on') response += '喵~'
+    if (user?.items['觉fumo']?.count > 0 && user?.items['觉fumo']?.description && user?.items['觉fumo']?.description == 'on') response += '\nfumofumo'
+    if (auxiliaryResult && this.config.visible_favorability) response += auxiliaryResult
     if (this.config.sentences_divide && response.length > 10) {
       return splitSentences(response).map(text => h.text(text))
     }

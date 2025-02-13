@@ -50,12 +50,12 @@ export class MemoryManager {
     }
 
     const memory = this.channelMemories.get(channelId)
-    memory.dialogues.push({ role: 'user', content: session.username + ':' + prompt })
+    memory.dialogues.push({ role: 'user', content: prompt })
 
     if (this.config.enable_self_memory && response) {
       memory.dialogues.push({ role: 'assistant', content: response })
     } else{
-      memory.dialogues.push({ role: 'assistant', content: '...' })
+      memory.dialogues.push({ role: 'assistant', content: ' ' })
     }
 
     // 保持记忆长度
