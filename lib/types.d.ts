@@ -6,15 +6,15 @@ export interface User {
     usersname: string;
     p: number;
     favorability: number;
-    time: Date;
-    items?: Map<string, ItemInfo>;
+    items?: Record<string, ItemInfo>;
 }
 export interface ItemInfo {
     id: string;
     count: number;
-    price: number;
+    price?: number;
     description?: string;
-    favorability_limit?: number;
+    favorability?: number;
+    metadata?: Record<string, any>;
 }
 export interface Payload {
     model: string;

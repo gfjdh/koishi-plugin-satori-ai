@@ -309,7 +309,7 @@ export class SAT extends Sat {
     // 添加好感度提示
     if (this.config.enable_favorability) {
       const user = await ensureUserExists(this.ctx, session.userId, session.username)
-      systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig())
+      systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig(), user)
     }
     if (this.config.log_system_prompt) logger.info(`系统提示：${systemPrompt}`)
       return systemPrompt

@@ -18,6 +18,7 @@ export interface ItemInfo {
   price?: number;
   description?: string;
   favorability?: number;
+  metadata?: Record<string, any>
 }
 
 // 请求体

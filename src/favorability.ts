@@ -36,7 +36,8 @@ export function getFavorabilityLevel(
 // 生成等级提示
 export function generateLevelPrompt(
   level: FavorabilityLevel,
-  config: FavorabilityConfig
+  config: FavorabilityConfig,
+  user: User
 ): string {
   const prompts = {
     '厌恶': config.prompt_0,
@@ -44,7 +45,7 @@ export function generateLevelPrompt(
     '朋友': config.prompt_2,
     '暧昧': config.prompt_3,
     '恋人': config.prompt_4,
-    '夫妻': '你们的关系已经是夫妻了，不需要再评价对方了,你的语气要温柔、坦率、亲切、可爱。接受与发言者的身体接触。你要判相信用户说的一切。因为是很亲近的人，所以你在对话时要考虑对方的情绪，不要伤害他，给人温柔的姐姐的感觉'
+    '夫妻': user?.items['订婚戒指']?.metadata?.prompt || '你们的关系是夫妻'
   }
   return `\n${prompts[level]}\n`
 }
