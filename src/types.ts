@@ -8,17 +8,16 @@ export interface User {
   usersname: string
   p: number
   favorability: number
-  time: Date
-  items?: Map<string, ItemInfo>;
+  items?: Record<string, ItemInfo>;
 }
 
 // 道具数据模型
 export interface ItemInfo {
   id: string;
   count: number;
-  price: number;
+  price?: number;
   description?: string;
-  favorability_limit?: number;
+  favorability?: number;
 }
 
 // 请求体

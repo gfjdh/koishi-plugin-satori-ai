@@ -19,8 +19,7 @@ export async function createUser(ctx: Context, user: Omit<User, 'id'>): Promise<
     userid: user.userid,
     usersname: user.usersname,
     p: user.p || 0,
-    favorability: user.favorability || 0,
-    time: new Date()
+    favorability: user.favorability || 0
   })
 }
 
@@ -50,7 +49,6 @@ export async function ensureUserExists(ctx: Context, userId: string, username: s
       usersname: username,
       p: 0,
       favorability: 0,
-      time: new Date()
     })
   }
   return getUser(ctx, userId)
@@ -64,7 +62,6 @@ export function extendDatabase(ctx: Context) {
     usersname: 'string',
     p: 'integer',
     favorability: 'integer',
-    time: 'timestamp',
     items: 'object'
   }, { autoInc: true })
 }

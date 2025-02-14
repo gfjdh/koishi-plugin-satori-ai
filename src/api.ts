@@ -90,7 +90,7 @@ export class APIClient {
           continue
         }
         const responseMsg:Sat.Msg = { role: 'assistant', content: content }
-        if (payload.messages.includes(responseMsg) && content.length > 5) {
+        if (payload.messages.some(msg => msg.content === responseMsg.content) && content.length > 5) {
           logger.warn(`返回内容与之前内容相同，重试(第${i}次)中...`)
           continue
         }
