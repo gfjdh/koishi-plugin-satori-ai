@@ -157,6 +157,7 @@ export declare namespace Sat {
         presence_penalty: number;
         log_system_prompt: boolean;
         log_reasoning_content: boolean;
+        log_ask_response: boolean;
         authority: number;
         alias: string[];
         dataDir: string;
