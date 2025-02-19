@@ -1,3 +1,4 @@
+import { log } from 'console';
 import { Context, Dict, Schema, Service } from 'koishi'
 export const usage = `使用说明见插件主页`;
 
@@ -185,6 +186,7 @@ export namespace Sat {
     presence_penalty: number
     log_system_prompt: boolean
     log_reasoning_content: boolean
+    log_ask_response: boolean
     authority: number
 
     alias: string[]
@@ -261,7 +263,8 @@ export namespace Sat {
       retry_delay_time: Schema.number().default(5000).description('每次重试延迟时间'),
       max_parallel_count: Schema.number().default(2).description('频道最大并行请求数'),
       log_system_prompt: Schema.boolean().default(false).description('是否在日志中输出系统提示'),
-      log_reasoning_content: Schema.boolean().default(true).description('是否在日志中输出思维链')
+      log_reasoning_content: Schema.boolean().default(true).description('是否在日志中输出思维链'),
+      log_ask_response: Schema.boolean().default(true).description('是否在日志中输出问答')
     }).description('请求设置'),
 
     Schema.object({

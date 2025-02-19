@@ -145,13 +145,13 @@ export class SAT extends Sat {
     if (fixedResponse) return fixedResponse
 
     // 处理记忆和上下文
-    logger.info(`用户 ${session.username}：${prompt}`)
+    if (this.config.log_ask_response) logger.info(`用户 ${session.username}：${prompt}`)
     this.onlineUsers.push(session.userId)
     // 更新频道并发数
     await this.updateChannelParallelCount(session, 1)
     const processedPrompt = await this.processInput(session, prompt)
     const response = await this.generateResponse(session, processedPrompt)
-    logger.info(`Satori AI：${response.content}`)
+    if (this.config.log_ask_response) logger.info(`Satori AI：${response.content}`)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆
     await this.memoryManager.updateMemories(session, processedPrompt, this.getMemoryConfig(), response)
@@ -267,7 +267,7 @@ export class SAT extends Sat {
       this.updateChannelParallelCount(session, 1)
     }
     const messages = this.buildMessages(session, prompt)
-    logger.info(`频道 ${session.channelId} 处理：${session.username},剩余${this.getChannelParallelCount(session)}并发`)
+    logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
     return await this.apiClient.chat(await messages)
   }
 
