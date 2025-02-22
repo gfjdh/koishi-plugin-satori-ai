@@ -1,4 +1,4 @@
-import { Context, Session, h } from 'koishi';
+import { Context, Session } from 'koishi';
 import { Sat } from './types';
 export declare class SAT extends Sat {
     config: Sat.Config;
@@ -27,6 +27,6 @@ export declare class SAT extends Sat {
     private formatResponse;
     private clearSession;
     private addCommonSense;
-    handleMiddleware(session: Session, prompt: string): Promise<string | h[]>;
+    handleMiddleware(session: Session, prompt: string): Promise<string>;
 }
 export default SAT;

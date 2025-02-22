@@ -320,15 +320,28 @@ export class SAT extends Sat {
     const user = await getUser(this.ctx, session.userId)
     this.updateChannelParallelCount(session, -1)
     if (!response) return session.text('commands.sat.messages.no-response')
-    if (this.config.reply_pointing && this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1) {
-      response = `@${session.username} ` + response
+
+    if (this.config.sentences_divide && response.length > 10) {
+      if (response.endsWith('。')) response = response.slice(0, -1)
+      if (user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on') response += ' 喵~'
+      if (user?.items['觉fumo']?.count > 0 && user?.items['觉fumo']?.description && user?.items['觉fumo']?.description == 'on') response += '\nfumofumo'
+      if (auxiliaryResult && this.config.visible_favorability) response += auxiliaryResult
+      response += '。'
+      const sentences = splitSentences(response).map(text => h.text(text))
+      for (const sentence of sentences) {
+        if (this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1))
+          { await session.send(`@${session.username} ` + sentence) }
+        else
+          { await session.send(sentence) }
+        await new Promise(resolve => setTimeout(resolve, this.config.time_interval))
+      }
+      return null
     }
-    if (user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on') response += '喵~'
+
+    if (this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1)) { response = `@${session.username} ` + response }
+    if (user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on') response += ' 喵~'
     if (user?.items['觉fumo']?.count > 0 && user?.items['觉fumo']?.description && user?.items['觉fumo']?.description == 'on') response += '\nfumofumo'
     if (auxiliaryResult && this.config.visible_favorability) response += auxiliaryResult
-    if (this.config.sentences_divide && response.length > 10) {
-      return splitSentences(response).map(text => h.text(text))
-    }
     return response
   }
 
@@ -336,8 +349,6 @@ export class SAT extends Sat {
   private clearSession(session: Session, global: boolean) {
     if (global) {
       this.memoryManager.clearAllMemories()
-      this.ChannelParallelCount.clear()
-      this.onlineUsers = []
       return session.text('commands.sat.clear.messages.Allclean')
     } else {
       if (this.config.personal_memory) {
