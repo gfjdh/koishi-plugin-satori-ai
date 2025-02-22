@@ -326,7 +326,6 @@ export class SAT extends Sat {
       if (user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on') response += ' 喵~'
       if (user?.items['觉fumo']?.count > 0 && user?.items['觉fumo']?.description && user?.items['觉fumo']?.description == 'on') response += '\nfumofumo'
       if (auxiliaryResult && this.config.visible_favorability) response += auxiliaryResult
-      response += '。'
       const sentences = splitSentences(response).map(text => h.text(text))
       for (const sentence of sentences) {
         if (this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1))
