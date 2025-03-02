@@ -40,7 +40,23 @@ export function trimSlash(url: string): string {
 
 // 分句处理
 export function splitSentences(text: string): string[] {
-  return text.split(/(?<=[。！？!?])/g).filter(s => s.trim())
+  const sentences = text.split(/(?<=[。！？!?])/g).filter(s => s.trim())
+  const result: string[] = []
+  let temp = ''
+
+  for (let i = 0; i < sentences.length; i++) {
+    if (i === sentences.length - 2) {
+      temp = temp + sentences[i] + sentences[i + 1]
+      result.push(temp)
+      break
+    } else {
+      temp += sentences[i]
+      result.push(temp)
+      temp = ''
+    }
+  }
+
+  return result
 }
 
 // 敏感词过滤

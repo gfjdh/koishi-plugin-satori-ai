@@ -1,5 +1,5 @@
 // src/index.ts
-import { Context, Logger, Session, h } from 'koishi'
+import { Context, Logger, Next, Session, h } from 'koishi'
 import { } from '@koishijs/censor'
 import * as path from 'path'
 import { APIClient } from './api'
@@ -312,23 +312,29 @@ export class SAT extends Sat {
       systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig(), user)
     }
     if (this.config.log_system_prompt) logger.info(`系统提示：${systemPrompt}`)
-      return systemPrompt
+    return systemPrompt
   }
 
   // 处理回复
   private async formatResponse(session: Session, response: string, auxiliaryResult: string | void) {
     const user = await getUser(this.ctx, session.userId)
     this.updateChannelParallelCount(session, -1)
-    if (!response) return session.text('commands.sat.messages.no-response')
+    if (!response) {
+      return session.text('commands.sat.messages.no-response')
+    }
+    const catEar = user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on'
+    const fumo = user?.items['觉fumo']?.count > 0 && user?.items['觉fumo']?.description && user?.items['觉fumo']?.description == 'on'
+    const replyPointing = this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1)
+    const ring = user?.items['订婚戒指']?.count > 0 && user?.items['订婚戒指']?.description && user?.items['订婚戒指']?.description == '已使用'
+
+    if (catEar) response += ' 喵~'
+    if (fumo) response += '\nfumofumo'
+    if (auxiliaryResult && this.config.visible_favorability && !ring) response += auxiliaryResult
 
     if (this.config.sentences_divide && response.length > 10) {
-      if (response.endsWith('。')) response = response.slice(0, -1)
-      if (user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on') response += ' 喵~'
-      if (user?.items['觉fumo']?.count > 0 && user?.items['觉fumo']?.description && user?.items['觉fumo']?.description == 'on') response += '\nfumofumo'
-      if (auxiliaryResult && this.config.visible_favorability) response += auxiliaryResult
       const sentences = splitSentences(response).map(text => h.text(text))
       for (const sentence of sentences) {
-        if (this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1))
+        if (replyPointing)
           { await session.send(`@${session.username} ` + sentence) }
         else
           { await session.send(sentence) }
@@ -337,10 +343,7 @@ export class SAT extends Sat {
       return null
     }
 
-    if (this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1)) { response = `@${session.username} ` + response }
-    if (user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on') response += ' 喵~'
-    if (user?.items['觉fumo']?.count > 0 && user?.items['觉fumo']?.description && user?.items['觉fumo']?.description == 'on') response += '\nfumofumo'
-    if (auxiliaryResult && this.config.visible_favorability) response += auxiliaryResult
+    if (replyPointing) { response = `@${session.username} ` + response }
     return response
   }
 

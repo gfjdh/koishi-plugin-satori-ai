@@ -63,6 +63,7 @@ export class MemoryManager {
       memory.dialogues = memory.dialogues.slice(-this.config.message_max_length)
     }
   }
+  
   // 清除频道记忆
   public clearChannelMemory(channelId: string): void {
     this.channelMemories.delete(channelId)

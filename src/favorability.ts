@@ -25,11 +25,11 @@ export function getFavorabilityLevel(
   user: User,
   config: FavorabilityConfig
 ): FavorabilityLevel {
+  if (user?.items['订婚戒指']?.count > 0 && user?.items['订婚戒指']?.description && user?.items['订婚戒指']?.description == '已使用') return '夫妻'
   if (user.favorability < config.favorability_div_1) return '厌恶'
   if (user.favorability < config.favorability_div_2) return '陌生'
   if (user.favorability < config.favorability_div_3) return '朋友'
   if (user.favorability < config.favorability_div_4) return '暧昧'
-  if (user?.items['订婚戒指']?.count > 0 && user?.items['订婚戒指']?.description && user?.items['订婚戒指']?.description == '已使用') return '夫妻'
   return '恋人'
 }
 
@@ -145,32 +145,4 @@ export async function applyFavorabilityEffect(
   effect: number
 ): Promise<void> {
   await updateFavorability(ctx, user, effect)
-}
-
-// 实现自定义好感度效果
-interface FavorabilityEffect {
-  type: 'add' | 'multiply' | 'set'
-  value: number
-}
-// 应用自定义效果
-export async function applyCustomEffect(ctx: Context, user: User, effect: FavorabilityEffect) {
-  let newValue = user.favorability
-  switch (effect.type) {
-    case 'add':
-      newValue += effect.value
-      break
-    case 'multiply':
-      newValue *= effect.value
-      break
-    case 'set':
-      newValue = effect.value
-      break
-  }
-
-  await updateFavorability(ctx, user, newValue)
-}
-
-// 实现好感度策略
-export interface FavorabilityStrategy {
-  calculate(content: string, user: User): number
 }

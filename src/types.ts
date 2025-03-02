@@ -136,16 +136,6 @@ export class Sat extends Service {
     required: ['console', 'database'],
     optional: ['censor']
   }
-  output_type: string
-  session_config: Sat.Msg[]
-  sessions: Dict
-  personality: Dict
-  sessions_cmd: string[]
-  aliasMap: any
-  type: string
-  l6k: boolean
-  key_number: number
-  maxRetryTimes: number
   constructor(ctx: Context, config: Sat.Config) {
     super(ctx, 'sat', true)
   }

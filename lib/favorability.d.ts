@@ -13,12 +13,3 @@ export declare function outputContentCheck(ctx: Context, response: {
 }, userid: string, config: FavorabilityConfig): Promise<number>;
 export declare function ensureCensorFileExists(basePath: string): Promise<void>;
 export declare function applyFavorabilityEffect(ctx: Context, user: User, effect: number): Promise<void>;
-interface FavorabilityEffect {
-    type: 'add' | 'multiply' | 'set';
-    value: number;
-}
-export declare function applyCustomEffect(ctx: Context, user: User, effect: FavorabilityEffect): Promise<void>;
-export interface FavorabilityStrategy {
-    calculate(content: string, user: User): number;
-}
-export {};

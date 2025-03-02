@@ -1,4 +1,4 @@
-import { Context, Dict, Schema, Service } from 'koishi';
+import { Context, Schema, Service } from 'koishi';
 export declare const usage = "\u4F7F\u7528\u8BF4\u660E\u89C1\u63D2\u4EF6\u4E3B\u9875";
 export interface User {
     id?: number;
@@ -113,16 +113,6 @@ export declare class Sat extends Service {
         required: string[];
         optional: string[];
     };
-    output_type: string;
-    session_config: Sat.Msg[];
-    sessions: Dict;
-    personality: Dict;
-    sessions_cmd: string[];
-    aliasMap: any;
-    type: string;
-    l6k: boolean;
-    key_number: number;
-    maxRetryTimes: number;
     constructor(ctx: Context, config: Sat.Config);
 }
 export declare namespace Sat {

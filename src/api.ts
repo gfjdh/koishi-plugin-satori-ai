@@ -84,13 +84,18 @@ export class APIClient {
       try {
         const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
         content = response.choices[0].message.content
-        if (this.config.reasoning_content) logger.info(`思维链: ${response.choices[0].message.reasoning_content || '无'}`)
+        const reasoning_content = response.choices[0].message.reasoning_content
+        if (this.config.reasoning_content) logger.info(`思维链: ${reasoning_content || '无'}`)
+        if (!content && reasoning_content) {
+          logger.warn('返回内容为空,但存在推理内容')
+          content = response.choices[0].message.reasoning_content
+        }
         if (content.length > this.config.content_max_length) {
-          logger.warn(`返回内容超过最大长度(${content.length} > ${this.config.content_max_length})，重试(第${i}次)中...`)
-          continue
+          logger.warn(`返回内容超过最大长度(${content.length} > ${this.config.content_max_length})`)
+          return { content: '返回内容超过最大长度', error: true }
         }
         const responseMsg:Sat.Msg = { role: 'assistant', content: content }
-        if (payload.messages.some(msg => msg.content === responseMsg.content) && content.length > 5) {
+        if (payload.messages.some(msg => msg === responseMsg) && content.length > 5) {
           logger.warn(`返回内容与之前内容相同，重试(第${i}次)中...`)
           continue
         }
@@ -105,7 +110,7 @@ export class APIClient {
         continue
       }
     }
-    throw new Error('unreachable')
+    return { content: '模型发生复读行为，建议重置对话', error: true }
   }
 
   // 生成请求头
