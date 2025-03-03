@@ -58,6 +58,8 @@ export class SAT extends Sat {
   private getMemoryConfig(): MemoryConfig {
     return {
       dataDir: this.config.dataDir,
+      bracket_filter: this.config.bracket_filter,
+      memory_filter: this.config.memory_filter,
       message_max_length: this.config.message_max_length,
       memory_block_words: this.config.memory_block_words,
       enable_self_memory: this.config.enable_self_memory,

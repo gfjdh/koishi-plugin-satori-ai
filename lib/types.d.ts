@@ -58,6 +58,8 @@ export interface ChannelMemory {
 }
 export interface MemoryConfig {
     dataDir: string;
+    bracket_filter: boolean;
+    memory_filter: string;
     message_max_length: number;
     memory_block_words: string[];
     enable_self_memory: boolean;
@@ -152,6 +154,8 @@ export declare namespace Sat {
         alias: string[];
         dataDir: string;
         enable_self_memory: boolean;
+        bracket_filter: boolean;
+        memory_filter: string;
         memory_block_words: string[];
         personal_memory: boolean;
         common_topN: number;

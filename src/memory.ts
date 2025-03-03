@@ -36,12 +36,52 @@ export class MemoryManager {
     return content.length >= this.config.remember_min_length && !this.config.memory_block_words.some(word => content.includes(word))
   }
 
+  private bracketFilter(content: string, config: MemoryConfig): string {
+    if (!config.bracket_filter) return content
+    let filtered = content
+    let previous: string
+    do {
+      previous = filtered
+      filtered = filtered.replace(/[（({\[][^（）\]})]*[）)\]\}]/g, '')
+    } while (filtered !== previous)
+    return filtered.trim() || content // 保留原内容如果过滤后为空
+  }
+
+  private memoryFilter(content: string, config: MemoryConfig): string {
+    if (!config.memory_filter) return content
+    const filterWords = config.memory_filter.split('-').map(word => word.trim()).filter(word => word.length > 0)
+    if (!filterWords.length) return content
+
+    // 增强版句子分割（支持中英文标点）
+    const sentenceSplitRegex = /([。！？；!?;…]|\.{3})/g
+    const sentences = content.split(sentenceSplitRegex)
+      .reduce((acc: string[], cur, i, arr) => {
+        if (i % 2 === 0) acc.push(cur + (arr[i+1] || ''))
+        return acc
+      }, [])
+
+    // 过滤包含关键词的句子
+    const filtered = sentences.filter(sentence => !filterWords.some(word => sentence.includes(word))).join('')
+
+    // 处理标点残留和空内容情况
+    const result = filtered
+      .replace(/([，、])\1+/g, '$1') // 去除重复标点
+      .replace(/^[，。！？;,.!?]+/, '') // 去除开头标点
+      .trim()
+
+    return result || content // 保留原内容如果过滤后为空
+  }
+
   // 更新短期记忆
   private updateChannelMemory(session: Session, prompt: string, config: MemoryConfig, response?: string): void {
-    let channelId = session.channelId
-    if (config.personal_memory) {
-      channelId = session.userId
+    // 应用过滤
+    if (response) {
+      response = this.bracketFilter(response, config)
+      response = this.memoryFilter(response, config)
     }
+
+    let channelId = session.channelId
+    if (config.personal_memory) channelId = session.userId
     if (!this.channelMemories.has(channelId)) {
       this.channelMemories.set(channelId, {
         dialogues: [],
@@ -63,7 +103,7 @@ export class MemoryManager {
       memory.dialogues = memory.dialogues.slice(-this.config.message_max_length)
     }
   }
-  
+
   // 清除频道记忆
   public clearChannelMemory(channelId: string): void {
     this.channelMemories.delete(channelId)

@@ -9,6 +9,8 @@ export declare class MemoryManager {
         error: boolean;
     }): Promise<void>;
     private shouldRemember;
+    private bracketFilter;
+    private memoryFilter;
     private updateChannelMemory;
     clearChannelMemory(channelId: string): void;
     clearAllMemories(): void;

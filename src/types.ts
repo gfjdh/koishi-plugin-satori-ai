@@ -72,6 +72,8 @@ export interface ChannelMemory {
 }
 export interface MemoryConfig {
   dataDir: string
+  bracket_filter: boolean
+  memory_filter: string
   message_max_length: number
   memory_block_words: string[]
   enable_self_memory: boolean
@@ -182,6 +184,8 @@ export namespace Sat {
     alias: string[]
     dataDir: string
     enable_self_memory: boolean
+    bracket_filter: boolean
+    memory_filter: string
     memory_block_words: string[]
     personal_memory: boolean
     common_topN: number
@@ -259,7 +263,9 @@ export namespace Sat {
 
     Schema.object({
       enable_self_memory: Schema.boolean().default(true).description('是否启用模型自发言记忆（仅短期）'),
-      personal_memory: Schema.boolean().default(true).description('是否启用分人记忆（频道内）'),
+      personal_memory: Schema.boolean().default(true).description('是否启用按人记忆'),
+      bracket_filter: Schema.boolean().default(false).description('是否启用括号过滤，开启后在写入短期记忆时会过滤掉括号内的内容，用于缓解复读问题'),
+      memory_filter: Schema.string().role('textarea').default('示例1-示例2').description('短期记忆过滤词，使用“-”分隔，含有过滤词的那一句不会被记忆，用于缓解复读问题'),
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
       memory_block_words: Schema.array(String).default(['好感']).description('记忆屏蔽词'),
       remember_min_length: Schema.number().description('触发保存到记忆的长度').default(20),

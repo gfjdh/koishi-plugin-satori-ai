@@ -38,25 +38,40 @@ export function trimSlash(url: string): string {
   return url.replace(/\/$/, '')
 }
 
-// 分句处理
+// 使用正则表达式分割文本为引号内外的部分
 export function splitSentences(text: string): string[] {
-  const sentences = text.split(/(?<=[。！？!?])/g).filter(s => s.trim())
-  const result: string[] = []
-  let temp = ''
-
-  for (let i = 0; i < sentences.length; i++) {
-    if (i === sentences.length - 2) {
-      temp = temp + sentences[i] + sentences[i + 1]
-      result.push(temp)
-      break
-    } else {
-      temp += sentences[i]
-      result.push(temp)
-      temp = ''
+  const parts = text.split(/(“[^”]*”|"[^"]*")/g);
+  const result: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (i % 2 === 1) { // 引号内的部分，直接加入结果
+      result.push(part);
+    } else { // 引号外的部分，使用原逻辑处理
+      const outerSentences = splitOuterSentences(part);
+      result.push(...outerSentences);
     }
   }
+  // 过滤空字符串并返回
+  return result.filter(s => s.trim() !== '');
+}
 
-  return result
+// 处理引号外部分的分句逻辑
+function splitOuterSentences(text: string): string[] {
+  const sentences = text.split(/(?<=[。！？!?])/g).filter(s => s.trim());
+  const result: string[] = [];
+  let temp = '';
+  for (let i = 0; i < sentences.length; i++) {
+    if (i === sentences.length - 2) {
+      temp = sentences[i] + sentences[i + 1];
+      result.push(temp);
+      break;
+    } else {
+      temp += sentences[i];
+      result.push(temp);
+      temp = '';
+    }
+  }
+  return result;
 }
 
 // 敏感词过滤
