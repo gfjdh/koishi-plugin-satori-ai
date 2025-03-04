@@ -6,6 +6,9 @@ export interface User {
     usersname: string;
     p: number;
     favorability: number;
+    userlevel: number;
+    usage: number;
+    lastChatTime?: number;
     items?: Record<string, ItemInfo>;
 }
 export interface ItemInfo {
@@ -30,6 +33,7 @@ export type FavorabilityAdjustment = number | {
 };
 export interface FavorabilityConfig {
     enable_favorability: boolean;
+    max_favorability_perday: number;
     dataDir: string;
     input_censor_favorability: boolean;
     value_of_input_favorability: number;
@@ -161,6 +165,7 @@ export declare namespace Sat {
         common_topN: number;
         dailogues_topN: number;
         enable_fixed_dialogues: boolean;
+        max_usage: number[];
         private: boolean;
         mention: boolean;
         duplicateDialogueCheck: boolean;
@@ -172,6 +177,7 @@ export declare namespace Sat {
         max_parallel_count: number;
         reply_pointing: boolean;
         enable_favorability: boolean;
+        max_favorability_perday: number;
         input_censor_favorability: boolean;
         value_of_input_favorability: number;
         output_censor_favorability: boolean;

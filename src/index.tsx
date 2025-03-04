@@ -1,5 +1,5 @@
 // src/index.ts
-import { Context, Logger, Next, Session, h } from 'koishi'
+import { Context, Logger, Session, h } from 'koishi'
 import { } from '@koishijs/censor'
 import * as path from 'path'
 import { APIClient } from './api'
@@ -7,7 +7,7 @@ import { MemoryManager } from './memory'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
 import { createMiddleware } from './middleware'
-import { extendDatabase, ensureUserExists, updateFavorability, getUser } from './database'
+import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
 import { splitSentences } from './utils'
 
@@ -73,6 +73,7 @@ export class SAT extends Sat {
       return {
         private: this.config.private,
         mention: this.config.mention,
+        max_favorability_perday: this.config.max_favorability_perday,
         random_min_tokens: this.config.random_min_tokens,
         randnum: this.config.randnum,
         max_tokens: this.config.max_tokens,
@@ -99,6 +100,7 @@ export class SAT extends Sat {
     return {
       enable_favorability: this.config.enable_favorability,
       dataDir: this.config.dataDir,
+      max_favorability_perday: this.config.max_favorability_perday,
       input_censor_favorability: this.config.input_censor_favorability,
       value_of_input_favorability: this.config.value_of_input_favorability,
       output_censor_favorability: this.config.output_censor_favorability,
@@ -128,6 +130,12 @@ export class SAT extends Sat {
 
     ctx.command('sat.common_sense <text:text>', '添加常识')
       .action(async ({ session }, prompt) => this.addCommonSense(session, prompt))
+
+    ctx.command('sat.update_user_level', '更新用户等级', { authority: 2 })
+      .alias('更新用户')
+      .option('id', '-i <id:string>', { authority: 4 })
+      .option('level', '-l <level:number>', { authority: 4 })
+      .action(async ({ session, options }) => this.handleUserLevel(session, options))
   }
 
   private async handleSatCommand(session: Session, prompt: string) {
@@ -145,7 +153,9 @@ export class SAT extends Sat {
     // 固定对话处理
     const fixedResponse = await this.handleFixedDialoguesCheck(session, user, prompt)
     if (fixedResponse) return fixedResponse
-
+    // 对话次数检查
+    const dialogueCountCheck = await this.checkUserDialogueCount(session, user)
+    if (dialogueCountCheck) return dialogueCountCheck
     // 处理记忆和上下文
     if (this.config.log_ask_response) logger.info(`用户 ${session.username}：${prompt}`)
     this.onlineUsers.push(session.userId)
@@ -208,7 +218,7 @@ export class SAT extends Sat {
   // 重复对话检查
   private async checkDuplicateDialogue(session: Session, prompt: string, recentDialogues: Sat.Msg[], user: User): Promise<string> {
     if (!this.config.duplicateDialogueCheck) return null
-    let duplicateDialogue = recentDialogues.find(msg => msg.content == user.usersname + ':' + prompt)
+    let duplicateDialogue = recentDialogues.find(msg => msg.content == prompt)
     if (!duplicateDialogue) return null
 
     if (this.config.enable_favorability)
@@ -231,6 +241,19 @@ export class SAT extends Sat {
     )
     if (fixedDialogues){
       return fixedDialogues
+    }
+    return null
+  }
+
+  // 对话次数检查
+  private async checkUserDialogueCount(session: Session, user: User): Promise<string | void> {
+    if (user.items['地灵殿通行证']?.count > 0 && user.items['地灵殿通行证']?.description && user.items['地灵殿通行证']?.description == 'on')
+      return null
+    const usage = await updateUserUsage(this.ctx, user)
+    const level = user.userlevel || 0
+    const usageLimit = this.config.max_usage[level] || 0
+    if (usage && usageLimit != 0 && usage > usageLimit) {
+      return session.text('commands.sat.messages.exceeds')
     }
     return null
   }
@@ -373,6 +396,14 @@ export class SAT extends Sat {
       content
     }], filePath)
     return session.text('commands.sat.common_sense.messages.succeed', [content]);
+  }
+
+  private async handleUserLevel(session: Session, options: { id?: string , level?: number }) {
+    const userId = options.id || session.userId
+    const level = options.level || 1
+    const user = await ensureUserExists(this.ctx, userId, session.username)
+    await updateUserLevel(this.ctx, user, level)
+    return session.text('commands.sat.messages.update_level_succeed', [level])
   }
 
   // 中间件转接

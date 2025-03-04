@@ -1,5 +1,4 @@
-import { log } from 'console';
-import { Context, Dict, Schema, Service } from 'koishi'
+import { Context, Schema, Service } from 'koishi'
 export const usage = `使用说明见插件主页`;
 
 //用户数据模型
@@ -9,6 +8,9 @@ export interface User {
   usersname: string
   p: number
   favorability: number
+  userlevel: number
+  usage: number
+  lastChatTime?: number
   items?: Record<string, ItemInfo>;
 }
 
@@ -41,6 +43,7 @@ export type FavorabilityAdjustment =
 //好感度配置
 export interface FavorabilityConfig {
   enable_favorability: boolean
+  max_favorability_perday: number
   dataDir: string
   input_censor_favorability: boolean
   value_of_input_favorability: number
@@ -192,6 +195,7 @@ export namespace Sat {
     dailogues_topN: number
     enable_fixed_dialogues: boolean
 
+    max_usage: number[]
     private: boolean
     mention: boolean
     duplicateDialogueCheck: boolean
@@ -204,6 +208,7 @@ export namespace Sat {
     reply_pointing: boolean
 
     enable_favorability: boolean
+    max_favorability_perday: number
     input_censor_favorability: boolean
     value_of_input_favorability: number
     output_censor_favorability: boolean
@@ -275,6 +280,7 @@ export namespace Sat {
     }).description('记忆设置'),
 
     Schema.object({
+      max_usage: Schema.tuple([Number, Number, Number, Number, Number]).default([40, 240, 3000, 9999, 0]).description('每日最大使用次数(对应用户level0~level4)(0为不限制)'),
       private: Schema.boolean().default(true).description('开启后私聊AI可触发对话, 不需要使用指令'),
       mention: Schema.boolean().default(true).description('开启后机器人被提及(at/引用)可触发对话'),
       duplicateDialogueCheck: Schema.boolean().default(true).description('是否检查重复对话'),
@@ -288,6 +294,7 @@ export namespace Sat {
 
     Schema.object({
       enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统(每次对话默认+1好感度)'),
+      max_favorability_perday: Schema.number().default(100).description('每日有效(引发好感度变化)对话次数上限'),
       input_censor_favorability: Schema.boolean().default(false).description('是否开启好感度审查(通过输入屏蔽词扣除好感)'),
       value_of_input_favorability: Schema.number().default(15).description('输入触发屏蔽词每次扣除的好感度'),
       output_censor_favorability: Schema.boolean().default(false).description('通过输出屏蔽词扣除好感,在dataDir中的output_censor.txt修改)'),

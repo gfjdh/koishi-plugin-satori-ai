@@ -5,7 +5,6 @@ export declare class APIClient {
     private config;
     private currentKeyIndex;
     constructor(ctx: Context, config: APIConfig);
-    initialize(): Promise<void>;
     chat(messages: Sat.Msg[]): Promise<{
         content: string;
         error: boolean;

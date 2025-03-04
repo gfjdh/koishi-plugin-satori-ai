@@ -12,14 +12,7 @@ export class APIClient {
     private ctx: Context,
     private config: APIConfig
   ) {
-    this.initialize()
-  }
-
-  // 启动时测试连接
-  async initialize() {
-    if (!await this.testConnection()) {
-      logger.error('无法连接到API服务')
-    }
+    this.testConnection()
   }
 
   // 发送聊天请求

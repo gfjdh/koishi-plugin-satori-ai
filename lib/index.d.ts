@@ -18,6 +18,7 @@ export declare class SAT extends Sat {
     private performPreChecks;
     private checkDuplicateDialogue;
     private handleFixedDialoguesCheck;
+    private checkUserDialogueCount;
     private updateChannelParallelCount;
     private getChannelParallelCount;
     private processInput;
@@ -27,6 +28,7 @@ export declare class SAT extends Sat {
     private formatResponse;
     private clearSession;
     private addCommonSense;
+    private handleUserLevel;
     handleMiddleware(session: Session, prompt: string): Promise<string>;
 }
 export default SAT;

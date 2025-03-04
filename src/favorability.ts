@@ -97,8 +97,8 @@ export async function inputContentCheck(ctx: Context, content: string, userid: s
     await updateFavorability(ctx, user, -1 * config.value_of_input_favorability)
     return -1 * config.value_of_input_favorability
   }
-  // 如果开启辅助LLM
-  if (config.enable_auxiliary_LLM) {
+  // 如果开启辅助LLM或者当天好感度已达上限则不增加好感度
+  if (config.enable_auxiliary_LLM || user.usage > config.max_favorability_perday) {
     return 0
   }
   // 正常情况增加1点
