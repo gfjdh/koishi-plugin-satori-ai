@@ -136,6 +136,10 @@ export class SAT extends Sat {
       .option('id', '-i <id:string>', { authority: 4 })
       .option('level', '-l <level:number>', { authority: 4 })
       .action(async ({ session, options }) => this.handleUserLevel(session, options))
+
+    ctx.command('sat.user_usage', '查看用户使用次数')
+      .alias('查询次数')
+      .action(async ({ session }) => this.handleUserUsage(session))
   }
 
   private async handleSatCommand(session: Session, prompt: string) {
@@ -398,6 +402,7 @@ export class SAT extends Sat {
     return session.text('commands.sat.common_sense.messages.succeed', [content]);
   }
 
+  // 更新用户等级
   private async handleUserLevel(session: Session, options: { id?: string , level?: number }) {
     const userId = options.id || session.userId
     const level = options.level || 1
@@ -406,8 +411,19 @@ export class SAT extends Sat {
     return session.text('commands.sat.messages.update_level_succeed', [level])
   }
 
+  // 处理查询用户使用次数
+  private async handleUserUsage(session: Session) {
+    const user = await ensureUserExists(this.ctx, session.userId, session.username)
+    const userUsage = user.usage || 0
+    const maxUsage = this.config.max_usage[user.userlevel || 0] || 0
+    return session.text('commands.sat.messages.usage', [userUsage, maxUsage])
+  }
+
   // 中间件转接
   public async handleMiddleware(session: Session, prompt: string) {
+    // 好感度阻断检查
+    const favorabilityBlock = await this.checkFavorabilityBlock(session)
+    if (favorabilityBlock) return '……'
     return this.handleSatCommand(session, prompt)
   }
 }

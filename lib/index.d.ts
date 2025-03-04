@@ -29,6 +29,7 @@ export declare class SAT extends Sat {
     private clearSession;
     private addCommonSense;
     private handleUserLevel;
+    private handleUserUsage;
     handleMiddleware(session: Session, prompt: string): Promise<string>;
 }
 export default SAT;

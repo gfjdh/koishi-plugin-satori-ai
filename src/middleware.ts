@@ -3,6 +3,8 @@ import { Context, Session, Next, h } from 'koishi'
 import { SAT } from './index'
 import { probabilisticCheck, detectEnglishLetters } from './utils'
 import { FavorabilityConfig, MiddlewareConfig } from './types'
+import { ensureCensorFileExists } from './favorability'
+import { ensureUserExists } from './database'
 
 export function createMiddleware(
   ctx: Context,
