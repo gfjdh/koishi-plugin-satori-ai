@@ -36,17 +36,19 @@ export class MemoryManager {
     return content.length >= this.config.remember_min_length && !this.config.memory_block_words.some(word => content.includes(word))
   }
 
-  private bracketFilter(content: string, config: MemoryConfig): string {
-    if (!config.bracket_filter) return content
-    let filtered = content
-    let previous: string
-    do {
-      previous = filtered
-      filtered = filtered.replace(/[（({\[][^（）\]})]*[）)\]\}]/g, '')
-    } while (filtered !== previous)
-    return filtered.trim() || content // 保留原内容如果过滤后为空
-  }
+// 括号过滤
+private bracketFilter(content: string, config: MemoryConfig): string {
+  if (!config.bracket_filter) return content
+  let filtered = content
+  let previous: string
+  do {
+    previous = filtered
+    filtered = filtered.replace(/[（({\[][^（）\]})]*[）)\]\}]/g, '')
+  } while (filtered !== previous)
+  return filtered.trim() || content.replace(/[（({\[]|[）)\]\}]/g, '') // 保留仅去除括号的内容如果过滤后为空
+}
 
+  // 内容过滤
   private memoryFilter(content: string, config: MemoryConfig): string {
     if (!config.memory_filter) return content
     const filterWords = config.memory_filter.split('-').map(word => word.trim()).filter(word => word.length > 0)
