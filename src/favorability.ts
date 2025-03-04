@@ -8,13 +8,14 @@ import * as path from 'path'
 
 export async function handleFavorabilitySystem(ctx: Context, session: Session, config: FavorabilityConfig): Promise<string | void> {
   const user = await ensureUserExists(ctx, session.userId, session.username);
+  const level = getFavorabilityLevel(user, config)
   // 初始好感度检查
-  if (user.favorability < config.favorability_div_1 - 20 && user.favorability > -900) {
+  if (user.favorability < config.favorability_div_1 - 20 && user.favorability > -900 && level !== '夫妻') {
     return session.text('commands.sat.messages.block1');
   }
   // 英语内容检查
   const englishCount = (session.content.match(/[a-zA-Z]/g) || []).length;
-  if (user.favorability < 50 && englishCount > 8) {
+  if (user.favorability < 50 && englishCount > 8 && level !== '夫妻') {
     return session.text('commands.sat.messages.tooManyEnglishLetters');
   }
   return;

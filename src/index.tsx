@@ -297,7 +297,8 @@ export class SAT extends Sat {
     }
     const messages = this.buildMessages(session, prompt)
     logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
-    return await this.apiClient.chat(await messages)
+    const user = await ensureUserExists(this.ctx, session.userId, session.username)
+    return await this.apiClient.chat(user, await messages)
   }
 
   // 构建消息

@@ -2,7 +2,7 @@
 // src/api.ts
 import { Context, Logger } from 'koishi'
 import { trimSlash, isErrorWithMessage } from './utils'
-import { APIConfig, APIError, Payload, Sat } from './types'
+import { APIConfig, APIError, Payload, Sat, User } from './types'
 
 const logger = new Logger('satori-api')
 export class APIClient {
@@ -16,13 +16,27 @@ export class APIClient {
   }
 
   // 发送聊天请求
-  public async chat(messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
-    const payload = this.createPayload(messages)
-    for (let i = 0; i < this.config.keys.length; i++) {
+  public async chat(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
+    const enableUserKey = user.items['地灵殿通行证']?.count > 0 && user.items['地灵殿通行证']?.description && user.items['地灵殿通行证']?.description == 'on'
+    let keys: string[]
+    let modle: string
+    let baseURL: string
+    if (enableUserKey) {
+      const key = user.items['地灵殿通行证'].metadata?.key
+      keys = [key]
+      modle = user.items['地灵殿通行证'].metadata?.model
+      baseURL = user.items['地灵殿通行证'].metadata?.baseURL
+    } else {
+      keys = this.config.keys
+      modle = this.config.appointModel
+      baseURL = this.config.baseURL
+    }
+    const payload = this.createPayload(messages, modle)
+    for (let i = 0; i < keys.length; i++) {
       try {
-        return await this.tryRequest(this.config.baseURL, payload, this.config.keys)
+        return await this.tryRequest(baseURL, payload, keys)
       } catch (error) {
-        if (i == this.config.keys.length - 1) {
+        if (i == keys.length - 1) {
           return this.handleAPIError(error as APIError)
         }
         this.rotateKey()
@@ -46,9 +60,9 @@ export class APIClient {
   }
 
   // 生成请求体
-  private createPayload(messages: Sat.Msg[]): Payload {
+  private createPayload(messages: Sat.Msg[], model: string): Payload {
     return {
-      model: this.config.appointModel,
+      model: model,
       messages,
       max_tokens: this.config.content_max_tokens,
       temperature: this.config.temperature,
@@ -157,7 +171,7 @@ export class APIClient {
       logger.info('API connection test succeeded')
       return true
     } catch (error) {
-      logger.error('API connection test failed:', error)
+      logger.error('API connection test failed')
       return false
     }
   }

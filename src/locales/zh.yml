@@ -12,7 +12,7 @@ commands:
       no-response: 我不知道你在说什么……
       update_level_succeed : 用户等级已更新为{0}
       exceeds: 已经差不多够了吧？请明天再来。
-      usage: 当前次数{0}/{1}
+      usage: 今日次数{0}/{1}
       block1: 我讨厌你！
       block2: 我讨厌你们！
   sat.clear:

@@ -1,11 +1,11 @@
 import { Context } from 'koishi';
-import { APIConfig, Sat } from './types';
+import { APIConfig, Sat, User } from './types';
 export declare class APIClient {
     private ctx;
     private config;
     private currentKeyIndex;
     constructor(ctx: Context, config: APIConfig);
-    chat(messages: Sat.Msg[]): Promise<{
+    chat(user: User, messages: Sat.Msg[]): Promise<{
         content: string;
         error: boolean;
     }>;
