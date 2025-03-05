@@ -50,7 +50,7 @@ export class MemoryManager {
   public async getChannelDialogue(session: Session) {
     if (!this.config.channel_dialogues) return ''
     const Dialogue = this.channelDialogues[session.channelId]?.join('\n') || ''
-    const result = '以下是群聊内群友最近的发言：{\n' + Dialogue + '\n}\n'
+    const result = '以下是群聊内群友最近的聊天记录，当用户话题涉及其中内容时你可以参考这些信息：{\n' + Dialogue + '\n}\n'
     return result
   }
 

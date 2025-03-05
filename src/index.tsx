@@ -436,8 +436,8 @@ export class SAT extends Sat {
 
   // 中间件频道记忆转接
   public async handleChannelMemoryManager(session: Session): Promise<void> {
+    if (this.performPreChecks(session, session.content)) return null
     // 频道短期记忆更新
-    if (session.content.includes('https://') || session.content.includes('http://')) return 
     const censored = await this.processInput(session, session.content)
     this.memoryManager.updateChannelDialogue(session, censored, session.username)
     return null
