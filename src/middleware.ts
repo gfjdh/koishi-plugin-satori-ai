@@ -4,21 +4,14 @@ import { } from '@koishijs/censor'
 import { SAT } from './index'
 import { probabilisticCheck, detectEnglishLetters } from './utils'
 import { FavorabilityConfig, MiddlewareConfig } from './types'
-import { MemoryManager } from './memory'
 
 export function createMiddleware(
   ctx: Context,
   sat: SAT,
   config: MiddlewareConfig & FavorabilityConfig,
-  memoryManager: MemoryManager
 ) {
   return async (session: Session, next: Next) => {
-    // 频道短期记忆更新
-    if (session.content.length <= config.max_tokens) {
-      let censored = session.content
-      if (ctx.censor) censored = await ctx.censor.transform(session.content, session)
-      memoryManager.updateChannelDialogue(session, censored, session.username)
-    }
+    await sat.handleChannelMemoryManager(session)
 
     // 私信处理
     if (config.private && isPrivateSession(session)) {
@@ -32,7 +25,7 @@ export function createMiddleware(
 
     // 随机触发处理
     if (shouldRandomTrigger(session, config)) {
-      return handleRandomTrigger(sat, session, config)
+      session.send(await handleRandomTrigger(sat, session, config))
     }
 
     return next()

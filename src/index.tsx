@@ -15,7 +15,7 @@ const logger = new Logger('satori-ai')
 
 export class SAT extends Sat {
   private apiClient: APIClient
-  private memoryManager: MemoryManager
+  public memoryManager: MemoryManager
   private ChannelParallelCount: Map<string, number> = new Map()
   private onlineUsers: string[] = []
 
@@ -32,7 +32,7 @@ export class SAT extends Sat {
     this.memoryManager = new MemoryManager(this.getMemoryConfig())
     ensureCensorFileExists(this.config.dataDir)
     // 注册中间件
-    ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig(), this.memoryManager))
+    ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
     this.registerCommands(ctx)
   }
@@ -152,6 +152,11 @@ export class SAT extends Sat {
     // 前置检查
     const preCheckResult = this.performPreChecks(session, prompt)
     if (preCheckResult) return preCheckResult
+    // 重复对话检查
+    const channelId = this.config.enable_self_memory ? session.userId : session.channelId
+    const recentDialogues = this.memoryManager.getChannelMemory(channelId).slice(-10)
+    const duplicateCheck = await this.checkDuplicateDialogue(session, prompt, recentDialogues, user)
+    if (duplicateCheck) return duplicateCheck
     // 固定对话处理
     const fixedResponse = await this.handleFixedDialoguesCheck(session, user, prompt)
     if (fixedResponse) return fixedResponse
@@ -203,7 +208,7 @@ export class SAT extends Sat {
   }
 
   // 前置检查
-  private async performPreChecks(session: Session, prompt: string): Promise<string> {
+  private performPreChecks(session: Session, prompt: string): string {
     if (this.config.blockuser.includes(session.userId))
       return session.text('commands.sat.messages.block1')
     if (this.config.blockchannel.includes(session.channelId))
@@ -213,13 +218,7 @@ export class SAT extends Sat {
     if (prompt.length > this.config.max_tokens)
       return session.text('commands.sat.messages.tooLong')
     if (this.onlineUsers.includes(session.userId) && this.config.enable_online_user_check)
-    return session.text('commands.sat.messages.online')
-    // 重复对话检查
-    const user = await ensureUserExists(this.ctx, session.userId, session.username)
-    const channelId = this.config.enable_self_memory ? session.userId : session.channelId
-    const recentDialogues = this.memoryManager.getChannelMemory(channelId).slice(-10)
-    const duplicateCheck = await this.checkDuplicateDialogue(session, prompt, recentDialogues, user)
-    if (duplicateCheck) return duplicateCheck
+      return session.text('commands.sat.messages.online')
     return null
   }
 
@@ -333,10 +332,10 @@ export class SAT extends Sat {
   private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
     let systemPrompt = this.config.prompt
     const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
-    const channelMemory = await this.memoryManager.getChannelDialogue(session)
+    const channelDialogue = await this.memoryManager.getChannelDialogue(session)
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
     systemPrompt += commonSense
-    systemPrompt += channelMemory
+    systemPrompt += channelDialogue
     systemPrompt += userMemory
     // 添加用户信息
     systemPrompt += `用户的名字是：${session.username}, id是：${session.userId}`
@@ -433,6 +432,15 @@ export class SAT extends Sat {
     const favorabilityBlock = await this.checkFavorabilityBlock(session)
     if (favorabilityBlock) return '……'
     return this.handleSatCommand(session, prompt)
+  }
+
+  // 中间件频道记忆转接
+  public async handleChannelMemoryManager(session: Session): Promise<void> {
+    // 频道短期记忆更新
+    if (session.content.includes('https://') || session.content.includes('http://')) return 
+    const censored = await this.processInput(session, session.content)
+    this.memoryManager.updateChannelDialogue(session, censored, session.username)
+    return null
   }
 }
 

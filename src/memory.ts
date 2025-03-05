@@ -41,7 +41,7 @@ export class MemoryManager {
   public async updateChannelDialogue(session: Session, prompt: string, name: string) {
     if (!this.config.channel_dialogues) return ''
     if (!this.channelDialogues[session.channelId]) this.channelDialogues[session.channelId] = []
-    this.channelDialogues[session.channelId].push(name + ':' + prompt)
+    this.channelDialogues[session.channelId].push('"' + name + '" 说: ' + prompt)
     if (this.channelDialogues[session.channelId]?.length > this.config.channel_dialogues_max_length) {
       this.channelDialogues = this.channelDialogues[session.channelId].slice(-this.config.channel_dialogues_max_length)
     }
@@ -50,7 +50,7 @@ export class MemoryManager {
   public async getChannelDialogue(session: Session) {
     if (!this.config.channel_dialogues) return ''
     const Dialogue = this.channelDialogues[session.channelId]?.join('\n') || ''
-    const result = '以下是群聊内群友最近的发言,如果用户的发言涉及其中内容,你可以参考其中内容回答：{\n' + Dialogue + '\n}'
+    const result = '以下是群聊内群友最近的发言：{\n' + Dialogue + '\n}\n'
     return result
   }
 
@@ -115,7 +115,6 @@ export class MemoryManager {
 
     if (this.config.enable_self_memory && response) {
       memory.dialogues.push({ role: 'assistant', content: response })
-      this.updateChannelDialogue(session, response, '你')
     } else{
       memory.dialogues.push({ role: 'assistant', content: ' ' })
     }
@@ -132,12 +131,12 @@ export class MemoryManager {
   }
   // 清除频道对话
   public clearChannelDialogue(channelId: string): void {
-    this.channelDialogues.delete(channelId)
+    this.channelDialogues[channelId] = []
   }
   // 清除全部记忆
   public clearAllMemories(): void {
     this.channelMemories.clear()
-    this.channelDialogues.clear()
+    this.channelDialogues = new Map()
   }
   // 返回频道记忆
   public getChannelMemory(channelId: string): MemoryEntry[] {
