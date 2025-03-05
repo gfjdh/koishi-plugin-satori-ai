@@ -68,6 +68,8 @@ export interface MemoryConfig {
     memory_block_words: string[];
     enable_self_memory: boolean;
     personal_memory: boolean;
+    channel_dialogues: boolean;
+    channel_dialogues_max_length: number;
     remember_min_length: number;
     common_topN: number;
     dailogues_topN: number;
@@ -162,6 +164,8 @@ export declare namespace Sat {
         memory_filter: string;
         memory_block_words: string[];
         personal_memory: boolean;
+        channel_dialogues: boolean;
+        channel_dialogues_max_length: number;
         common_topN: number;
         dailogues_topN: number;
         enable_fixed_dialogues: boolean;

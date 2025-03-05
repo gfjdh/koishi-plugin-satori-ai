@@ -1,3 +1,4 @@
+import { channel } from 'diagnostics_channel';
 import { Context, Schema, Service } from 'koishi'
 export const usage = `使用说明见插件主页`;
 
@@ -81,6 +82,8 @@ export interface MemoryConfig {
   memory_block_words: string[]
   enable_self_memory: boolean
   personal_memory: boolean
+  channel_dialogues: boolean
+  channel_dialogues_max_length: number
   remember_min_length: number
   common_topN: number
   dailogues_topN: number
@@ -191,6 +194,8 @@ export namespace Sat {
     memory_filter: string
     memory_block_words: string[]
     personal_memory: boolean
+    channel_dialogues: boolean
+    channel_dialogues_max_length: number
     common_topN: number
     dailogues_topN: number
     enable_fixed_dialogues: boolean
@@ -268,7 +273,9 @@ export namespace Sat {
 
     Schema.object({
       enable_self_memory: Schema.boolean().default(true).description('是否启用模型自发言记忆（仅短期）'),
-      personal_memory: Schema.boolean().default(true).description('是否启用按人记忆'),
+      personal_memory: Schema.boolean().default(true).description('是否启用按人记忆（否则将群内所有人视为同一个用户）'),
+      channel_dialogues: Schema.boolean().default(true).description('是否获取群聊内最近对话（包括不对bot说的）'),
+      channel_dialogues_max_length: Schema.number().default(20).description('群聊内最近对话最大长度(条数)'),
       bracket_filter: Schema.boolean().default(false).description('是否启用括号过滤，开启后在写入短期记忆时会过滤掉括号内的内容，用于缓解复读问题'),
       memory_filter: Schema.string().role('textarea').default('示例1-示例2').description('短期记忆过滤词，使用“-”分隔，含有过滤词的那一句不会被记忆，用于缓解复读问题'),
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),

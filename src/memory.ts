@@ -8,6 +8,7 @@ import { escapeRegExp, getTimeOfDay } from './utils'
 const logger = new Logger('satori-memory')
 export class MemoryManager {
   private channelMemories: Map<string, ChannelMemory> = new Map()
+  private channelDialogues: Map<string, string[]> = new Map()
 
   constructor(
     private config: MemoryConfig
@@ -36,17 +37,34 @@ export class MemoryManager {
     return content.length >= this.config.remember_min_length && !this.config.memory_block_words.some(word => content.includes(word))
   }
 
-// 括号过滤
-private bracketFilter(content: string, config: MemoryConfig): string {
-  if (!config.bracket_filter) return content
-  let filtered = content
-  let previous: string
-  do {
-    previous = filtered
-    filtered = filtered.replace(/[（({\[][^（）\]})]*[）)\]\}]/g, '')
-  } while (filtered !== previous)
-  return filtered.trim() || content.replace(/[（({\[]|[）)\]\}]/g, '') // 保留仅去除括号的内容如果过滤后为空
-}
+  // 更新频道对话
+  public async updateChannelDialogue(session: Session, prompt: string, name: string) {
+    if (!this.config.channel_dialogues) return ''
+    if (!this.channelDialogues[session.channelId]) this.channelDialogues[session.channelId] = []
+    this.channelDialogues[session.channelId].push(name + ':' + prompt)
+    if (this.channelDialogues[session.channelId]?.length > this.config.channel_dialogues_max_length) {
+      this.channelDialogues = this.channelDialogues[session.channelId].slice(-this.config.channel_dialogues_max_length)
+    }
+  }
+
+  public async getChannelDialogue(session: Session) {
+    if (!this.config.channel_dialogues) return ''
+    const Dialogue = this.channelDialogues[session.channelId]?.join('\n') || ''
+    const result = '以下是群聊内群友最近的发言,如果用户的发言涉及其中内容,你可以参考其中内容回答：{\n' + Dialogue + '\n}'
+    return result
+  }
+
+  // 括号引号过滤
+  private bracketFilter(content: string, config: MemoryConfig): string {
+    if (!config.bracket_filter) return content
+    let filtered = content.replace(/["'‘“]|[’”'"]/g, '')
+    let previous: string
+    do {
+      previous = filtered
+      filtered = filtered.replace(/[（({\[][^（）\]})]*[）)\]\}]/g, '')
+    } while (filtered !== previous)
+    return filtered.trim() || content.replace(/[（({\[]|[）)\]\}]/g, '') // 保留仅去除括号的内容如果过滤后为空
+  }
 
   // 内容过滤
   private memoryFilter(content: string, config: MemoryConfig): string {
@@ -93,9 +111,11 @@ private bracketFilter(content: string, config: MemoryConfig): string {
 
     const memory = this.channelMemories.get(channelId)
     memory.dialogues.push({ role: 'user', content: prompt })
+    this.updateChannelDialogue(session, prompt, session.username)
 
     if (this.config.enable_self_memory && response) {
       memory.dialogues.push({ role: 'assistant', content: response })
+      this.updateChannelDialogue(session, response, '你')
     } else{
       memory.dialogues.push({ role: 'assistant', content: ' ' })
     }
@@ -110,9 +130,14 @@ private bracketFilter(content: string, config: MemoryConfig): string {
   public clearChannelMemory(channelId: string): void {
     this.channelMemories.delete(channelId)
   }
+  // 清除频道对话
+  public clearChannelDialogue(channelId: string): void {
+    this.channelDialogues.delete(channelId)
+  }
   // 清除全部记忆
   public clearAllMemories(): void {
     this.channelMemories.clear()
+    this.channelDialogues.clear()
   }
   // 返回频道记忆
   public getChannelMemory(channelId: string): MemoryEntry[] {

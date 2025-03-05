@@ -1,17 +1,25 @@
 // src/middleware.ts
 import { Context, Session, Next, h } from 'koishi'
+import { } from '@koishijs/censor'
 import { SAT } from './index'
 import { probabilisticCheck, detectEnglishLetters } from './utils'
 import { FavorabilityConfig, MiddlewareConfig } from './types'
-import { ensureCensorFileExists } from './favorability'
-import { ensureUserExists } from './database'
+import { MemoryManager } from './memory'
 
 export function createMiddleware(
   ctx: Context,
   sat: SAT,
-  config: MiddlewareConfig & FavorabilityConfig
+  config: MiddlewareConfig & FavorabilityConfig,
+  memoryManager: MemoryManager
 ) {
   return async (session: Session, next: Next) => {
+    // 频道短期记忆更新
+    if (session.content.length <= config.max_tokens) {
+      let censored = session.content
+      if (ctx.censor) censored = await ctx.censor.transform(session.content, session)
+      memoryManager.updateChannelDialogue(session, censored, session.username)
+    }
+
     // 私信处理
     if (config.private && isPrivateSession(session)) {
       return handlePrivateMessage(sat, session)
@@ -91,39 +99,5 @@ async function handleRandomTrigger(
     if (englishCount > 8) return
   }
 
-  return SAT.handleMiddleware(session, session.content)
-}
-
-// 实现自定义触发策略
-export interface TriggerStrategy {
-  shouldTrigger(session: Session): boolean
-  handleTrigger(sat: SAT, session: Session): Promise<void>
-}
-
-// 示例：图片触发策略
-export class ImageTrigger implements TriggerStrategy {
-  shouldTrigger(session: Session) {
-    return session.elements.some(e => e.type === 'img')
-  }
-
-  async handleTrigger(sat: SAT, session: Session) {
-    //const description = await analyzeImage(session.elements[0].attrs.url)
-    //return sat.sat(session, `描述这张图片：${description}`)
-  }
-}
-
-//后续可以通过实现 MiddlewarePipeline 来支持更复杂的处理流程：
-export class MiddlewarePipeline {
-  private handlers: ((session: Session) => Promise<boolean>)[] = []
-
-  addHandler(handler: (session: Session) => Promise<boolean>) {
-    this.handlers.push(handler)
-  }
-
-  async execute(session: Session) {
-    for (const handler of this.handlers) {
-      if (await handler(session)) return true
-    }
-    return false
-  }
+  return SAT.handleMiddleware(session, '根据最近群友的发言，请你随意聊一下')
 }

@@ -99,7 +99,8 @@ export class APIClient {
         }
         if (content.length > this.config.content_max_length) {
           logger.warn(`返回内容超过最大长度(${content.length} > ${this.config.content_max_length})`)
-          return { content: '返回内容超过最大长度', error: true }
+          if (i >= 2) return { content: '返回内容超过最大长度', error: true }
+          continue
         }
         const responseMsg:Sat.Msg = { role: 'assistant', content: content }
         if (payload.messages.some(msg => msg === responseMsg) && content.length > 5) {
