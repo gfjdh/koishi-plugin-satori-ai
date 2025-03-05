@@ -75,6 +75,8 @@ export class SAT extends Sat {
       return {
         private: this.config.private,
         mention: this.config.mention,
+        nick_name: this.config.nick_name,
+        nick_name_list: this.config.nick_name_list,
         max_favorability_perday: this.config.max_favorability_perday,
         random_min_tokens: this.config.random_min_tokens,
         randnum: this.config.randnum,

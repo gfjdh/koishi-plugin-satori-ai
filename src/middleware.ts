@@ -18,6 +18,11 @@ export function createMiddleware(
       return handlePrivateMessage(sat, session)
     }
 
+    // 昵称处理
+    if (config.nick_name && hasNickName(session, config)) {
+      return handleNickNameMessage(sat, session)
+    }
+
     // @提及处理
     if (config.mention && isMentionTriggered(session)) {
       return handleMentionMessage(sat, session)
@@ -39,6 +44,18 @@ function isPrivateSession(session: Session): boolean {
 
 // 处理私聊消息
 async function handlePrivateMessage(SAT: SAT, session: Session) {
+  const content = session.content.trim()
+  if (content) return SAT.handleMiddleware(session, content)
+}
+
+// 昵称判断
+function hasNickName(session: Session, config: MiddlewareConfig): boolean {
+  const names = config.nick_name_list
+  return names.some(name => session.content.includes(name))
+}
+
+// 处理昵称消息
+async function handleNickNameMessage(SAT: SAT, session: Session) {
   const content = session.content.trim()
   if (content) return SAT.handleMiddleware(session, content)
 }
@@ -86,11 +103,10 @@ async function handleRandomTrigger(
   session: Session,
   config: FavorabilityConfig
 ) {
-  // 好感度检查
   if (config.enable_favorability) {
     const englishCount = detectEnglishLetters(session.content)
     if (englishCount > 8) return
   }
 
-  return SAT.handleMiddleware(session, '根据最近群友的发言，请你随意聊一下')
+  return SAT.handleMiddleware(session, '根据群友最近的发言，请你随意聊一下')
 }

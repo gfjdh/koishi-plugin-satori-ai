@@ -77,6 +77,8 @@ export interface MemoryConfig {
 export interface MiddlewareConfig {
     private: boolean;
     mention: boolean;
+    nick_name: boolean;
+    nick_name_list: string[];
     random_min_tokens: number;
     randnum: number;
     max_tokens: number;
@@ -172,6 +174,8 @@ export declare namespace Sat {
         max_usage: number[];
         private: boolean;
         mention: boolean;
+        nick_name: boolean;
+        nick_name_list: string[];
         duplicateDialogueCheck: boolean;
         enable_online_user_check: boolean;
         random_min_tokens: number;
