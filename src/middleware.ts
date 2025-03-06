@@ -1,9 +1,12 @@
 // src/middleware.ts
-import { Context, Session, Next, h } from 'koishi'
+import { Context, Session, Next, Logger } from 'koishi'
 import { } from '@koishijs/censor'
 import { SAT } from './index'
 import { probabilisticCheck, detectEnglishLetters } from './utils'
 import { FavorabilityConfig, MiddlewareConfig } from './types'
+import { ensureUserExists } from './database'
+
+const logger = new Logger('satori-ai')
 
 export function createMiddleware(
   ctx: Context,
@@ -19,7 +22,7 @@ export function createMiddleware(
     }
 
     // 昵称处理
-    if (config.nick_name && hasNickName(session, config)) {
+    if (config.nick_name && await hasNickName(ctx, session, config)) {
       return handleNickNameMessage(sat, session)
     }
 
@@ -49,8 +52,12 @@ async function handlePrivateMessage(SAT: SAT, session: Session) {
 }
 
 // 昵称判断
-function hasNickName(session: Session, config: MiddlewareConfig): boolean {
-  const names = config.nick_name_list
+async function hasNickName(ctx: Context, session: Session, config: MiddlewareConfig): Promise<boolean> {
+  const user = await ensureUserExists(ctx, session.userId, session.username)
+  let names = config.nick_name_list
+  if (user?.items['情侣合照']?.metadata?.botNickName){
+    names = names.concat(user.items['情侣合照'].metadata.botNickName)
+  }
   return names.some(name => session.content.includes(name))
 }
 
@@ -107,6 +114,5 @@ async function handleRandomTrigger(
     const englishCount = detectEnglishLetters(session.content)
     if (englishCount > 8) return
   }
-
-  return SAT.handleMiddleware(session, '根据群友最近的发言，请你随意聊一下')
+  return SAT.handleMiddleware(session, session.content)
 }

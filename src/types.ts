@@ -1,4 +1,3 @@
-import { channel } from 'diagnostics_channel';
 import { Context, Schema, Service } from 'koishi'
 export const usage = `使用说明见插件主页`;
 

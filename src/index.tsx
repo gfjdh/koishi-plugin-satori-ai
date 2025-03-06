@@ -340,7 +340,10 @@ export class SAT extends Sat {
     systemPrompt += channelDialogue
     systemPrompt += userMemory
     // 添加用户信息
+    const user = await getUser(this.ctx, session.userId)
+    const nickName = user.items['情侣合照']?.metadata?.userNickName
     systemPrompt += `用户的名字是：${session.username}, id是：${session.userId}`
+    if (nickName) systemPrompt += `, 昵称是：${nickName}`
     // 添加好感度提示
     if (this.config.enable_favorability) {
       const user = await ensureUserExists(this.ctx, session.userId, session.username)
@@ -438,7 +441,9 @@ export class SAT extends Sat {
 
   // 中间件频道记忆转接
   public async handleChannelMemoryManager(session: Session): Promise<void> {
+    const user = await ensureUserExists(this.ctx, session.userId, session.username)
     if (this.performPreChecks(session, session.content)) return null
+    if (this.checkUserDialogueCount(session, user)) return null
     // 频道短期记忆更新
     const censored = await this.processInput(session, session.content)
     this.memoryManager.updateChannelDialogue(session, censored, session.username)
