@@ -10,6 +10,7 @@ import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
 import { splitSentences } from './utils'
+import { log } from 'console'
 
 const logger = new Logger('satori-ai')
 
@@ -435,7 +436,7 @@ export class SAT extends Sat {
   public async handleMiddleware(session: Session, prompt: string) {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
     if (this.performPreChecks(session, session.content)) return null
-    if (this.checkUserDialogueCount(session, user)) return null
+    if (await this.checkUserDialogueCount(session, user)) return null
     if (await this.checkFavorabilityBlock(session)) return null
     return this.handleSatCommand(session, prompt)
   }
