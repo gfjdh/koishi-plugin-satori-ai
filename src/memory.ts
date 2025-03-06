@@ -232,7 +232,7 @@ export class MemoryManager {
           return result
       } else {
           // 这里因为远古屎山代码的原因，所以要判断role是否为user，现在的role是用来存储时间的
-          matched.forEach(entry => entry.content = entry.content + (entry.role === 'user' ? '' : entry.role))
+          matched.forEach(entry => entry.content = entry.content + (entry.role === 'user' ? '(未记录时间)' : entry.role))
           const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}\n}\n`
           return result
       }
