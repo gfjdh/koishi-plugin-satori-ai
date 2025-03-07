@@ -55,6 +55,12 @@ export async function updateUserUsage(ctx: Context, user: User, adjustment: numb
   return user.usage + adjustment
 }
 
+// 更新用户物品
+export async function updateUserItems(ctx: Context, user: User): Promise<void> {
+  if (!user) return
+  await ctx.database.set('p_system', { userid: user.userid }, { items: user.items })
+}
+
 export async function getUser(ctx: Context, userId: string): Promise<User | null> {
   const users = await ctx.database.get('p_system', { userid: userId })
   return users[0] || null

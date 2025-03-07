@@ -1,7 +1,7 @@
 // src/favorability.ts
 import { Context, Session } from 'koishi'
 import { User, FavorabilityLevel, FavorabilityConfig } from './types'
-import { getUser, updateFavorability, ensureUserExists } from './database'
+import { getUser, updateFavorability, ensureUserExists, updateUserItems } from './database'
 import { Sat } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -76,7 +76,7 @@ export async function handleAuxiliaryResult(ctx: Context, session: Session, conf
   // 处理好感度检查
   let favorabilityEffect = value - config.offset_of_fafavorability
   // 应用好感度效果
-  await applyFavorabilityEffect(ctx, user, favorabilityEffect ? favorabilityEffect : 0)
+  await applyFavorabilityEffect(ctx, user, favorabilityEffect ? favorabilityEffect : 0, session)
   if (favorabilityEffect < 0) {
     return "(好感↓)";
   }
@@ -87,7 +87,13 @@ export async function handleAuxiliaryResult(ctx: Context, session: Session, conf
 }
 
 // 处理输入好感度检查
-export async function inputContentCheck(ctx: Context, content: string, userid: string, config: FavorabilityConfig): Promise<number> {
+export async function inputContentCheck(
+  ctx: Context,
+  content: string,
+  userid: string,
+  config: FavorabilityConfig,
+  session: Session
+): Promise<number> {
   const user = await getUser(ctx, userid)
   if (!user) return 0
   // 敏感词检测
@@ -95,7 +101,7 @@ export async function inputContentCheck(ctx: Context, content: string, userid: s
   const hasCensor = regex.test(content)
 
   if (hasCensor && config.input_censor_favorability) {
-    await updateFavorability(ctx, user, -1 * config.value_of_input_favorability)
+    await applyFavorabilityEffect(ctx, user, -1 * config.value_of_input_favorability, session)
     return -1 * config.value_of_input_favorability
   }
   // 如果开启辅助LLM或者当天好感度已达上限则不增加好感度
@@ -103,12 +109,18 @@ export async function inputContentCheck(ctx: Context, content: string, userid: s
     return 0
   }
   // 正常情况增加1点
-  await updateFavorability(ctx, user, 1)
+  await applyFavorabilityEffect(ctx, user, 1, session)
   return 1
 }
 
 // 处理输出好感度检查
-export async function outputContentCheck(ctx: Context, response: { content: string; error: boolean }, userid: string, config: FavorabilityConfig): Promise<number> {
+export async function outputContentCheck(
+  ctx: Context,
+  response: { content: string; error: boolean },
+  userid: string,
+  config: FavorabilityConfig,
+  session: Session
+): Promise<number> {
   if (response.error) return 0
   const user = await getUser(ctx, userid)
   if (!user) return 0
@@ -122,9 +134,9 @@ export async function outputContentCheck(ctx: Context, response: { content: stri
     const regex = /\*\*/g
     const hasCensor = regex.test(censoredContent)
     if (hasCensor) {
-      await updateFavorability(ctx, user, -1 * config.value_of_output_favorability)
-    return -1 * config.value_of_output_favorability
-  }
+      await applyFavorabilityEffect(ctx, user, -1 * config.value_of_output_favorability, session)
+      return -1 * config.value_of_output_favorability
+    }
   }
   return 0
 }
@@ -143,7 +155,15 @@ export async function ensureCensorFileExists(basePath: string): Promise<void> {
 export async function applyFavorabilityEffect(
   ctx: Context,
   user: User,
-  effect: number
+  effect: number,
+  session: Session
 ): Promise<void> {
+  if (effect < 0 && user.items['帽子先生']?.count > 0) {
+    user.items['帽子先生'].count--
+    if (user.items['帽子先生'].count === 0) delete user.items['帽子先生']
+    await updateUserItems(ctx, user)
+    session.send('commands.sat.messages.hatMan')
+    return
+  }
   await updateFavorability(ctx, user, effect)
 }

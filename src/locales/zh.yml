@@ -13,6 +13,7 @@ commands:
       update_level_succeed : 用户等级已更新为{0}
       exceeds: 已经差不多够了吧？请明天再来。
       usage: 今日次数{0}/{1}
+      hatMan: 叮！帽子先生保护了你的好感度，快说谢谢帽子先生吧！
       block1: 我讨厌你！
       block2: 我讨厌你们！
   sat.clear:

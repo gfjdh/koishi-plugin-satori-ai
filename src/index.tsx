@@ -10,7 +10,6 @@ import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
 import { splitSentences } from './utils'
-import { log } from 'console'
 
 const logger = new Logger('satori-ai')
 
@@ -185,7 +184,7 @@ export class SAT extends Sat {
   private async handleAuxiliaryDialogue(session: Session, prompt: string, response: { content: string, error: boolean}) {
     if (response.error) return null
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
-    const outputCheck = await outputContentCheck(this.ctx, response, session.userId, this.getFavorabilityConfig())
+    const outputCheck = await outputContentCheck(this.ctx, response, session.userId, this.getFavorabilityConfig(), session)
     const regex = /\*\*/g
     const inputCensor = prompt.match(regex)?.length
     const outputCensor = outputCheck < 0
@@ -286,7 +285,7 @@ export class SAT extends Sat {
     }
     // 好感度检查
     if (this.config.enable_favorability) {
-      await inputContentCheck(this.ctx, censored, session.userId, this.getFavorabilityConfig())
+      await inputContentCheck(this.ctx, censored, session.userId, this.getFavorabilityConfig(), session)
     }
     return censored
   }
