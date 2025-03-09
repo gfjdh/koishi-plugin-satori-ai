@@ -433,7 +433,7 @@ export class SAT extends Sat {
 
   // 中间件转接
   public async handleMiddleware(session: Session, prompt: string) {
-    const user = await ensureUserExists(this.ctx, session.userId, session.username)
+    const user = await getUser(this.ctx, session.userId)
     if (this.performPreChecks(session, session.content)) return null
     if (await this.checkUserDialogueCount(session, user)) return null
     if (await this.checkFavorabilityBlock(session)) return null

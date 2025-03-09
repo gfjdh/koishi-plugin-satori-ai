@@ -162,7 +162,7 @@ export async function applyFavorabilityEffect(
     user.items['帽子先生'].count--
     if (user.items['帽子先生'].count === 0) delete user.items['帽子先生']
     await updateUserItems(ctx, user)
-    session.send('commands.sat.messages.hatMan')
+    session.send(session.text('commands.sat.messages.hatMan'))
     return
   }
   await updateFavorability(ctx, user, effect)

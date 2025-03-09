@@ -53,6 +53,7 @@ async function handlePrivateMessage(SAT: SAT, session: Session) {
 
 // 昵称判断
 async function hasNickName(ctx: Context, session: Session, config: MiddlewareConfig): Promise<boolean> {
+  if (session.userId === session.selfId) return false
   const user = await ensureUserExists(ctx, session.userId, session.username)
   let names = config.nick_name_list
   if (user?.items['情侣合照']?.metadata?.botNickName){
