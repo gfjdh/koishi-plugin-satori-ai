@@ -54,6 +54,7 @@ async function handlePrivateMessage(SAT: SAT, session: Session) {
 // 昵称判断
 async function hasNickName(ctx: Context, session: Session, config: MiddlewareConfig): Promise<boolean> {
   if (session.userId === session.selfId) return false
+  if (config.nick_name_block_words.some(word => session.content.includes(word))) return false
   const user = await ensureUserExists(ctx, session.userId, session.username)
   let names = config.nick_name_list
   if (user?.items['情侣合照']?.metadata?.botNickName){
@@ -102,7 +103,7 @@ function shouldRandomTrigger(
 // 特殊消息类型判断
 function isSpecialMessage(session: Session): boolean {
   const firstElement = session.elements[0]
-  return ['img', 'at', 'file'].includes(firstElement?.type)
+  return ['img', 'at', 'file'].includes(firstElement?.type) || session.content.includes(':poke')
 }
 
 // 处理随机触发

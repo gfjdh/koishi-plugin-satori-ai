@@ -94,6 +94,7 @@ export interface MiddlewareConfig {
   mention: boolean
   nick_name: boolean
   nick_name_list: string[]
+  nick_name_block_words: string[]
   random_min_tokens: number
   randnum: number
   max_tokens: number
@@ -206,6 +207,7 @@ export namespace Sat {
     mention: boolean
     nick_name: boolean
     nick_name_list: string[]
+    nick_name_block_words: string[]
     duplicateDialogueCheck: boolean
     enable_online_user_check: boolean
     random_min_tokens: number
@@ -294,7 +296,8 @@ export namespace Sat {
       private: Schema.boolean().default(false).description('开启后私聊AI可触发对话, 不需要使用指令'),
       mention: Schema.boolean().default(false).description('开启后机器人被提及(at/引用)可触发对话'),
       nick_name: Schema.boolean().default(true).description('是否使用昵称触发对话（发言中含有昵称时）'),
-      nick_name_list: Schema.array(String).default(['ai']).description('昵称列表'),
+      nick_name_list: Schema.array(String).default(['昵称1']).description('昵称列表'),
+      nick_name_block_words: Schema.array(String).default(['屏蔽词1']).description('昵称屏蔽词(含有屏蔽词的消息不会触发昵称对话)'),
       duplicateDialogueCheck: Schema.boolean().default(true).description('是否检查重复对话'),
       enable_online_user_check: Schema.boolean().default(true).description('在未回答而再次提问时是否提示用户有未完成的对话'),
       random_min_tokens: Schema.number().default(20).description('随机触发对话的最小长度'),

@@ -79,6 +79,7 @@ export interface MiddlewareConfig {
     mention: boolean;
     nick_name: boolean;
     nick_name_list: string[];
+    nick_name_block_words: string[];
     random_min_tokens: number;
     randnum: number;
     max_tokens: number;
@@ -176,6 +177,7 @@ export declare namespace Sat {
         mention: boolean;
         nick_name: boolean;
         nick_name_list: string[];
+        nick_name_block_words: string[];
         duplicateDialogueCheck: boolean;
         enable_online_user_check: boolean;
         random_min_tokens: number;

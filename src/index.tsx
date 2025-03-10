@@ -9,7 +9,7 @@ import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFa
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
-import { splitSentences } from './utils'
+import { processPrompt, splitSentences } from './utils'
 
 const logger = new Logger('satori-ai')
 
@@ -77,6 +77,7 @@ export class SAT extends Sat {
         mention: this.config.mention,
         nick_name: this.config.nick_name,
         nick_name_list: this.config.nick_name_list,
+        nick_name_block_words: this.config.nick_name_block_words,
         max_favorability_perday: this.config.max_favorability_perday,
         random_min_tokens: this.config.random_min_tokens,
         randnum: this.config.randnum,
@@ -165,25 +166,20 @@ export class SAT extends Sat {
     // 对话次数检查
     const dialogueCountCheck = await this.checkUserDialogueCount(session, user)
     if (dialogueCountCheck) return dialogueCountCheck
-    // 处理记忆和上下文
-    if (this.config.log_ask_response) logger.info(`用户 ${session.username}：${prompt}`)
-    this.onlineUsers.push(session.userId)
     // 更新频道并发数
     await this.updateChannelParallelCount(session, 1)
     const processedPrompt = await this.processInput(session, prompt)
     const response = await this.generateResponse(session, processedPrompt)
-    if (this.config.log_ask_response) logger.info(`Satori AI：${response.content}`)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆
     await this.memoryManager.updateMemories(session, processedPrompt, this.getMemoryConfig(), response)
-    this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
     return await this.formatResponse(session, response.content, auxiliaryResult)
   }
 
   // 处理辅助判断
   private async handleAuxiliaryDialogue(session: Session, prompt: string, response: { content: string, error: boolean}) {
     if (response.error) return null
-    const user = await ensureUserExists(this.ctx, session.userId, session.username)
+    const user = await getUser(this.ctx, session.userId)
     const outputCheck = await outputContentCheck(this.ctx, response, session.userId, this.getFavorabilityConfig(), session)
     const regex = /\*\*/g
     const inputCensor = prompt.match(regex)?.length
@@ -227,6 +223,7 @@ export class SAT extends Sat {
   // 重复对话检查
   private async checkDuplicateDialogue(session: Session, prompt: string, recentDialogues: Sat.Msg[], user: User): Promise<string> {
     if (!this.config.duplicateDialogueCheck) return null
+    if (session.content.includes(':poke')) return null
     let duplicateDialogue = recentDialogues.find(msg => msg.content == prompt)
     if (!duplicateDialogue) return null
 
@@ -269,6 +266,8 @@ export class SAT extends Sat {
 
   // 更新频道并发数
   private async updateChannelParallelCount(session: Session, value: number): Promise<void> {
+    // 更新在线用户
+    this.onlineUsers.push(session.userId)
     this.ChannelParallelCount.set(session.channelId, (this.ChannelParallelCount.get(session.channelId) || 0) + value)
   }
   // 获取频道并发数
@@ -278,15 +277,17 @@ export class SAT extends Sat {
 
   // 处理输入
   private async processInput(session: Session, prompt: string) {
+    const processedPrompt = processPrompt(prompt)
     // 敏感词处理
-    let censored = prompt
+    let censored = processedPrompt
     if (this.ctx.censor) {
-      censored = await this.ctx.censor.transform(prompt, session)
+      censored = await this.ctx.censor.transform(processedPrompt, session)
     }
     // 好感度检查
     if (this.config.enable_favorability) {
       await inputContentCheck(this.ctx, censored, session.userId, this.getFavorabilityConfig(), session)
     }
+    if (this.config.log_ask_response) logger.info(`用户 ${session.username}：${processedPrompt}`)
     return censored
   }
 
@@ -302,8 +303,10 @@ export class SAT extends Sat {
     }
     const messages = this.buildMessages(session, prompt)
     logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
-    const user = await ensureUserExists(this.ctx, session.userId, session.username)
-    return await this.apiClient.chat(user, await messages)
+    const user = await getUser(this.ctx, session.userId)
+    const response = await this.apiClient.chat(user, await messages)
+    if (this.config.log_ask_response) logger.info(`Satori AI：${response.content}`)
+    return response
   }
 
   // 构建消息
@@ -346,7 +349,6 @@ export class SAT extends Sat {
     if (nickName) systemPrompt += `, 昵称是：${nickName},称呼用户时请优先使用昵称`
     // 添加好感度提示
     if (this.config.enable_favorability) {
-      const user = await ensureUserExists(this.ctx, session.userId, session.username)
       systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig(), user)
     }
     if (this.config.log_system_prompt) logger.info(`系统提示：${systemPrompt}`)
@@ -357,6 +359,7 @@ export class SAT extends Sat {
   private async formatResponse(session: Session, response: string, auxiliaryResult: string | void) {
     const user = await getUser(this.ctx, session.userId)
     this.updateChannelParallelCount(session, -1)
+    this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
     if (!response) {
       return session.text('commands.sat.messages.no-response')
     }

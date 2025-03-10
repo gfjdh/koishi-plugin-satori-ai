@@ -97,26 +97,12 @@ export function isErrorWithMessage(
   return typeof error === 'object' && error !== null && 'message' in error
 }
 
-// 扩展：添加表情符号检测
-export function detectEmojis(text: string): number {
-  const emojiRegex = /\p{Emoji}/gu
-  return (text.match(emojiRegex) || []).length
-}
-
-//后续可通过实现以下接口增强工具模块：
-export interface TextProcessor {
-  process(content: string): string
-}
-
-export class TextProcessingPipeline {
-  private processors: TextProcessor[] = []
-
-  addProcessor(processor: TextProcessor): void {
-    this.processors.push(processor)
-  }
-
-  run(content: string): string {
-    return this.processors.reduce((acc, processor) =>
-      processor.process(acc), content)
-  }
+/**
+ * 将包含 `<...name="[xxx]"...>` 格式的文本替换为 `(xxx)`
+ * @param prompt 包含待处理标签的原始字符串
+ * @returns 处理后的字符串，所有匹配标签被替换为对应名称
+ */
+export function processPrompt(prompt: string): string {
+  if (prompt.includes(':poke')) return '戳戳';
+  return prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `${name}`);
 }

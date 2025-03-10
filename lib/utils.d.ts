@@ -11,12 +11,9 @@ export declare function isErrorWithMessage(error: unknown): error is {
     response: any;
     message: string;
 };
-export declare function detectEmojis(text: string): number;
-export interface TextProcessor {
-    process(content: string): string;
-}
-export declare class TextProcessingPipeline {
-    private processors;
-    addProcessor(processor: TextProcessor): void;
-    run(content: string): string;
-}
+/**
+ * 将包含 `<...name="[xxx]"...>` 格式的文本替换为 `(xxx)`
+ * @param prompt 包含待处理标签的原始字符串
+ * @returns 处理后的字符串，所有匹配标签被替换为对应名称
+ */
+export declare function processPrompt(prompt: string): string;
