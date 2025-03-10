@@ -160,15 +160,16 @@ export class SAT extends Sat {
     const recentDialogues = this.memoryManager.getChannelMemory(channelId).slice(-10)
     const duplicateCheck = await this.checkDuplicateDialogue(session, prompt, recentDialogues, user)
     if (duplicateCheck) return duplicateCheck
+    // 处理输入
+    const processedPrompt = await this.processInput(session, prompt)
     // 固定对话处理
-    const fixedResponse = await this.handleFixedDialoguesCheck(session, user, prompt)
+    const fixedResponse = await this.handleFixedDialoguesCheck(session, user, processedPrompt)
     if (fixedResponse) return fixedResponse
     // 对话次数检查
     const dialogueCountCheck = await this.checkUserDialogueCount(session, user)
     if (dialogueCountCheck) return dialogueCountCheck
     // 更新频道并发数
     await this.updateChannelParallelCount(session, 1)
-    const processedPrompt = await this.processInput(session, prompt)
     const response = await this.generateResponse(session, processedPrompt)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆
@@ -234,28 +235,21 @@ export class SAT extends Sat {
 
   // 处理固定对话
   private async handleFixedDialoguesCheck(session: Session, user: User, prompt: string): Promise<string | void> {
-    const fixedDialogues = await handleFixedDialogues(
-      this.ctx,
-      session,
-      user,
-      prompt,
-      {
+    const fixedDialogues = await handleFixedDialogues(this.ctx, session, user, prompt, {
         dataDir: this.config.dataDir,
         enable_favorability: this.config.enable_favorability,
         enable_fixed_dialogues: this.config.enable_fixed_dialogues
       }
     )
-    if (fixedDialogues){
-      return fixedDialogues
-    }
+    if (fixedDialogues){ return fixedDialogues }
     return null
   }
 
   // 对话次数检查
-  private async checkUserDialogueCount(session: Session, user: User): Promise<string | void> {
+  private async checkUserDialogueCount(session: Session, user: User, adjustment: number = 1): Promise<string | void> {
     if (user.items['地灵殿通行证']?.count > 0 && user.items['地灵殿通行证']?.description && user.items['地灵殿通行证']?.description == 'on')
       return null
-    const usage = await updateUserUsage(this.ctx, user)
+    const usage = await updateUserUsage(this.ctx, user, adjustment)
     const level = user.userlevel || 0
     const usageLimit = this.config.max_usage[level] || 0
     if (usage && usageLimit != 0 && usage > usageLimit) {
@@ -360,9 +354,8 @@ export class SAT extends Sat {
     const user = await getUser(this.ctx, session.userId)
     this.updateChannelParallelCount(session, -1)
     this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
-    if (!response) {
-      return session.text('commands.sat.messages.no-response')
-    }
+    if (!response) return session.text('commands.sat.messages.no-response')
+
     const catEar = user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on'
     const fumo = user?.items['觉fumo']?.count > 0 && user?.items['觉fumo']?.description && user?.items['觉fumo']?.description == 'on'
     const replyPointing = this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1)
@@ -371,20 +364,16 @@ export class SAT extends Sat {
     if (catEar) response += ' 喵~'
     if (fumo) response += '\nfumofumo'
     if (auxiliaryResult && this.config.visible_favorability && !ring) response += auxiliaryResult
+    if (replyPointing) { response = `@${session.username} ` + response }
 
     if (this.config.sentences_divide && response.length > 10) {
       const sentences = splitSentences(response).map(text => h.text(text))
       for (const sentence of sentences) {
-        if (replyPointing)
-          { await session.send(`@${session.username} ` + sentence) }
-        else
-          { await session.send(sentence) }
+        await session.send(sentence)
         await new Promise(resolve => setTimeout(resolve, this.config.time_interval))
       }
       return null
     }
-
-    if (replyPointing) { response = `@${session.username} ` + response }
     return response
   }
 
@@ -434,20 +423,36 @@ export class SAT extends Sat {
     return session.text('commands.sat.messages.usage', [userUsage, maxUsage])
   }
 
-  // 中间件转接
-  public async handleMiddleware(session: Session, prompt: string) {
+  // 随机中间件转接
+  public async handleRandomMiddleware(session: Session, prompt: string) {
     const user = await getUser(this.ctx, session.userId)
     if (this.performPreChecks(session, session.content)) return null
-    if (await this.checkUserDialogueCount(session, user)) return null
+    if (await this.checkUserDialogueCount(session, user, 0)) return null
+    if (await this.checkFavorabilityBlock(session)) return null
+    const processedPrompt = processPrompt(session.content)
+    // 敏感词处理
+    let censored = processedPrompt
+    if (this.ctx.censor) censored = await this.ctx.censor.transform(processedPrompt, session)
+    if (censored) return null
+    return this.handleSatCommand(session, prompt)
+  }
+
+  // 昵称中间件转接
+  public async handleNickNameMiddleware(session: Session, prompt: string) {
+    const user = await getUser(this.ctx, session.userId)
+    if (this.performPreChecks(session, session.content)) return null
+    if (await this.checkUserDialogueCount(session, user, 0)) return null
     if (await this.checkFavorabilityBlock(session)) return null
     return this.handleSatCommand(session, prompt)
   }
 
-  // 中间件频道记忆转接
+  // 频道记忆中间件转接
   public async handleChannelMemoryManager(session: Session): Promise<void> {
     if (this.performPreChecks(session, session.content)) return null
-    // 频道短期记忆更新
-    const censored = await this.processInput(session, session.content)
+    const processedPrompt = processPrompt(session.content)
+    // 敏感词处理
+    let censored = processedPrompt
+    if (this.ctx.censor) censored = await this.ctx.censor.transform(processedPrompt, session)
     this.memoryManager.updateChannelDialogue(session, censored, session.username)
     return null
   }

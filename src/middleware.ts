@@ -33,7 +33,7 @@ export function createMiddleware(
 
     // 随机触发处理
     if (shouldRandomTrigger(session, config)) {
-      session.send(await handleRandomTrigger(sat, session, config))
+      session.send(await sat.handleRandomMiddleware(session, session.content))
     }
 
     return next()
@@ -48,7 +48,7 @@ function isPrivateSession(session: Session): boolean {
 // 处理私聊消息
 async function handlePrivateMessage(SAT: SAT, session: Session) {
   const content = session.content.trim()
-  if (content) return await SAT.handleMiddleware(session, content)
+  if (content) return await SAT.handleNickNameMiddleware(session, content)
 }
 
 // 昵称判断
@@ -66,7 +66,7 @@ async function hasNickName(ctx: Context, session: Session, config: MiddlewareCon
 // 处理昵称消息
 async function handleNickNameMessage(SAT: SAT, session: Session) {
   const content = session.content.trim()
-  if (content) return await SAT.handleMiddleware(session, content)
+  if (content) return await SAT.handleNickNameMiddleware(session, content)
 }
 
 // @提及判断
@@ -83,7 +83,7 @@ async function handleMentionMessage(SAT: SAT, session: Session) {
     .join('')
     .trim()
 
-  if (message) return await SAT.handleMiddleware(session, message)
+  if (message) return await SAT.handleNickNameMiddleware(session, message)
 }
 
 // 随机触发判断
@@ -104,17 +104,4 @@ function shouldRandomTrigger(
 function isSpecialMessage(session: Session): boolean {
   const firstElement = session.elements[0]
   return ['img', 'at', 'file'].includes(firstElement?.type) || session.content.includes(':poke')
-}
-
-// 处理随机触发
-async function handleRandomTrigger(
-  SAT: SAT,
-  session: Session,
-  config: FavorabilityConfig
-) {
-  if (config.enable_favorability) {
-    const englishCount = detectEnglishLetters(session.content)
-    if (englishCount > 8) return
-  }
-  return await SAT.handleMiddleware(session, session.content)
 }
