@@ -15,7 +15,7 @@ const logger = new Logger('satori-ai')
 
 export class SAT extends Sat {
   private apiClient: APIClient
-  public memoryManager: MemoryManager
+  private memoryManager: MemoryManager
   private ChannelParallelCount: Map<string, number> = new Map()
   private onlineUsers: string[] = []
 

@@ -329,6 +329,11 @@ export namespace Sat {
     }).description('好感度设置'),
 
     Schema.object({
+      enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),
+      enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏'),
+    }).description('拓展模块-游戏设置(开发中)'),
+
+    Schema.object({
       blockuser: Schema.array(String).default([]).description('屏蔽的用户'),
       blockchannel: Schema.array(String).default([]).description('屏蔽的频道')
     }).description('过滤器'),

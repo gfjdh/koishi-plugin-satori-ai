@@ -2,11 +2,11 @@
 import { Context, Session, Next, Logger } from 'koishi'
 import { } from '@koishijs/censor'
 import { SAT } from './index'
-import { probabilisticCheck, detectEnglishLetters } from './utils'
+import { probabilisticCheck } from './utils'
 import { FavorabilityConfig, MiddlewareConfig } from './types'
 import { ensureUserExists } from './database'
 
-const logger = new Logger('satori-ai')
+const logger = new Logger('satori-ai-middleware')
 
 export function createMiddleware(
   ctx: Context,
@@ -33,7 +33,7 @@ export function createMiddleware(
 
     // 随机触发处理
     if (shouldRandomTrigger(session, config)) {
-      session.send(await sat.handleRandomMiddleware(session, session.content))
+      return await sat.handleRandomMiddleware(session, session.content)
     }
 
     return next()
