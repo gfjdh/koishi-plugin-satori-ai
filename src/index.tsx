@@ -9,7 +9,7 @@ import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFa
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
-import { filterResponse, processPrompt, splitSentences } from './utils'
+import { addOutputCensor, filterResponse, processPrompt, splitSentences } from './utils'
 
 const logger = new Logger('satori-ai')
 
@@ -145,6 +145,10 @@ export class SAT extends Sat {
     ctx.command('sat.user_usage', '查看用户使用次数')
       .alias('查询次数')
       .action(async ({ session }) => this.handleUserUsage(session))
+
+    ctx.command('sat.add_output_censor <text:text>', '添加输出敏感词', { authority: 4 })
+      .alias('添加输出屏蔽词')
+      .action(async ({ session }, word) => addOutputCensor(session, word, this.config.dataDir))
   }
 
   private async handleSatCommand(session: Session, prompt: string) {

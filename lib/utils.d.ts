@@ -1,3 +1,4 @@
+import { Session } from 'koishi';
 export declare function escapeRegExp(str: string): string;
 export declare function parseTimeToMinutes(timeStr: string): number;
 export declare function parseTime(timestamp: number): number;
@@ -18,3 +19,4 @@ export declare function isErrorWithMessage(error: unknown): error is {
  */
 export declare function processPrompt(prompt: string): string;
 export declare function filterResponse(prompt: string, words: string[]): string;
+export declare function addOutputCensor(session: Session, word: string, baseURL: string): void;
