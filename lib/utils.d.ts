@@ -17,3 +17,4 @@ export declare function isErrorWithMessage(error: unknown): error is {
  * @returns 处理后的字符串，所有匹配标签被替换为对应名称
  */
 export declare function processPrompt(prompt: string): string;
+export declare function filterResponse(prompt: string, words: string[]): string;

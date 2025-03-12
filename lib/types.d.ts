@@ -178,6 +178,8 @@ export declare namespace Sat {
         nick_name: boolean;
         nick_name_list: string[];
         nick_name_block_words: string[];
+        reasoner_filter: boolean;
+        reasoner_filter_word: string;
         duplicateDialogueCheck: boolean;
         enable_online_user_check: boolean;
         random_min_tokens: number;

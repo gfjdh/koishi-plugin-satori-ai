@@ -1,4 +1,7 @@
 // src/utils.ts
+import { Logger } from 'koishi'
+
+const logger = new Logger('satori-utils')
 
 // 正则表达式特殊字符转义
 export function escapeRegExp(str: string): string {
@@ -105,4 +108,21 @@ export function isErrorWithMessage(
 export function processPrompt(prompt: string): string {
   if (prompt.includes(':poke')) return '戳戳';
   return prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `${name}`);
+}
+
+export function filterResponse(prompt: string, words: string[]): string {
+  // 匹配中文括号及其内容，使用非贪婪模式
+  const parts = prompt.split(/[(（][^)）]*[)）]/g);
+  logger.info(`处理前内容: ${prompt}`);
+  // 删除含有关键词的部分
+  const filtered = parts.map(part => {
+    if (part.startsWith('（') && part.endsWith('）') || part.startsWith('(') && part.endsWith(')')) {
+      return words.some(word => part.includes(word)) ? '' : part;
+    }
+    return part;
+  }).join('');
+  logger.info(`处理后内容: ${filtered}`);
+  // 清理首尾空白并处理空结果
+  const trimmedResult = filtered.trim();
+  return trimmedResult === '' ? '……' : trimmedResult;
 }

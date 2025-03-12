@@ -17,7 +17,7 @@ export class APIClient {
 
   // 发送聊天请求
   public async chat(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
-    if(user.userid == 'Alice') return { content: '测试', error: false }
+  //  if(user.userid == 'Alice') return { content: '(系统)（用户）测试', error: false }
     const enableUserKey = user.items['地灵殿通行证']?.count > 0 && user.items['地灵殿通行证']?.description && user.items['地灵殿通行证']?.description == 'on'
     let keys: string[]
     let modle: string

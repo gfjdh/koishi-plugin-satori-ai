@@ -9,7 +9,7 @@ import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFa
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
-import { processPrompt, splitSentences } from './utils'
+import { filterResponse, processPrompt, splitSentences } from './utils'
 
 const logger = new Logger('satori-ai')
 
@@ -209,9 +209,9 @@ export class SAT extends Sat {
   // 前置检查
   private performPreChecks(session: Session, prompt: string): string {
     if (this.config.blockuser.includes(session.userId))
-      return session.text('commands.sat.messages.block1')
+      return ''
     if (this.config.blockchannel.includes(session.channelId))
-      return session.text('commands.sat.messages.block2')
+      return ''
     if (!prompt)
       return session.text('commands.sat.messages.no-prompt')
     if (prompt.length > this.config.max_tokens)
@@ -355,6 +355,7 @@ export class SAT extends Sat {
     this.updateChannelParallelCount(session, -1)
     this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
     if (!response) return session.text('commands.sat.messages.no-response')
+    if (this.config.reasoner_filter) response = filterResponse(response, this.config.reasoner_filter_word.split('-'))
 
     const catEar = user?.items['猫耳发饰']?.count > 0 && user?.items['猫耳发饰']?.description && user?.items['猫耳发饰']?.description == 'on'
     const fumo = user?.items['觉fumo']?.count > 0 && user?.items['觉fumo']?.description && user?.items['觉fumo']?.description == 'on'

@@ -1,10 +1,9 @@
 import { Context, Session } from 'koishi';
-import { MemoryManager } from './memory';
 import { Sat } from './types';
 export declare class SAT extends Sat {
     config: Sat.Config;
     private apiClient;
-    memoryManager: MemoryManager;
+    private memoryManager;
     private ChannelParallelCount;
     private onlineUsers;
     constructor(ctx: Context, config: Sat.Config);

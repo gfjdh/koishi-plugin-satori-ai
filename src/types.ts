@@ -208,6 +208,8 @@ export namespace Sat {
     nick_name: boolean
     nick_name_list: string[]
     nick_name_block_words: string[]
+    reasoner_filter: boolean
+    reasoner_filter_word: string
     duplicateDialogueCheck: boolean
     enable_online_user_check: boolean
     random_min_tokens: number
@@ -298,6 +300,9 @@ export namespace Sat {
       nick_name: Schema.boolean().default(true).description('是否使用昵称触发对话（发言中含有昵称时）'),
       nick_name_list: Schema.array(String).default(['昵称1']).description('昵称列表'),
       nick_name_block_words: Schema.array(String).default(['屏蔽词1']).description('昵称屏蔽词(含有屏蔽词的消息不会触发昵称对话)'),
+      reasoner_filter: Schema.boolean().default(true).description('是否启用返回内容过滤,开启后在对话时会过滤掉在括号内且含有过滤词的那一句,用于缓解思维链溢出问题'),
+      reasoner_filter_word: Schema.string().role('textarea').default('系统-提示-用户-设定-回复')
+      .description('返回内容过滤词，使用“-”分隔，在括号内且含有过滤词的那一句会被过滤，用于缓解思维链溢出问题'),
       duplicateDialogueCheck: Schema.boolean().default(true).description('是否检查重复对话'),
       enable_online_user_check: Schema.boolean().default(true).description('在未回答而再次提问时是否提示用户有未完成的对话'),
       random_min_tokens: Schema.number().default(20).description('随机触发对话的最小长度'),
@@ -332,6 +337,7 @@ export namespace Sat {
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),
       enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏'),
     }).description('拓展模块-游戏设置(开发中)'),
+
 
     Schema.object({
       blockuser: Schema.array(String).default([]).description('屏蔽的用户'),
