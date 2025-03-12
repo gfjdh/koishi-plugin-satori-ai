@@ -14,7 +14,7 @@ export function createMiddleware(
   config: MiddlewareConfig & FavorabilityConfig,
 ) {
   return async (session: Session, next: Next) => {
-    await sat.handleChannelMemoryManager(session)
+    if (!isSpecialMessage(session)) await sat.handleChannelMemoryManager(session)
 
     // 私信处理
     if (config.private && isPrivateSession(session)) {
@@ -42,6 +42,7 @@ export function createMiddleware(
 
 // 私聊会话判断
 function isPrivateSession(session: Session): boolean {
+  if (isSpecialMessage(session)) return false
   return session.subtype === 'private' || session.channelId.includes('private')
 }
 
@@ -57,7 +58,7 @@ async function hasNickName(ctx: Context, session: Session, config: MiddlewareCon
   if (config.nick_name_block_words.some(word => session.content.includes(word))) return false
   const user = await ensureUserExists(ctx, session.userId, session.username)
   let names = config.nick_name_list
-  if (user?.items['情侣合照']?.metadata?.botNickName){
+  if (user?.items?.['情侣合照']?.metadata?.botNickName){
     names = names.concat(user.items['情侣合照'].metadata.botNickName)
   }
   return names.some(name => session.content.includes(name))
@@ -103,5 +104,5 @@ function shouldRandomTrigger(
 // 特殊消息类型判断
 function isSpecialMessage(session: Session): boolean {
   const firstElement = session.elements[0]
-  return ['img', 'at', 'file'].includes(firstElement?.type) || session.content.includes(':poke')
+  return ['img', 'at', 'file'].includes(firstElement?.type) || session.content.includes(':poke') || session.content.includes('file://') || session.content.includes('http://') || session.content.includes('https://')
 }

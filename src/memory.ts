@@ -220,8 +220,8 @@ export class MemoryManager {
   // 格式化匹配结果
   private formatMatches(matched: MemoryEntry[], type: 'user' | 'common'): string {
     const prefixMap = {
-      'common': '这是你可能用到的信息：',
-      'user': '以下是较久之前用户说过的话和对话时间：'
+      'common': '\n这是你可能用到的信息：',
+      'user': '\n以下是较久之前用户说过的话和对话时间：'
     };
     // 添加时间信息
     const time = `\n时段：${getTimeOfDay(new Date().getHours())}`

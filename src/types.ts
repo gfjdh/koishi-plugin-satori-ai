@@ -176,6 +176,7 @@ export namespace Sat {
     auxiliary_LLM_key: string[]
     prompt: string
 
+    no_system_prompt: boolean
     max_tokens: number
     content_max_tokens: number
     content_max_length: number
@@ -263,6 +264,7 @@ export namespace Sat {
     Schema.object({
       alias: Schema.array(String).default(['ai']).description('触发命令;别名'),
       authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
+      no_system_prompt: Schema.boolean().default(false).description('是否将系统提示的system替换为user（用于一些特殊的api格式，例如硅基流动）'),
       max_tokens: Schema.number().description('最大请求长度（字符数）').default(100),
       content_max_tokens: Schema.number().description('最大回答长度（思维链+输出token）').default(4096),
       content_max_length: Schema.number().description('最大回答长度（仅输出，字符数）').default(100),

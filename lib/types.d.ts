@@ -148,6 +148,7 @@ export declare namespace Sat {
         auxiliary_LLM: string;
         auxiliary_LLM_key: string[];
         prompt: string;
+        no_system_prompt: boolean;
         max_tokens: number;
         content_max_tokens: number;
         content_max_length: number;

@@ -103,13 +103,13 @@ export function isErrorWithMessage(
 }
 
 /**
- * 将包含 `<...name="[xxx]"...>` 格式的文本替换为 `(xxx)`
+ * 将包含 `<...name="[xxx]"...>` 格式的文本替换
  * @param prompt 包含待处理标签的原始字符串
  * @returns 处理后的字符串，所有匹配标签被替换为对应名称
  */
 export function processPrompt(prompt: string): string {
   if (prompt.includes(':poke')) return '戳戳';
-  return prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `${name}`);
+  return prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `@${name}`);
 }
 
 export function filterResponse(prompt: string, words: string[]): string {
