@@ -234,7 +234,7 @@ export class SAT extends Sat {
 
     if (this.config.enable_favorability){
       updateFavorability(this.ctx, user, -1)
-      return session.text('commands.sat.messages.duplicate-dialogue' + ' (好感↓)')
+      return session.text('commands.sat.messages.duplicate-dialogue')  + ' (好感↓)'
     }
     return session.text('commands.sat.messages.duplicate-dialogue')
   }
@@ -444,7 +444,7 @@ export class SAT extends Sat {
     // 敏感词处理
     let censored = processedPrompt
     if (this.ctx.censor) censored = await this.ctx.censor.transform(processedPrompt, session)
-    if (censored) return null
+    if (censored.includes('**')) return null
     return this.handleSatCommand(session, prompt)
   }
 
