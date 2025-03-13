@@ -355,7 +355,7 @@ export class SAT extends Sat {
     if (this.config.enable_favorability) {
       systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig(), user)
     }
-    if (this.config.personal_memory) systemPrompt += '如果你明白以上内容，请回复“已明确对话要求”'
+    if (this.config.no_system_prompt) systemPrompt += '如果你明白以上内容，请回复“已明确对话要求”'
     return systemPrompt
   }
 
