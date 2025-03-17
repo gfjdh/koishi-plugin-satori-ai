@@ -199,6 +199,7 @@ export declare namespace Sat {
         offset_of_fafavorability: number;
         visible_favorability: boolean;
         enable_user_portrait: boolean;
+        max_portrait_dialogues: number;
         portrait_usage: number;
         portrait_min_favorability: number;
         prompt_0: string;

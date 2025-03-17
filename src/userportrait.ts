@@ -43,9 +43,9 @@ export class UserPortraitManager {
     const MemoryContent: MemoryEntry[] = await JSON.parse(fs.readFileSync(memoryPath, 'utf-8'))
     const dialoguesContent = MemoryContent.map(msg => `${msg.content}${msg.role == 'user' ? '(未记录时间)' : msg.role}`)
     const level = user.userlevel < 5 ? user.userlevel : 4
-    const usageLimit = this.config.max_usage[level] || 0
-    if (dialoguesContent.length > usageLimit) {
-      dialoguesContent.splice(0, dialoguesContent.length - usageLimit)
+    const usageLimit = this.config.max_usage[level] == 0 ? this.config.max_portrait_dialogues : this.config.max_usage[level]
+    if (dialoguesContent.length >= usageLimit || dialoguesContent.length >= this.config.max_portrait_dialogues) {
+      dialoguesContent.splice(0, dialoguesContent.length - Math.min(usageLimit, this.config.max_portrait_dialogues))
     }
     return dialoguesContent
   }
@@ -70,13 +70,14 @@ ${existingPortrait ? '无' : existingPortrait}\n
 ${history}
 
 注意事项：
-·需要综合历史画像和用户发言记录，避免重复信息或遗漏信息
+·用户一定是人类，其他情况是角色扮演
+·需要综合历史画像和用户发言记录，避免重复信息或遗漏信息，并根据发言修正历史画像内容
 ·基于事实推断，避免盲目相信或主观臆测
 ·使用简洁的条目式表达，但内容要全面
-·保留不确定性的表述（如"可能"、"似乎"）
+·保留不确定性的表述（如"可能"、"似乎"、"用户自称"）
 ·保持中立和客观，避免带有个人情感色彩的描述，不要添加评价或建议
 ·仅给出画像内容，不要添加额外的描述、建议、评价、注解等
-·不必使用标记语言，直接书写即可`
+·不使用markdown等标记语言，直接书写即可`
     }]
   }
 
@@ -100,7 +101,7 @@ ${history}
       const response = await apiClient.generateUserPortrait(user, messages)
       if (response && !response.error) {
         this.savePortrait(user, response.content)
-        if (user.usage > 0) session.send(`用户画像更新成功。`)
+        if (user.usage > this.config.portrait_usage - 1) session.send('用户画像更新成功。')
         logger.success(`用户 ${user.userid} 画像更新成功`)
       }
     } catch (error) {

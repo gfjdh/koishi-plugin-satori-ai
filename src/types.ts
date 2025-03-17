@@ -230,6 +230,7 @@ export namespace Sat {
     offset_of_fafavorability: number
     visible_favorability: boolean
     enable_user_portrait: boolean
+    max_portrait_dialogues: number
     portrait_usage: number
     portrait_min_favorability: number
     prompt_0: string
@@ -328,6 +329,7 @@ export namespace Sat {
       visible_favorability: Schema.boolean().default(true).description('是否开启好感度升降显示'),
       enable_user_portrait: Schema.boolean().default(true).description('是否启用用户画像功能'),
       portrait_usage: Schema.number().default(2).description('每天触发第几次对话后触发画像生成（最小为2）'),
+      max_portrait_dialogues: Schema.number().default(100).description('画像生成获取的最大对话条数'),
       portrait_min_favorability: Schema.number().default(100).description('触发画像生成的最小好感度'),
       prompt_0: Schema.string().role('textarea').description('厌恶好感补充设定'),
       favorability_div_1: Schema.number().default(15).description('厌恶-陌生分界线'),

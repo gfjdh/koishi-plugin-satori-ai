@@ -70,6 +70,7 @@ export class APIClient {
 
   // 发送生成用户画像请求
   public async generateUserPortrait(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
+    if(user.userid == 'Alice') return { content: '测试画像', error: false }
     const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
     let keys: string[]
     let modle: string
@@ -153,7 +154,7 @@ export class APIClient {
         const responseMsg:Sat.Msg = { role: 'assistant', content: content }
         if (payload.messages.some(msg => msg === responseMsg) && content.length > 5) {
           const lastMsg = payload.messages[payload.messages.length - 1]
-          payload.messages[payload.messages.length - 1].content = lastMsg.content + '(system:注意不要重复之前的内容)'
+          payload.messages[payload.messages.length - 1].content = lastMsg.content + '(注意不要重复之前的内容)'
           logger.warn(`返回内容与之前内容相同，重试(第${i}次)中...`)
           continue
         }

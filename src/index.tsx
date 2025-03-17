@@ -427,9 +427,9 @@ export class SAT extends Sat {
     const userId = options.id || session.userId
     const level = options.level || 1
     const user = await ensureUserExists(this.ctx, userId, session.username)
-    await updateUserLevel(this.ctx, user, level)
     const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
     if (enableUserKey) await this.portraitManager.generatePortrait(session, user, this.apiClient)
+    await updateUserLevel(this.ctx, user, level)
     return session.text('commands.sat.messages.update_level_succeed', [level])
   }
 
@@ -438,7 +438,18 @@ export class SAT extends Sat {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
     const userUsage = user.usage || 0
     const maxUsage = this.config.max_usage[user.userlevel || 0] || 0
-    return session.text('commands.sat.messages.usage', [userUsage, maxUsage])
+    const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
+    let result = ''
+    result += '用户等级：' + user.userlevel + '\n'
+    if (enableUserKey)
+      result += session.text('commands.sat.messages.usage', [userUsage, '∞']) + '\n地灵殿通行证生效中\n'
+    else
+      result += session.text('commands.sat.messages.usage', [userUsage, maxUsage]) + '\n'
+    if (this.portraitManager.hasPortrait(user.userid))
+      result += '用户画像生效中\n'
+    else
+      result += '用户画像未生效\n'
+    return result
   }
 
   // 随机中间件转接
