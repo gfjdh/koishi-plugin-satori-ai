@@ -17,7 +17,7 @@ export class APIClient {
 
   // 发送聊天请求
   public async chat(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
-    if(user.userid == 'Alice') return { content: '(系统)（用户）测试', error: false }
+    if(user.userid == 'Alice') return { content: '(系统)（abc）测试', error: false }
     const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
     let keys: string[]
     let modle: string
@@ -47,17 +47,64 @@ export class APIClient {
 
   // 发送辅助聊天请求
   public async auxiliaryChat(messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
-    const AuxiliaryPayload = this.createAuxiliaryPayload(messages)
-    for (let i = 0; i < this.config.keys.length; i++) {
+    const AuxiliaryPayload = this.createAuxiliaryPayload(messages, this.config.auxiliary_LLM)
+    const url = `${trimSlash(this.config.auxiliary_LLM_URL)}/chat/completions`
+    const headers = this.createHeaders(this.config.auxiliary_LLM_key)
+
+    let content: string
+    for (let i = 1; i <= this.config.maxRetryTimes; i++) {
       try {
-        return await this.tryRequest(this.config.auxiliary_LLM_URL, AuxiliaryPayload, this.config.auxiliary_LLM_key)
+        const response = await this.ctx.http.post(url, AuxiliaryPayload, { headers, timeout: 3600000 })
+        content = response.choices[0].message.content
+        return { content: content, error: false }
       } catch (error) {
-        if (i == this.config.keys.length - 1) {
-          return this.handleAPIError(error as APIError)
+        if (i == this.config.maxRetryTimes) {
+          return this.handleAPIError(error)
         }
-        this.rotateKey()
+        logger.warn(`辅助模型API请求失败(${error})，重试(第${i}次)中...`)
+        continue
       }
     }
+    return { content: 'unreachable', error: true }
+  }
+
+  // 发送生成用户画像请求
+  public async generateUserPortrait(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
+    const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
+    let keys: string[]
+    let modle: string
+    let baseURL: string
+    if (enableUserKey) {
+      const key = user.items['地灵殿通行证'].metadata?.key
+      keys = [key]
+      modle = user.items['地灵殿通行证'].metadata?.model
+      baseURL = user.items['地灵殿通行证'].metadata?.baseURL
+    } else {
+      keys = this.config.keys
+      modle = this.config.appointModel
+      baseURL = this.config.baseURL
+    }
+    const payload = this.createAuxiliaryPayload(messages, modle)
+    const url = `${trimSlash(baseURL)}/chat/completions`
+    const headers = this.createHeaders(keys)
+
+    let content: string
+    for (let i = 1; i <= this.config.maxRetryTimes; i++) {
+      try {
+        const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
+        content = response.choices[0].message.content
+        return { content: content, error: false }
+      } catch (error) {
+        if (i == this.config.maxRetryTimes) {
+          return this.handleAPIError(error)
+        }
+        //等待后重试
+        await new Promise(resolve => setTimeout(resolve, this.config.retry_delay_time || 5000))
+        logger.warn(`生成画像时API请求失败(${error})，重试(第${i}次)中...`)
+        continue
+      }
+    }
+    return { content: 'unreachable', error: true }
   }
 
   // 生成请求体
@@ -74,9 +121,9 @@ export class APIClient {
   }
 
   // 生成辅助请求体
-  private createAuxiliaryPayload(messages: Sat.Msg[]): Payload {
+  private createAuxiliaryPayload(messages: Sat.Msg[], model: string): Payload {
     return {
-      model: this.config.auxiliary_LLM,
+      model: model,
       messages,
       temperature: 0.1
     }

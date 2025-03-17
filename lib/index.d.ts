@@ -4,6 +4,7 @@ export declare class SAT extends Sat {
     config: Sat.Config;
     private apiClient;
     private memoryManager;
+    private portraitManager;
     private ChannelParallelCount;
     private onlineUsers;
     constructor(ctx: Context, config: Sat.Config);

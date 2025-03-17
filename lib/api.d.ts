@@ -13,6 +13,10 @@ export declare class APIClient {
         content: string;
         error: boolean;
     }>;
+    generateUserPortrait(user: User, messages: Sat.Msg[]): Promise<{
+        content: string;
+        error: boolean;
+    }>;
     private createPayload;
     private createAuxiliaryPayload;
     private tryRequest;

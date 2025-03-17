@@ -198,6 +198,9 @@ export declare namespace Sat {
         enable_auxiliary_LLM: boolean;
         offset_of_fafavorability: number;
         visible_favorability: boolean;
+        enable_user_portrait: boolean;
+        portrait_usage: number;
+        portrait_min_favorability: number;
         prompt_0: string;
         favorability_div_1: number;
         prompt_1: string;
@@ -207,8 +210,6 @@ export declare namespace Sat {
         prompt_3: string;
         favorability_div_4: number;
         prompt_4: string;
-        blockuser: string[];
-        blockchannel: string[];
         maxRetryTimes: number;
         retry_delay_time: number;
     }

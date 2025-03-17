@@ -1,9 +1,10 @@
 // src/memory.ts
-import { Session, Logger } from 'koishi'
+import { Session, Logger, Context } from 'koishi'
 import { MemoryEntry, MemoryConfig, ChannelMemory } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
 import { escapeRegExp, getTimeOfDay } from './utils'
+import { getUser } from './database'
 
 const logger = new Logger('satori-memory')
 export class MemoryManager {
@@ -11,6 +12,7 @@ export class MemoryManager {
   private channelDialogues: Map<string, string[]> = new Map()
 
   constructor(
+    private ctx: Context,
     private config: MemoryConfig
   ) {}
 
@@ -24,7 +26,8 @@ export class MemoryManager {
     // 添加当前时间
     const date = ` (对话日期和时间：${new Date().toLocaleString()})`
     // 保存长期记忆
-    if (this.shouldRemember(prompt)) {
+    const userFavourbility = await (await getUser(this.ctx, session.userId)).favorability
+    if (this.shouldRemember(prompt, userFavourbility)) {
       await this.saveLongTermMemory(session, [{
         role: date,
         content: prompt
@@ -33,8 +36,9 @@ export class MemoryManager {
   }
 
   // 是否应当记忆
-  private shouldRemember(content: string): boolean {
-    return content.length >= this.config.remember_min_length && !this.config.memory_block_words.some(word => content.includes(word))
+  private shouldRemember(content: string, userFavourbility: number): boolean {
+    return (content.length >= this.config.remember_min_length || (content.includes('记住') && userFavourbility >= 50))
+    && !this.config.memory_block_words.some(word => content.includes(word))
   }
 
   // 更新频道对话

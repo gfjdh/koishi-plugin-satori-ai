@@ -229,6 +229,9 @@ export namespace Sat {
     enable_auxiliary_LLM: boolean
     offset_of_fafavorability: number
     visible_favorability: boolean
+    enable_user_portrait: boolean
+    portrait_usage: number
+    portrait_min_favorability: number
     prompt_0: string
     favorability_div_1: number
     prompt_1: string
@@ -238,8 +241,7 @@ export namespace Sat {
     prompt_3: string
     favorability_div_4: number
     prompt_4: string
-    blockuser: string[]
-    blockchannel: string[]
+
     maxRetryTimes: number
     retry_delay_time: number
   }
@@ -264,7 +266,7 @@ export namespace Sat {
     Schema.object({
       alias: Schema.array(String).default(['ai']).description('触发命令;别名'),
       authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
-      no_system_prompt: Schema.boolean().default(false).description('是否将系统提示的system替换为user（用于一些特殊的api格式，例如硅基流动）'),
+      no_system_prompt: Schema.boolean().default(false).description('是否将系统提示的system替换为user（用于具有思维链的模型或一些特殊的api格式，例如硅基流动）'),
       max_tokens: Schema.number().description('最大请求长度（字符数）').default(100),
       content_max_tokens: Schema.number().description('最大回答长度（思维链+输出token）').default(4096),
       content_max_length: Schema.number().description('最大回答长度（仅输出，字符数）').default(100),
@@ -316,7 +318,7 @@ export namespace Sat {
 
     Schema.object({
       enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统(每次对话默认+1好感度)'),
-      max_favorability_perday: Schema.number().default(100).description('每日有效(引发好感度变化)对话次数上限'),
+      max_favorability_perday: Schema.number().default(100).description('每日有效(引发好感度增长)对话次数上限'),
       input_censor_favorability: Schema.boolean().default(false).description('是否开启好感度审查(通过输入屏蔽词扣除好感)'),
       value_of_input_favorability: Schema.number().default(15).description('输入触发屏蔽词每次扣除的好感度'),
       output_censor_favorability: Schema.boolean().default(false).description('通过输出屏蔽词扣除好感,在dataDir中的output_censor.txt修改)'),
@@ -324,6 +326,9 @@ export namespace Sat {
       enable_auxiliary_LLM: Schema.boolean().default(false).description('是否使用辅助大模型判断好感度增减(量与输入屏蔽词每次扣除的好感度相关,不稳定，慎用)'),
       offset_of_fafavorability: Schema.number().default(3.5).description('辅助大模型好感度偏移量(越大越容易扣好感度)'),
       visible_favorability: Schema.boolean().default(true).description('是否开启好感度升降显示'),
+      enable_user_portrait: Schema.boolean().default(true).description('是否启用用户画像功能'),
+      portrait_usage: Schema.number().default(2).description('每天触发第几次对话后触发画像生成（最小为2）'),
+      portrait_min_favorability: Schema.number().default(100).description('触发画像生成的最小好感度'),
       prompt_0: Schema.string().role('textarea').description('厌恶好感补充设定'),
       favorability_div_1: Schema.number().default(15).description('厌恶-陌生分界线'),
       prompt_1: Schema.string().role('textarea').description('陌生好感补充设定'),
@@ -339,11 +344,5 @@ export namespace Sat {
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),
       enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏'),
     }).description('拓展模块-游戏设置(开发中)'),
-
-
-    Schema.object({
-      blockuser: Schema.array(String).default([]).description('屏蔽的用户'),
-      blockchannel: Schema.array(String).default([]).description('屏蔽的频道')
-    }).description('过滤器'),
   ])
 }

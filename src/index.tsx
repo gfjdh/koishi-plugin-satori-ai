@@ -10,12 +10,14 @@ import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
 import { addOutputCensor, filterResponse, processPrompt, splitSentences } from './utils'
+import { UserPortraitManager } from './userportrait'
 
 const logger = new Logger('satori-ai')
 
 export class SAT extends Sat {
   private apiClient: APIClient
   private memoryManager: MemoryManager
+  private portraitManager: UserPortraitManager
   private ChannelParallelCount: Map<string, number> = new Map()
   private onlineUsers: string[] = []
 
@@ -29,7 +31,8 @@ export class SAT extends Sat {
     extendDatabase(ctx)
     // 初始化模块
     this.apiClient = new APIClient(ctx, this.getAPIConfig())
-    this.memoryManager = new MemoryManager(this.getMemoryConfig())
+    this.memoryManager = new MemoryManager(ctx, this.getMemoryConfig())
+    this.portraitManager = new UserPortraitManager(ctx, config)
     ensureCensorFileExists(this.config.dataDir)
     // 注册中间件
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
@@ -178,6 +181,9 @@ export class SAT extends Sat {
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆
     await this.memoryManager.updateMemories(session, processedPrompt, this.getMemoryConfig(), response)
+    // 更新用户画像
+    if (user.usage == this.config.portrait_usage - 1)
+      this.portraitManager.generatePortrait(session, user, this.apiClient)
     return await this.formatResponse(session, response.content, auxiliaryResult)
   }
 
@@ -212,11 +218,7 @@ export class SAT extends Sat {
 
   // 前置检查
   private performPreChecks(session: Session, prompt: string): string {
-    if (this.config.blockuser.includes(session.userId))
-      return ''
-    if (this.config.blockchannel.includes(session.channelId))
-      return ''
-    if (!prompt)
+    if (prompt === '')
       return session.text('commands.sat.messages.no-prompt')
     if (prompt.length > this.config.max_tokens)
       return session.text('commands.sat.messages.tooLong')
@@ -253,10 +255,10 @@ export class SAT extends Sat {
 
   // 对话次数检查
   private async checkUserDialogueCount(session: Session, user: User, adjustment: number = 1): Promise<string | void> {
+    const usage = await updateUserUsage(this.ctx, user, adjustment)
     if (user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on')
       return null
-    const usage = await updateUserUsage(this.ctx, user, adjustment)
-    const level = user.userlevel || 0
+    const level = user.userlevel < 5 ? user.userlevel : 4
     const usageLimit = this.config.max_usage[level] || 0
     if (usage && usageLimit != 0 && usage > usageLimit) {
       return session.text('commands.sat.messages.exceeds')
@@ -346,8 +348,11 @@ export class SAT extends Sat {
     systemPrompt += commonSense
     systemPrompt += channelDialogue
     systemPrompt += userMemory
-    // 添加用户信息
+
     const user = await getUser(this.ctx, session.userId)
+    // 添加用户画像
+    systemPrompt += this.portraitManager.getUserPortrait(session)
+    // 添加用户名
     const nickName = user.items['情侣合照']?.metadata?.userNickName
     systemPrompt += `用户的名字是：${session.username}, id是：${session.userId}`
     if (nickName) systemPrompt += `, 昵称是：${nickName},称呼用户时请优先使用昵称`
@@ -423,6 +428,8 @@ export class SAT extends Sat {
     const level = options.level || 1
     const user = await ensureUserExists(this.ctx, userId, session.username)
     await updateUserLevel(this.ctx, user, level)
+    const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
+    if (enableUserKey) await this.portraitManager.generatePortrait(session, user, this.apiClient)
     return session.text('commands.sat.messages.update_level_succeed', [level])
   }
 

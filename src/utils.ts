@@ -108,14 +108,14 @@ export function isErrorWithMessage(
  * @returns 处理后的字符串，所有匹配标签被替换为对应名称
  */
 export function processPrompt(prompt: string): string {
+  if (!prompt) return '';
   if (prompt.includes(':poke')) return '戳戳';
   return prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `@${name}`);
 }
 
-export function
-filterResponse(prompt: string, words: string[]): string {
+export function filterResponse(prompt: string, words: string[]): string {
   // 匹配中文括号及其内容，使用非贪婪模式
-  const parts = prompt.split(/[(（][^)）]*[)）]/g);
+  const parts = prompt.split(/([（(][^）)]*[）)])/g);
   // 删除含有关键词的部分
   const filtered = parts.map(part => {
     if (part.startsWith('（') && part.endsWith('）') || part.startsWith('(') && part.endsWith(')')) {

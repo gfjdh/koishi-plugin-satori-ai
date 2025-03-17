@@ -1,10 +1,11 @@
-import { Session } from 'koishi';
+import { Session, Context } from 'koishi';
 import { MemoryEntry, MemoryConfig } from './types';
 export declare class MemoryManager {
+    private ctx;
     private config;
     private channelMemories;
     private channelDialogues;
-    constructor(config: MemoryConfig);
+    constructor(ctx: Context, config: MemoryConfig);
     updateMemories(session: Session, prompt: string, config: MemoryConfig, response: {
         content: string;
         error: boolean;
