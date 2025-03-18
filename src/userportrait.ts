@@ -96,7 +96,6 @@ ${history}
     const userlevel = getFavorabilityLevel(user, this.getFavorabilityConfig())
     const messages = this.buildMessage(userlevel, dialogues.join('\n'), existing)
     logger.info(`用户 ${user.userid} 画像生成中...`)
-    logger.info(`${messages[0].content}`)
     try {
       const response = await apiClient.generateUserPortrait(user, messages)
       if (response && !response.error) {

@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-satori-ai",
   "description": "基于 Satori 适配器的智能对话插件，具备用户画像、长期记忆、常识管理和好感度系统",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "types": "lib/index.d.ts",

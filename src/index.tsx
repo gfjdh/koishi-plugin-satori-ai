@@ -218,7 +218,7 @@ export class SAT extends Sat {
 
   // 前置检查
   private performPreChecks(session: Session, prompt: string): string {
-    if (prompt === '')
+    if (!prompt || prompt.length == 0)
       return session.text('commands.sat.messages.no-prompt')
     if (prompt.length > this.config.max_tokens)
       return session.text('commands.sat.messages.tooLong')
