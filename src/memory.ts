@@ -26,7 +26,7 @@ export class MemoryManager {
     // 添加当前时间
     const date = ` (对话日期和时间：${new Date().toLocaleString()})`
     // 保存长期记忆
-    const userFavourbility = await (await getUser(this.ctx, session.userId)).favorability
+    const userFavourbility = (await getUser(this.ctx, session.userId)).favorability
     if (this.shouldRemember(prompt, userFavourbility)) {
       await this.saveLongTermMemory(session, [{
         role: date,
