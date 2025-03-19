@@ -51,7 +51,7 @@ export class UserPortraitManager {
   }
 
   // 生成提示词模板
-  private buildMessage(level: string, history: string, existingPortrait?: string): Sat.Msg[] {
+  private buildMessage(level: string, history: string, existingPortrait: string, user: User): Sat.Msg[] {
     return [{
       role: 'user',
       content: `你是一个角色扮演智能体工作流中的一环，请根据以下信息生成用户画像。需包括：
@@ -65,6 +65,7 @@ export class UserPortraitManager {
 8. 用户希望记住的信息（如有）
 9. 需要短期记忆的信息（如有）
 
+用户名：${user.usersname}
 你与用户的关系：${level}
 历史画像：
 ${existingPortrait ? '无' : existingPortrait}\n
@@ -77,11 +78,12 @@ ${history}
 ·及时删除历史画像中的错误信息
 ·尤其注意用户说“记住”的部分，可能是用户希望记录的信息
 ·历史画像中的需要短期记忆的信息不需要保留，只需要删除旧的添加新的
-·基于事实推断，避免盲目相信或主观臆测
+·因为在保存聊天记录时，会将文本中的第一个“我”替换为用户名，所以可能并不是用户自己说的
+·因为在角色扮演中，用户可能会说出不符合事实的信息，需要根据事实推断，避免盲目相信或主观臆测
 ·使用简洁的条目式表达，但内容要全面
 ·保留不确定性的表述（如"可能"、"似乎"、"用户自称"）
 ·保持中立和客观，避免带有个人情感色彩的描述，不要添加评价或建议
-·仅给出画像内容，不要添加额外的描述、建议、评价、注解等
+·仅给出画像内容，不要添加额外的描述、建议、评价、注解等任何内容
 ·不使用markdown等标记语言，直接书写即可`
     }]
   }
@@ -99,7 +101,7 @@ ${history}
     const dialogues = await this.getDialogues(user)
     const existing = this.readPortrait(user.userid)
     const userlevel = getFavorabilityLevel(user, this.getFavorabilityConfig())
-    const messages = this.buildMessage(userlevel, dialogues.join('\n'), existing)
+    const messages = this.buildMessage(userlevel, dialogues.join('\n'), existing, user)
     logger.info(`用户 ${user.userid} 画像生成中...`)
     try {
       const response = await apiClient.generateUserPortrait(user, messages)
