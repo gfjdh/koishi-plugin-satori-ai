@@ -5,6 +5,7 @@ export declare class MemoryManager {
     private config;
     private channelMemories;
     private channelDialogues;
+    private charactersToRemove;
     constructor(ctx: Context, config: MemoryConfig);
     updateMemories(session: Session, prompt: string, config: MemoryConfig, response: {
         content: string;

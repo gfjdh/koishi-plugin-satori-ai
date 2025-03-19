@@ -10,6 +10,7 @@ const logger = new Logger('satori-memory')
 export class MemoryManager {
   private channelMemories: Map<string, ChannelMemory> = new Map()
   private channelDialogues: Map<string, string[]> = new Map()
+  private charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
   constructor(
     private ctx: Context,
@@ -175,8 +176,7 @@ export class MemoryManager {
       logger.warn(`记忆文件不存在：${filePathMap[type]}`)
       return ''//如果记忆文件不存在,返回空字符串
     }
-    const charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
-    const keywords = prompt.split('').filter(word => !charactersToRemove.includes(word));
+    const keywords = prompt.split('').filter(word => !this.charactersToRemove.includes(word));
     const entries = await this.loadMemoryFile(filePathMap[type])
     const matched = this.findBestMatches(entries, keywords, topNMap[type])
     const result = this.formatMatches(matched, type)
@@ -201,6 +201,8 @@ export class MemoryManager {
     const escapedKeywords = keywords.map(k => escapeRegExp(k));
     const regex = new RegExp(escapedKeywords.join('|'), 'gi');
     const chineseRegex = /[\u4e00-\u9fa5]/g; // 匹配中文字符的正则表达式
+    const regex2 = new RegExp(`[${this.charactersToRemove.join('')}]`, 'g');
+    content = content.replace(regex2, '');
 
     const matches = content.match(regex) || [];
     // 计算匹配项的权重总和

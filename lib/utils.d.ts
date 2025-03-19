@@ -13,10 +13,14 @@ export declare function isErrorWithMessage(error: unknown): error is {
     message: string;
 };
 /**
- * 将包含 `<...name="[xxx]"...>` 格式的文本替换
  * @param prompt 包含待处理标签的原始字符串
  * @returns 处理后的字符串，所有匹配标签被替换为对应名称
  */
 export declare function processPrompt(prompt: string): string;
+/**
+ * @param prompt 包含待处理标签的原始字符串
+ * @param words 需要过滤的关键词
+ * @returns 处理后的字符串，删除含有关键词的部分
+ */
 export declare function filterResponse(prompt: string, words: string[]): string;
 export declare function addOutputCensor(session: Session, word: string, baseURL: string): void;
