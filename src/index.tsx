@@ -349,11 +349,17 @@ export class SAT extends Sat {
     const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
+    const user = await getUser(this.ctx, session.userId)
+
+    if (user?.items?.['觉的衣柜']?.count) {
+      const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
+      if (clothes) systemPrompt += `\n你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
+    }
+
     systemPrompt += commonSense
     systemPrompt += channelDialogue
     systemPrompt += userMemory
 
-    const user = await getUser(this.ctx, session.userId)
     // 添加用户画像
     systemPrompt += this.portraitManager.getUserPortrait(session)
     // 添加用户名

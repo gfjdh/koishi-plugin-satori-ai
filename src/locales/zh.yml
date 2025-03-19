@@ -14,6 +14,7 @@ commands:
       exceeds: 已经差不多够了吧？请明天再来。
       usage: 今日次数{0}/{1}
       hatMan: 叮！帽子先生保护了你的好感度，快说谢谢帽子先生吧！
+      rockBottom: 叮！谷底小石保护了你的好感度，快说谢谢谷底小石吧！
       block1: 我讨厌你！
       block2: 我讨厌你们！
   sat.clear:
