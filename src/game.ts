@@ -1,22 +1,30 @@
 import { Session, Logger, Context } from 'koishi'
-import { goBang } from './gobang'
+import { goBang } from './gamegobang'
+import { abstractGameSingleGame } from './abstractGame'
+
 
 const logger = new Logger('satori-game')
 
 export class Game {
   private GAMES = ['五子棋']
+
   private channelGames: Map<string, string> = new Map()
+
   private goBang: goBang
+
+  private context: Context
+
   constructor(ctx: Context) {
+    this.context = ctx
     this.goBang = new goBang()
     this.registerCommands(ctx)
   }
 
   private registerCommands(ctx: Context) {
     ctx.command('game <gameName> [...args]', '开始游戏')
-    .action(async ({ session }, gameName, ...args) => { return this.startGame(session, gameName, args) })
+      .action(async ({ session }, gameName, ...args) => { return this.startGame(session, gameName, args) })
     ctx.command('endgame', '结束游戏')
-    .action(async ({ session }) => { return this.endGame(session)})
+      .action(async ({ session }) => { return this.endGame(session) })
   }
 
   public async startGame(session: Session, gameName: string, args: string[]) {
@@ -30,14 +38,15 @@ export class Game {
 
   public async endGame(session: Session) {
     if (!this.channelGames[session.channelId]) return '当前频道没有游戏在进行中'
-    delete this.channelGames[session.channelId]
+    this.channelGames.delete(session.channelId)
+    
     logger.info(`游戏已结束`)
     return '游戏已结束'
   }
 
   private async selectGame(session: Session, gameName: string, args: string[]) {
     switch (gameName) {
-      case '五子棋': return this.goBang.startGame(session, args)
+      case '五子棋': return this.goBang.startGame(session, this.context, args)
     }
   }
 }
