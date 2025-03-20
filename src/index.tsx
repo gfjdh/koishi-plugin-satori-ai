@@ -11,6 +11,7 @@ import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUs
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
 import { addOutputCensor, filterResponse, processPrompt, splitSentences } from './utils'
 import { UserPortraitManager } from './userportrait'
+import { Game } from './game'
 
 const logger = new Logger('satori-ai')
 
@@ -20,6 +21,7 @@ export class SAT extends Sat {
   private portraitManager: UserPortraitManager
   private ChannelParallelCount: Map<string, number> = new Map()
   private onlineUsers: string[] = []
+  private game: Game
 
   // 重写构造函数
   constructor(ctx: Context, public config: Sat.Config) {
@@ -38,6 +40,8 @@ export class SAT extends Sat {
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
     this.registerCommands(ctx)
+
+    this.game = new Game(ctx)
   }
 
   private getAPIConfig(): APIConfig {
