@@ -158,6 +158,10 @@ export async function applyFavorabilityEffect(
   effect: number,
   session: Session
 ): Promise<void> {
+  if (effect < 0 && user.items['谷底小石']?.count > 0) {
+    session.send(session.text('commands.sat.messages.rockBottom'))
+    return
+  }
   if (effect < 0 && user.items['帽子先生']?.count > 0) {
     user.items['帽子先生'].count--
     if (user.items['帽子先生'].count === 0) delete user.items['帽子先生']
