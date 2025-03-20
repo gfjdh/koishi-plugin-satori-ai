@@ -1,4 +1,6 @@
-﻿#define _CRT_SECURE_NO_WARNINGS
+﻿// emcc gobang.cpp -O3 -s EXPORTED_FUNCTIONS="['_decideMove', '_malloc', '_free']" -s MODULARIZE=1 -s ENVIRONMENT='node' -o gobang.js
+
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
