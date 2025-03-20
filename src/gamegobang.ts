@@ -4,22 +4,28 @@ import { abstractGame, abstractGameSingleGame } from './abstractGame'
 const logger = new Logger('satori-game-gobang')
 
 class goBangSingleGame extends abstractGameSingleGame {
-  constructor(disposeListener: () => boolean) {
-    super(disposeListener)
+  constructor(disposeListener: () => boolean, session: Session) {
+    super(disposeListener, session)
     this.board = new Array(15).fill(0).map(() => new Array(15).fill(0))
   }
 
-  public processInput = (str: string) => {
-    if (str == "endGame") {
-      return "游戏结束"
-    }
+  public override startGame = () => {
+    return '游戏开始\n' + this.printBoard()
+  }
+
+  public override endGame = () => {
+    super.endGame()
+    return { message: '五子棋游戏结束', win: true, gameName: '五子棋' }
+  }
+
+  public override processInput = (str: string) => {
     const [x, y] = str.split(' ')
     if (isNaN(Number(x)) || isNaN(Number(y))) {
-      return '输入不合法'
+      return
     }
     const [xNum, yNum] = [Number(x), Number(y)]
     if (xNum < 0 || xNum >= 15 || yNum < 0 || yNum >= 15) {
-      return '输入不合法'
+      return
     }
     if (this.board[xNum][yNum] !== 0) {
       return '这个位置已经有棋子了'
@@ -45,5 +51,9 @@ class goBangSingleGame extends abstractGameSingleGame {
 export class goBang extends abstractGame<goBangSingleGame> {
   constructor() {
     super(goBangSingleGame)
+  }
+  public override startGame(session: Session, ctx: Context, args: string[]): string {
+    super.startGame(session, ctx, args)
+    return
   }
 }

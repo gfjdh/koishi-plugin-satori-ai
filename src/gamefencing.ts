@@ -4,11 +4,11 @@ import { abstractGame, abstractGameSingleGame } from './abstractGame'
 const logger = new Logger('satori-game-gobang')
 
 class goBangSingleGame extends abstractGameSingleGame {
-  constructor(disposeListener: () => boolean) {
-    super(disposeListener)
+  constructor(disposeListener: () => boolean, session: Session) {
+    super(disposeListener, session)
   }
 
-  public processInput = (str: string) => {
+  public override processInput = (str: string) => {
     return "你输入了：" + str
   }
 }
