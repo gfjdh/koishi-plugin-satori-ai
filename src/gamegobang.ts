@@ -3,12 +3,12 @@ import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame
 
 const logger = new Logger('satori-game-gobang')
 
+// 加载 WASM 模块（五子棋 AI 逻辑）
 const Module = require('../wasm/gobang.js')
 let wasmModule
-Module().then((mod) => {
-  wasmModule = mod
-})
+Module().then((mod) => { wasmModule = mod })
 
+// 胜负标志枚举
 export enum winFlag {
   win = 1,
   lose = 2,
@@ -16,103 +16,84 @@ export enum winFlag {
   pending = 4
 }
 
+// 五子棋结果扩展接口
 export interface goBangGameResult extends gameResult {
   win: winFlag
 }
 
+/**
+ * 五子棋单局实现类，继承自 abstractGameSingleGame
+ */
 class goBangSingleGame extends abstractGameSingleGame {
+  private playerFlag: number         // 玩家棋子颜色（1: 黑棋，2: 白棋）
+  private winningFlag: winFlag = winFlag.pending // 当前胜负状态
+  public level = 5                   // AI 难度等级
+  private board: number[][] = []     // 12x12 棋盘状态
+
   constructor(disposeListener: () => boolean, session: Session) {
     super(disposeListener, session)
   }
 
+  // 初始化棋盘，随机决定玩家先手
   public override startGame = () => {
-    this.board = new Array(12).fill(0).map(() => new Array(12).fill(0))
+    this.board = Array.from({ length: 12 }, () => Array(12).fill(0))
     this.playerFlag = Math.round(Math.random()) + 1
-    if (this.playerFlag == 1) {
+    if (this.playerFlag === 1) {
       return '游戏开始，你随机到了先手\n' + this.printBoard()
     } else {
-      this.board[5][6] = 1
+      this.board[5][6] = 1 // AI 先手落子中点
       return '游戏开始，你随机到了后手\n' + this.printBoard()
     }
   }
 
+  // 结束游戏，返回结果
   public override endGame = () => {
     super.endGame()
     return { message: '五子棋游戏结束', win: this.winningFlag, gameName: '五子棋' }
   }
 
-  private playerFlag: number
-  private winningFlag: winFlag = winFlag.pending
-  public level = 5
-
+  /**
+   * 处理玩家输入（落子坐标）
+   * @param str 输入内容，格式为 "x y"
+   */
   public override async processInput(str: string) {
-    const [x, y] = str.split(' ')
-    if (isNaN(Number(x)) || isNaN(Number(y))) {
-      return
-    }
-    const [xNum, yNum] = [Number(x), Number(y)]
-    if (xNum < 0 || xNum >= 12 || yNum < 0 || yNum >= 12) {
-      return
-    }
-    if (this.board[xNum][yNum] !== 0) {
-      return '这个位置已经有棋子了'
-    }
-    if (this.winningFlag !== winFlag.pending) {
-      return '游戏已结束，发送endGame退出'
-    }
-    this.board[xNum][yNum] = this.playerFlag
-    if (this.checkWin(xNum, yNum)) {
-      return this.printBoard() + '\n游戏已结束，发送endGame退出'
-    }
-    const boardArray = this.board.flat()
-    const arrayLength = boardArray.length;
-    const bytesPerElement = 4; // 32 bits = 4 bytes
-    const arraySize = arrayLength * bytesPerElement;
+    const [x, y] = str.split(' ').map(Number)
+    if (x < 0 || x >= 12 || y < 0 || y >= 12) return '坐标超出范围'
+    if (this.board[x][y] !== 0) return '这个位置已经有棋子了'
+    if (this.winningFlag !== winFlag.pending) return '游戏已结束'
 
-    // Allocate memory in WASM for the array
-    const arrayPtr = wasmModule._malloc(arraySize);
-    wasmModule.HEAP32.set(boardArray, arrayPtr / bytesPerElement);
+    // 玩家落子
+    this.board[x][y] = this.playerFlag
+    if (this.checkWin(x, y)) return this.printBoard() + '\n游戏已结束，发送endGame退出'
 
-    const result = wasmModule._decideMove(arrayPtr, this.playerFlag, this.level);
-    wasmModule._free(arrayPtr);
+    // 调用 WASM 计算 AI 落子
+    const flatBoard = this.board.flat()
+    const arrayPtr = wasmModule._malloc(flatBoard.length * 4) // 分配内存
+    wasmModule.HEAP32.set(flatBoard, arrayPtr / 4)            // 写入棋盘状态
+    const result = wasmModule._decideMove(arrayPtr, this.playerFlag, this.level)
+    wasmModule._free(arrayPtr) // 释放内存
+
     if (result === -1) {
       this.winningFlag = winFlag.draw
-      return '游戏已结束，发送endGame退出'
+      return '平局，发送endGame退出'
     }
-    const [x1, y1] = [Math.floor(result / 1000), result % 1000]
-    this.board[x1][y1] = 3 - this.playerFlag
-    console.log(this.checkWin(x1, y1))
-    if (this.checkWin(x1, y1)) {
-      return this.printBoard() + '\n游戏已结束，发送endGame退出'
-    }
+
+    // 解析 AI 落子坐标并更新棋盘
+    const [aiX, aiY] = [Math.floor(result / 1000), result % 1000]
+    this.board[aiX][aiY] = 3 - this.playerFlag // AI 使用对方颜色
+    if (this.checkWin(aiX, aiY)) return this.printBoard() + '\n游戏已结束'
     return this.printBoard()
   }
 
+  // 检查是否连成五子
   private checkWin(x: number, y: number): boolean {
-    const directions = [[1, 0], [0, 1], [1, 1], [1, -1]]
-    for (let i = 0; i < 4; i++) {
+    const directions = [[1, 0], [0, 1], [1, 1], [1, -1]] // 四个方向
+    for (const [dx, dy] of directions) {
       let count = 1
-      for (let j = 1; j < 5; j++) {
-        const [dx, dy] = directions[i]
-        const [nx, ny] = [x + dx * j, y + dy * j]
-        if (nx < 0 || nx >= 12 || ny < 0 || ny >= 12) {
-          break
-        }
-        if (this.board[nx][ny] !== this.board[x][y]) {
-          break
-        }
-        count++
-      }
-      for (let j = 1; j < 5; j++) {
-        const [dx, dy] = directions[i]
-        const [nx, ny] = [x - dx * j, y - dy * j]
-        if (nx < 0 || nx >= 12 || ny < 0 || ny >= 12) {
-          break
-        }
-        if (this.board[nx][ny] !== this.board[x][y]) {
-          break
-        }
-        count++
+      // 向两个方向延伸检查
+      for (let i = 1; i < 5; i++) {
+        if (this.checkDirection(x, y, dx, dy, i)) count++
+        if (this.checkDirection(x, y, -dx, -dy, i)) count++
       }
       if (count >= 5) {
         this.winningFlag = this.board[x][y] === this.playerFlag ? winFlag.win : winFlag.lose
@@ -122,42 +103,39 @@ class goBangSingleGame extends abstractGameSingleGame {
     return false
   }
 
-  static readonly numberEmojis = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢']
+  // 辅助方法：检查指定方向是否有连续棋子
+  private checkDirection(x: number, y: number, dx: number, dy: number, step: number): boolean {
+    const nx = x + dx * step, ny = y + dy * step
+    return nx >= 0 && nx < 12 && ny >= 0 && ny < 12 && this.board[nx][ny] === this.board[x][y]
+  }
+
+  // 生成带表情符号的棋盘字符串
   private printBoard(): string {
-    // 带坐标的打印
-    let res = '🟨'
+    const numberEmojis = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢']
+    let res = '🟨' + numberEmojis.slice(0, 12).join('') + '\n'
     for (let i = 0; i < 12; i++) {
-      res += goBangSingleGame.numberEmojis[i]
-    }
-    res += '\n'
-    for (let i = 0; i < 12; i++) {
-      res += goBangSingleGame.numberEmojis[i]
+      res += numberEmojis[i]
       for (let j = 0; j < 12; j++) {
-        if (this.board[i][j] === 0) {
-          res += '🟨'
-        } else if (this.board[i][j] === 1) {
-          res += '⚫'
-        } else {
-          res += '⚪'
-        }
+        res += this.board[i][j] === 0 ? '🟨' : (this.board[i][j] === 1 ? '⚫' : '⚪')
       }
       res += '\n'
     }
     return res
   }
-
-  private board: number[][] = []
 }
 
+/**
+ * 五子棋管理类，继承自 abstractGame
+ */
 export class goBang extends abstractGame<goBangSingleGame> {
   constructor() {
-    super(goBangSingleGame)
+    super(goBangSingleGame) // 绑定具体单局类
   }
+
+  // 启动游戏时可传入难度参数
   public override startGame(session: Session, ctx: Context, args: string[]) {
     const game = super.startGame(session, ctx, args) as goBangSingleGame
-    if (!Number.isNaN(parseInt(args[0]))) {
-      game.level = parseInt(args[0])
-    }
+    if (!isNaN(parseInt(args[0]))) game.level = parseInt(args[0])
     return game
   }
 }

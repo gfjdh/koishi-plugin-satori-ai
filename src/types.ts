@@ -245,6 +245,8 @@ export namespace Sat {
 
     maxRetryTimes: number
     retry_delay_time: number
+    enable_game: boolean
+    enable_gobang: boolean
   }
 
   export const Config: Schema<Config> = Schema.intersect([

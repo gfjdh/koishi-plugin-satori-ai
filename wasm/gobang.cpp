@@ -441,13 +441,13 @@ int singleScore(coordinate p, int player, const Game &game) {
         chesstype.alive1 += temp.alive1;
         chesstype.conti1 += temp.conti1;
     }
-    if (chesstype.win5 || (chesstype.conti4 && chesstype.alive3) || chesstype.alive4 || chesstype.conti4 >= 2) // 胜
+    if (chesstype.win5) // 胜
         return 1048576;
     int score = ((chesstype.conti4 << 12) +
                  (chesstype.alive3 << 12) + (chesstype.conti3 << 8) + (chesstype.jump3 << 10) +
                  (chesstype.alive2 << 8) + (chesstype.conti2 << 3) + (chesstype.jump2 << 6) +
                  (chesstype.alive1 << 3) + chesstype.conti1);
-    if (chesstype.alive3 >= 2) // 必胜?
+    if (chesstype.alive3 >= 2 || (chesstype.conti4 && chesstype.alive3) || chesstype.alive4 || chesstype.conti4 >= 2) // 必胜?
         score += 65536;
     return score;
 }
@@ -491,7 +491,7 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game) {
     int maxScore = scoreBoard[0].score;
     if (maxScore < 5)
         game.draw = 1;
-    int threshold = maxScore / 3;
+    const int threshold = maxScore / 3;
     // 找到分界线
     int boundary = 1;
     for (int i = 1; i < length; i++) {
@@ -503,7 +503,7 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game) {
     // 更新 length 为分界线的位置
     length = boundary;
     // 返回 length，最多不超过
-    return length > 8 ? 8 : length;
+    return length > 10 ? 10 : length;
 }
 // 负极大极小值搜索
 coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate command, coordinate current, Game &game) {
@@ -516,7 +516,7 @@ coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate comm
     int length = inspireSearch(steps, player, game); // 搜索可落子点
     if (length > 7 && depth > 1)
         depth--;
-    if (length > 2)
+    else if (length > 2)
         depth--;
     for (int i = 0; i < length; i++) {
         place(steps[i], player, game);                                               // 模拟落子
@@ -555,6 +555,12 @@ coordinate entrance(int depth, int alpha, int beta, int player, coordinate comma
     return best;
 }
 
+/*
+  * @param board: 棋盘状态
+  * @param myFlag: 我方棋子颜色
+  * @param depth: 搜索深度
+  * @return: 返回落子位置
+  */
 extern "C" int decideMove(const int board[BOARD_SIZE * BOARD_SIZE], int myFlag, int depth) {
     Game localGame;
     for (int i = 0; i < BOARD_SIZE; i++) {

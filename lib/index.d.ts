@@ -7,6 +7,7 @@ export declare class SAT extends Sat {
     private portraitManager;
     private ChannelParallelCount;
     private onlineUsers;
+    private game;
     constructor(ctx: Context, config: Sat.Config);
     private getAPIConfig;
     private getMemoryConfig;
