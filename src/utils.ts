@@ -129,8 +129,14 @@ export function filterResponse(prompt: string, words: string[]): string {
     }
     return part;
   }).join('');
+  // 删除<think>和</think>标签中的内容
+  const regex = /<think>[\s\S]*?<\/think>/g;
+  const filteredThink = filtered.replace(regex, '');
+  // 删除<think>和</think>标签
+  const regex2 = /<think>|<\/think>/g;
+  const filtered2 = filteredThink.replace(regex2, '');
   // 清理首尾空白并处理空结果
-  const trimmedResult = filtered.trim();
+  const trimmedResult = filtered2.trim();
   return trimmedResult === '' ? '……' : trimmedResult;
 }
 

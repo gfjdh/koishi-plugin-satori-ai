@@ -309,8 +309,9 @@ export class SAT extends Sat {
     const messages = this.buildMessages(session, prompt)
     logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
     const user = await getUser(this.ctx, session.userId)
-    const response = await this.apiClient.chat(user, await messages)
+    let response = await this.apiClient.chat(user, await messages)
     if (this.config.log_ask_response) logger.info(`Satori AI：${response.content}`)
+    if (this.config.reasoner_filter) response.content = filterResponse(response.content, this.config.reasoner_filter_word.split('-'))
     return response
   }
 
@@ -375,7 +376,6 @@ export class SAT extends Sat {
     this.updateChannelParallelCount(session, -1)
     this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
     if (!response) return session.text('commands.sat.messages.no-response')
-    if (this.config.reasoner_filter) response = filterResponse(response, this.config.reasoner_filter_word.split('-'))
 
     const catEar = user?.items?.['猫耳发饰']?.description && user.items['猫耳发饰'].description == 'on'
     const fumo = user?.items?.['觉fumo']?.description && user.items['觉fumo'].description == 'on'
