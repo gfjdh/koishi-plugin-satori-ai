@@ -133,6 +133,13 @@ ${history}
     return portrait ? `\n以下是当前用户的补充信息：{${portrait}\n}\n` : ''
   }
 
+  public getUserPortraitById(userId: string): string {
+    if (!this.config.enable_favorability) return '当前未启用好感度功能'
+    if (!this.config.enable_user_portrait) return '当前未启用用户画像功能'
+    const portrait = this.readPortrait(userId)
+    return portrait ? `以下是用户${userId}的画像：{\n${portrait}\n}` : `用户${userId}没有画像`
+  }
+
   private getFavorabilityConfig(): FavorabilityConfig {
     return {
       enable_favorability: this.config.enable_favorability,

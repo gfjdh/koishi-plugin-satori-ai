@@ -11,7 +11,7 @@ export class MemoryManager {
   private channelMemories: Map<string, ChannelMemory> = new Map()
   private channelDialogues: Map<string, string[]> = new Map()
   private charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
-
+  private MAX_MEMORY_LENGTH = 5000
   constructor(
     private ctx: Context,
     private config: MemoryConfig
@@ -157,7 +157,12 @@ export class MemoryManager {
     if (filtered.length === 0) return
 
     const existing = await this.loadMemoryFile(filePath)
-    const updated = [...existing, ...filtered]
+    let updated = [...existing, ...filtered]
+
+    // 长度限制
+    if (updated.length > this.MAX_MEMORY_LENGTH) {
+      updated = updated.slice(-this.MAX_MEMORY_LENGTH)
+    }
 
     fs.writeFileSync(filePath, JSON.stringify(updated, null, 2))
   }
@@ -172,24 +177,35 @@ export class MemoryManager {
       'user': this.config.dailogues_topN,
       'common': this.config.common_topN
     }
-    if (!fs.existsSync(filePathMap[type])) {
-      logger.warn(`记忆文件不存在：${filePathMap[type]}`)
-      return ''//如果记忆文件不存在,返回空字符串
+    const filePath = filePathMap[type]
+    if (!fs.existsSync(filePath)) {
+      return ''
     }
-    const keywords = prompt.split('').filter(word => !this.charactersToRemove.includes(word));
-    const entries = await this.loadMemoryFile(filePathMap[type])
-    const matched = this.findBestMatches(entries, keywords, topNMap[type])
-    const result = this.formatMatches(matched, type)
+
+    const keywords = prompt.split('').filter(word => !this.charactersToRemove.includes(word))
+    // 加载记忆条目并处理顺序
+    let entries = await this.loadMemoryFile(filePath)
+    const matched = this.findBestMatches(entries, keywords).slice(0, topNMap[type] * 5)
+
+    if (type === 'user') {
+      // 动态调整记忆顺序
+      const remainingEntries = entries.filter(entry => !matched.includes(entry))
+      let updatedEntries = [...remainingEntries, ...matched]
+      // 保存调整后的记忆
+      fs.writeFileSync(filePath, JSON.stringify(updatedEntries, null, 2))
+    }
+
+    // 返回格式化结果
+    const result = this.formatMatches(matched, type, topNMap[type])
     return result
   }
 
   // 记忆检索
-  private findBestMatches(entries: MemoryEntry[], keywords: string[], topN = 5): MemoryEntry[] {
+  private findBestMatches(entries: MemoryEntry[], keywords: string[]): MemoryEntry[] {
     return entries
       .map(entry => ({ entry, ...this.calculateMatchScore(entry.content, keywords) })) //计算匹配度
       .filter(({ count }) => count > 1)    // 过滤低权重匹配
       .sort((a, b) => b.score - a.score)  // 按匹配率降序排列
-      .slice(0, topN < entries.length ? topN : entries.length)  // 取前 N 个结果
       .map(({ entry }) => entry);         // 还原为原始条目
   }
 
@@ -224,7 +240,7 @@ export class MemoryManager {
   }
 
   // 格式化匹配结果
-  private formatMatches(matched: MemoryEntry[], type: 'user' | 'common'): string {
+  private formatMatches(matched: MemoryEntry[], type: 'user' | 'common', topN = 5): string {
     const prefixMap = {
       'common': '\n这是你可能用到的信息：',
       'user': '\n以下是较久之前用户说过的话和对话时间：'
@@ -233,6 +249,7 @@ export class MemoryManager {
     const time = `\n时段：${getTimeOfDay(new Date().getHours())}`
     const date = `\n当前日期和时间：${new Date().toLocaleString()} ${time}`
     if (matched.length > 0) {
+      matched = matched.slice(0, topN < matched.length ? topN : matched.length)  // 取前 N 个结果
       if (type === 'common') {
           const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')} ${date}\n`
           return result

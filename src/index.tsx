@@ -154,6 +154,10 @@ export class SAT extends Sat {
     ctx.command('sat.add_output_censor <text:text>', '添加输出敏感词', { authority: 4 })
       .alias('添加输出屏蔽词')
       .action(async ({ session }, word) => addOutputCensor(session, word, this.config.dataDir))
+
+    ctx.command('sat.get_user_portrait <text:text>', '查看用户画像', { authority: 4 })
+      .alias('查看画像')
+      .action(async ({}, userId) => this.portraitManager.getUserPortraitById(userId))
   }
 
   private async handleSatCommand(session: Session, prompt: string) {

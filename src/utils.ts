@@ -110,6 +110,7 @@ export function processPrompt(prompt: string): string {
   if (!prompt) return '';
   if (prompt.includes(':poke')) return '戳戳';
   prompt = prompt.replace(/<[^>]*?img[^>]*>/g, '[图片]');
+  prompt = prompt.replace(/<[^>]*?avatar[^>]*>/g, '');
   prompt = prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `@${name}`);
   return prompt;
 }

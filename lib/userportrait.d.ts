@@ -14,5 +14,6 @@ export declare class UserPortraitManager {
     private savePortrait;
     private ensurePortraitFile;
     getUserPortrait(session: Session): string;
+    getUserPortraitById(userId: string): string;
     private getFavorabilityConfig;
 }
