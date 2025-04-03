@@ -77,9 +77,10 @@ class goBangSingleGame extends abstractGameSingleGame {
       this.winningFlag = winFlag.draw
       return '平局，发送endGame退出'
     }
-
+    logger.info(result)
     // 解析 AI 落子坐标并更新棋盘
-    const [aiX, aiY] = [Math.floor(result / 1000), result % 1000]
+    const [score, aiX, aiY] = [Math.floor(result / 10000), Math.floor(result / 1000) % 100, result % 100]
+    logger.info(`AI 落子坐标: ${aiX} ${aiY}，得分: ${score}`)
     this.board[aiX][aiY] = 3 - this.playerFlag // AI 使用对方颜色
     if (this.checkWin(aiX, aiY)) return this.printBoard() + '\n游戏已结束'
     return this.printBoard()

@@ -76,7 +76,6 @@ export interface MemoryConfig {
 }
 export interface MiddlewareConfig {
     private: boolean;
-    mention: boolean;
     nick_name: boolean;
     nick_name_list: string[];
     nick_name_block_words: string[];
@@ -175,10 +174,10 @@ export declare namespace Sat {
         enable_fixed_dialogues: boolean;
         max_usage: number[];
         private: boolean;
-        mention: boolean;
         nick_name: boolean;
         nick_name_list: string[];
         nick_name_block_words: string[];
+        input_prompt: string;
         reasoner_filter: boolean;
         reasoner_filter_word: string;
         duplicateDialogueCheck: boolean;
@@ -213,6 +212,8 @@ export declare namespace Sat {
         prompt_4: string;
         maxRetryTimes: number;
         retry_delay_time: number;
+        enable_game: boolean;
+        enable_gobang: boolean;
     }
     const Config: Schema<Config>;
 }

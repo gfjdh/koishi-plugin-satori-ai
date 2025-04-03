@@ -541,17 +541,18 @@ coordinate entrance(int depth, int alpha, int beta, int player, coordinate comma
     int length;
     length = inspireSearch(steps, player, game); // 搜索可落子点
     if (length == 1 || game.draw)
-        return steps[0];
+      return steps[0];
     for (int i = 0; i < length; i++) {
-        place(steps[i], player, game);                                               // 模拟落子
-        temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 递归
-        temp.score *= -1;
-        place(steps[i], 0, game); // 还原落子
-        if (temp.score > alpha) {
-            alpha = temp.score;
-            best = steps[i]; // 记录最佳落子
-        }
+      place(steps[i], player, game);                                               // 模拟落子
+      temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 递归
+      temp.score *= -1;
+      place(steps[i], 0, game); // 还原落子
+      if (temp.score > alpha) {
+          alpha = temp.score;
+          best = steps[i]; // 记录最佳落子
+      }
     }
+    best.score = alpha;
     return best;
 }
 
@@ -577,5 +578,5 @@ extern "C" int decideMove(const int board[BOARD_SIZE * BOARD_SIZE], int myFlag, 
     if (localGame.draw) {
         return -1;
     }
-    return result.x * 1000 + result.y;
+    return result.score * 10000 + result.x * 100 + result.y;
 }

@@ -26,11 +26,6 @@ export function createMiddleware(
       return await handleNickNameMessage(sat, session)
     }
 
-    // @提及处理
-    if (config.mention && isMentionTriggered(session)) {
-      return await handleMentionMessage(sat, session)
-    }
-
     // 随机触发处理
     if (shouldRandomTrigger(session, config)) {
       return await sat.handleRandomMiddleware(session, session.content)
@@ -68,23 +63,6 @@ async function hasNickName(ctx: Context, session: Session, config: MiddlewareCon
 async function handleNickNameMessage(SAT: SAT, session: Session) {
   const content = session.content.trim()
   if (content) return await SAT.handleNickNameMiddleware(session, content)
-}
-
-// @提及判断
-function isMentionTriggered(session: Session): boolean {
-  return !!session.stripped.appel
-}
-
-// 处理@提及消息
-async function handleMentionMessage(SAT: SAT, session: Session) {
-  let message = session.elements
-    .slice(1)
-    .filter(e => e.type === 'text')
-    .map(e => e.attrs.content)
-    .join('')
-    .trim()
-
-  if (message) return await SAT.handleNickNameMiddleware(session, message)
 }
 
 // 随机触发判断

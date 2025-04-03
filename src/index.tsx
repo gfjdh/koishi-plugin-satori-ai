@@ -40,7 +40,7 @@ export class SAT extends Sat {
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
     this.registerCommands(ctx)
-    if (this.config.enable_game) this.game = new Game(ctx, config)
+    //if (this.config.enable_game) this.game = new Game(ctx, config)
   }
 
   private getAPIConfig(): APIConfig {
@@ -80,7 +80,6 @@ export class SAT extends Sat {
   private getMiddlewareConfig(): MiddlewareConfig & FavorabilityConfig {
       return {
         private: this.config.private,
-        mention: this.config.mention,
         nick_name: this.config.nick_name,
         nick_name_list: this.config.nick_name_list,
         nick_name_block_words: this.config.nick_name_block_words,
@@ -180,6 +179,7 @@ export class SAT extends Sat {
     if (dialogueCountCheck) return dialogueCountCheck
     // 更新频道并发数
     await this.updateChannelParallelCount(session, 1)
+    // 生成回复
     const response = await this.generateResponse(session, processedPrompt)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆
@@ -325,18 +325,14 @@ export class SAT extends Sat {
       messages.push({ role: 'system', content: await this.buildSystemPrompt(session, prompt) })
     }
     // 添加上下文记忆
-    if (this.config.personal_memory) {
-      const userMemory = this.memoryManager.getChannelContext(session.userId)
-      messages.push(...userMemory)
-    } else {
-      const channelMemory = this.memoryManager.getChannelContext(session.channelId)
-      messages.push(...channelMemory)
+    const userMemory = this.memoryManager.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
+    messages.push(...userMemory)
+    if(this.config.input_prompt && messages.length > 2){
+      messages.push({ role: 'user', content: 'system:' + this.config.input_prompt })
+      messages.push({ role: 'assistant', content: '好的，我会按您的要求进行回复。' })
     }
     // 添加当前对话
-    messages.push({
-      role: 'user',
-      content: prompt
-    })
+    messages.push({ role: 'user', content: prompt })
     let payload = messages.map(msg => msg.role + ':' + msg.content).join('\n')
     if (this.config.log_system_prompt) logger.info(`系统提示：\n${payload}`)
     return messages
@@ -434,10 +430,10 @@ export class SAT extends Sat {
   // 更新用户等级
   private async handleUserLevel(session: Session, options: { id?: string , level?: number }) {
     const userId = options.id || session.userId
-    const level = options.level || 1
     const user = await ensureUserExists(this.ctx, userId, session.username)
+    const level = options.level || user.userlevel > 1 ? user.userlevel : 1
     const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
-    if (enableUserKey) await this.portraitManager.generatePortrait(session, user, this.apiClient)
+    if (enableUserKey || level > 3) await this.portraitManager.generatePortrait(session, user, this.apiClient)
     await updateUserLevel(this.ctx, user, level)
     return session.text('commands.sat.messages.update_level_succeed', [level])
   }
@@ -456,8 +452,6 @@ export class SAT extends Sat {
       result += session.text('commands.sat.messages.usage', [userUsage, maxUsage]) + '\n'
     if (this.portraitManager.hasPortrait(user.userid))
       result += '用户画像生效中\n'
-    else
-      result += '用户画像未生效\n'
     return result
   }
 
