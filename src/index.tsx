@@ -435,7 +435,7 @@ export class SAT extends Sat {
   private async handleUserLevel(session: Session, options: { id?: string , level?: number }) {
     const userId = options.id || session.userId
     const user = await ensureUserExists(this.ctx, userId, session.username)
-    const level = options.level || user.userlevel > 1 ? user.userlevel : 1
+    const level = options.level || (user.userlevel > 1 ? user.userlevel : 1)
     const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
     if (enableUserKey || level > 3) await this.portraitManager.generatePortrait(session, user, this.apiClient)
     await updateUserLevel(this.ctx, user, level)
