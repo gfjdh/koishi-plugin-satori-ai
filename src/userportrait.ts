@@ -40,14 +40,33 @@ export class UserPortraitManager {
     const memoryPath = path.join(this.config.dataDir, 'dialogues', `${userId}.txt`)
     if (!fs.existsSync(memoryPath)) return []
 
-    const MemoryContent: MemoryEntry[] = await JSON.parse(fs.readFileSync(memoryPath, 'utf-8'))
-    const dialoguesContent = MemoryContent.map(msg => `${msg.content}${msg.role == 'user' ? '(未记录时间)' : msg.role}`)
+    const memoryContent: MemoryEntry[] = JSON.parse(fs.readFileSync(memoryPath, 'utf-8'))
+
+    // 解析并过滤有效对话记录
+    const validEntries = memoryContent
+      .filter(entry => entry.role !== 'user')
+      .map(entry => {
+        const timeMatch = entry.role.match(/对话日期和时间：(\d{4}\/\d{1,2}\/\d{1,2} \d{2}:\d{2}:\d{2})/)
+        if (!timeMatch) return null
+        return {
+          ...entry,
+          timestamp: new Date(timeMatch[1]).getTime()
+        }
+      })
+      .filter(entry => entry !== null)
+      .sort((a, b) => b.timestamp - a.timestamp) // 按时间倒序排列
+
+    // 计算保留条数
     const level = user.userlevel < 5 ? user.userlevel : 4
-    const usageLimit = this.config.max_usage[level] == 0 ? this.config.max_portrait_dialogues : this.config.max_usage[level]
-    if (dialoguesContent.length >= usageLimit || dialoguesContent.length >= this.config.max_portrait_dialogues) {
-      dialoguesContent.splice(0, dialoguesContent.length - Math.min(usageLimit, this.config.max_portrait_dialogues))
-    }
-    return dialoguesContent
+    const usageLimit = this.config.max_usage[level] === 0
+      ? this.config.max_portrait_dialogues
+      : this.config.max_usage[level]
+    const maxEntries = Math.min(usageLimit, this.config.max_portrait_dialogues)
+
+    // 截取最新对话并生成内容
+    return validEntries
+      .slice(0, maxEntries)
+      .map(entry => `${entry.content}${entry.role}`)
   }
 
   // 生成提示词模板

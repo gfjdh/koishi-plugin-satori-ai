@@ -43,6 +43,7 @@ export async function updateFavorability(ctx: Context, user: User, adjustment: F
 // 更新用户等级
 export async function updateUserLevel(ctx: Context, user: User, level: number): Promise<void> {
   if (!user) return
+  level = level < 5 ? level : 4
   await ctx.database.set('p_system', { userid: user.userid }, { userlevel: level })
 }
 
