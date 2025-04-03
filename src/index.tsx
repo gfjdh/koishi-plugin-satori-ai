@@ -168,12 +168,12 @@ export class SAT extends Sat {
     const favorabilityBlock = await this.checkFavorabilityBlock(session)
     if (favorabilityBlock) return favorabilityBlock
     // 前置检查
-    const preCheckResult = this.performPreChecks(session, prompt)
+    const preCheckResult = this.performPreChecks(session, processedPrompt)
     if (preCheckResult) return preCheckResult
     // 重复对话检查
     const channelId = this.config.enable_self_memory ? session.userId : session.channelId
     const recentDialogues = this.memoryManager.getChannelMemory(channelId).slice(-10)
-    const duplicateCheck = await this.checkDuplicateDialogue(session, prompt, recentDialogues, user)
+    const duplicateCheck = await this.checkDuplicateDialogue(session, processedPrompt, recentDialogues, user)
     if (duplicateCheck) return duplicateCheck
     // 固定对话处理
     const fixedResponse = await this.handleFixedDialoguesCheck(session, user, processedPrompt)
