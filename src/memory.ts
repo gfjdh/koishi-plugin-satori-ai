@@ -22,8 +22,6 @@ export class MemoryManager {
     if (response.error) return
     // 更新短期记忆
     this.updateChannelMemory(session, prompt, config, response.content)
-    // 将prompt中的第一个“我”替换为用户名
-    prompt = prompt.replace('我', session.username)
     // 添加当前时间
     const date = ` (对话日期和时间：${new Date().toLocaleString()})`
     // 保存长期记忆

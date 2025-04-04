@@ -18,7 +18,8 @@ export enum winFlag {
 
 // 五子棋结果扩展接口
 export interface goBangGameResult extends gameResult {
-  win: winFlag
+  win: winFlag,
+  level: number
 }
 
 /**
@@ -79,7 +80,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     }
     logger.info(result)
     // 解析 AI 落子坐标并更新棋盘
-    const [score, aiX, aiY] = [Math.floor(result / 10000), Math.floor(result / 1000) % 100, result % 100]
+    const [score, aiX, aiY] = [Math.floor(result / 100000), Math.floor(result / 1000) % 100, result % 100]
     logger.info(`AI 落子坐标: ${aiX} ${aiY}，得分: ${score}`)
     this.board[aiX][aiY] = 3 - this.playerFlag // AI 使用对方颜色
     if (this.checkWin(aiX, aiY)) return this.printBoard() + '\n游戏已结束'
@@ -135,8 +136,19 @@ export class goBang extends abstractGame<goBangSingleGame> {
 
   // 启动游戏时可传入难度参数
   public override startGame(session: Session, ctx: Context, args: string[]) {
+    let level: number
+    if (!isNaN(parseInt(args[0])))
+      level = parseInt(args[0])
+    else {
+      session.send('未输入难度等级(2-9)，默认设为5')
+      level = 5
+    }
+    if (level < 2 || level > 8) {
+      level = level < 2 ? 2 : 8
+      session.send('难度等级必须在2到8之间,已调整为' + level)
+    }
     const game = super.startGame(session, ctx, args) as goBangSingleGame
-    if (!isNaN(parseInt(args[0]))) game.level = parseInt(args[0])
+    game.level = level
     return game
   }
 }

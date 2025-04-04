@@ -41,9 +41,16 @@ export class UserPortraitManager {
     if (!fs.existsSync(memoryPath)) return []
 
     const memoryContent: MemoryEntry[] = JSON.parse(fs.readFileSync(memoryPath, 'utf-8'))
-
+    const replacedContent = memoryContent.map(entry => {
+      return {
+        ...entry,
+        content: entry.content.replace(user.usersname, '我')
+      }
+    });
+    // 写回文件
+    fs.writeFileSync(memoryPath, JSON.stringify(replacedContent, null, 2))
     // 解析并过滤有效对话记录
-    const validEntries = memoryContent
+    const validEntries = replacedContent
       .filter(entry => entry.role !== 'user')
       .map(entry => {
         const timeMatch = entry.role.match(/对话日期和时间：(\d{4}\/\d{1,2}\/\d{1,2} \d{2}:\d{2}:\d{2})/)

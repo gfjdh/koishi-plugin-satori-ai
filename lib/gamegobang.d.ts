@@ -8,6 +8,7 @@ export declare enum winFlag {
 }
 export interface goBangGameResult extends gameResult {
     win: winFlag;
+    level: number;
 }
 /**
  * 五子棋单局实现类，继承自 abstractGameSingleGame

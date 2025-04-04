@@ -40,7 +40,7 @@ export class SAT extends Sat {
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
     this.registerCommands(ctx)
-    //if (this.config.enable_game) this.game = new Game(ctx, config)
+    //if (this.config.enable_game) this.game = new Game(ctx, config, this)
   }
 
   private getAPIConfig(): APIConfig {
@@ -332,7 +332,7 @@ export class SAT extends Sat {
     // 添加上下文记忆
     const userMemory = this.memoryManager.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
     messages.push(...userMemory)
-    if(this.config.input_prompt && messages.length > 2){
+    if(this.config.input_prompt && messages.length > 1){
       messages.push({ role: 'user', content: 'system:' + this.config.input_prompt })
       messages.push({ role: 'assistant', content: '好的，我会按您的要求进行回复。' })
     }
