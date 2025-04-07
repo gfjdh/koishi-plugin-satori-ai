@@ -9,7 +9,7 @@ import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFa
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
-import { addOutputCensor, filterResponse, processPrompt, splitSentences } from './utils'
+import { addOutputCensor, filterResponse, processPrompt, splitSentences, updateUserPWithTicket } from './utils'
 import { UserPortraitManager } from './userportrait'
 import { Game } from './game'
 
@@ -188,6 +188,8 @@ export class SAT extends Sat {
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆
     await this.memoryManager.updateMemories(session, processedPrompt, this.getMemoryConfig(), response)
+    // 更新用户p
+    if (!response.error) await updateUserPWithTicket(this.ctx, user, 10)
     // 更新用户画像
     if (user.usage == this.config.portrait_usage - 1)
       this.portraitManager.generatePortrait(session, user, this.apiClient)

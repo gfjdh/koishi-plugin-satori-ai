@@ -1,5 +1,7 @@
 // src/utils.ts
-import { Logger, Session } from 'koishi'
+import { Context, Logger, Session } from 'koishi'
+import { updateUserP } from './database'
+import { User } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -152,4 +154,12 @@ export function addOutputCensor(session: Session, word: string, baseURL: string)
   blockWords.push(word);
   fs.writeFileSync(blockWordsPath, blockWords.join(','));
   session.send(`添加"${word}"成功`);
+}
+
+// 如果用户有通行证，更新用户p点数
+export async function updateUserPWithTicket(ctx: Context, user: User, adjustment: number): Promise<void> {
+  if (!user) return
+  if (user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on') {
+    await updateUserP(ctx, user, adjustment)
+  }
 }

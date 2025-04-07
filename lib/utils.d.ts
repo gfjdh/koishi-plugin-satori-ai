@@ -1,4 +1,5 @@
-import { Session } from 'koishi';
+import { Context, Session } from 'koishi';
+import { User } from './types';
 export declare function escapeRegExp(str: string): string;
 export declare function parseTimeToMinutes(timeStr: string): number;
 export declare function parseTime(timestamp: number): number;
@@ -24,3 +25,4 @@ export declare function processPrompt(prompt: string): string;
  */
 export declare function filterResponse(prompt: string, words: string[]): string;
 export declare function addOutputCensor(session: Session, word: string, baseURL: string): void;
+export declare function updateUserPWithTicket(ctx: Context, user: User, adjustment: number): Promise<void>;
