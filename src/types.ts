@@ -107,8 +107,6 @@ export interface APIConfig {
   auxiliary_LLM_URL: string
   auxiliary_LLM: string
   auxiliary_LLM_key: string[]
-  content_max_tokens: number
-  content_max_length: number
   temperature: number
   frequency_penalty: number
   presence_penalty: number
@@ -177,8 +175,6 @@ export namespace Sat {
 
     no_system_prompt: boolean
     max_tokens: number
-    content_max_tokens: number
-    content_max_length: number
     message_max_length: number
     remember_min_length: number
     temperature: number
@@ -202,6 +198,8 @@ export namespace Sat {
     dailogues_topN: number
     enable_fixed_dialogues: boolean
 
+    enable_reasoner: boolean
+    reasoner_prompt: string
     max_usage: number[]
     private: boolean
     nick_name: boolean
@@ -262,16 +260,17 @@ export namespace Sat {
         Schema.array(String).role('secret'),
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('辅助模型api_key'),
-      prompt: Schema.string().role('textarea').description('人格设定')
+      prompt: Schema.string().role('textarea').description('人格设定'),
+      enable_reasoner: Schema.boolean().default(false).description('是否启用模仿思维链（针对非深度思考模型）'),
+      reasoner_prompt: Schema.string().role('textarea').description('思考提示词（请勿改动<think>和</think>标签）')
+      .default('你的【思考要求】：请你在最终回复前先输出思维链内容，所有思维链内容使用<think>和</think>包裹输出，而后在最后输出正式的回复内容。你在思考时应当逐步分析以下内容：1.当前对话的禁止事项；2.是否与群聊中其他人的发言有关联；3.是否与当前用户之前说的话有关联；4.对话的具体要求；5.用户的意图如何；6.最终的发言的主要内容。'),
     }).description('基础设置'),
 
     Schema.object({
       alias: Schema.array(String).default(['ai']).description('触发命令;别名'),
       authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
-      no_system_prompt: Schema.boolean().default(false).description('是否将系统提示的system替换为user（用于具有思维链的模型或一些特殊的api格式，例如硅基流动）'),
+      no_system_prompt: Schema.boolean().default(false).description('是否将系统提示的system替换为user（用于具有思维链的模型）'),
       max_tokens: Schema.number().description('最大请求长度（字符数）').default(100),
-      content_max_tokens: Schema.number().description('最大回答长度（思维链+输出token）').default(4096),
-      content_max_length: Schema.number().description('最大回答长度（仅输出，字符数）').default(100),
       message_max_length: Schema.number().description('最大频道上下文长度（条数）').default(10),
       temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
       frequency_penalty: Schema.number().default(0.0).description('频率惩罚'),

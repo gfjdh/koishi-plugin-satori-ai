@@ -460,8 +460,7 @@ int wholeScore(int player, const Game &game) {
             if (temp.score == 0)
                 continue;
             if (temp.score == player) {
-                if (player == BLACK)
-                    Score += singleScore(temp, player, game); // 己方落子的单点分相加
+                Score += singleScore(temp, player, game); // 己方落子的单点分相加
             } else
                 Score -= singleScore(temp, 3 - player, game); // 对方落子的单点分相加
         }
@@ -475,11 +474,10 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game) {
         for (int j = 0; j < BOARD_SIZE; j++) {
             if (game.MAP.board[i][j] == 0) {
                 coordinate temp = {i, j, 0};
-                if (hasNeighbor(temp, 2, game)) {
+                if (hasNeighbor(temp, 3, game)) {
                     scoreBoard[length] = temp;
                     scoreBoard[length].score = singleScore(temp, 3 - player, game);
-                    if (player == BLACK)
-                        scoreBoard[length].score += singleScore(temp, player, game);
+                    scoreBoard[length].score += singleScore(temp, player, game);
                     length++;
                 }
             }

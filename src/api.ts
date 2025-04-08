@@ -113,7 +113,6 @@ export class APIClient {
     return {
       model: model,
       messages,
-      max_tokens: this.config.content_max_tokens,
       temperature: this.config.temperature,
       top_p: 1,
       frequency_penalty: this.config.frequency_penalty,
@@ -145,11 +144,6 @@ export class APIClient {
         if (!content && reasoning_content) {
           logger.warn('返回内容为空,但存在推理内容')
           content = response.choices[0].message.reasoning_content
-        }
-        if (content.length > this.config.content_max_length) {
-          logger.warn(`返回内容超过最大长度(${content.length} > ${this.config.content_max_length})`)
-          if (i >= 2) return { content: '返回内容超过最大长度', error: true }
-          continue
         }
         const responseMsg:Sat.Msg = { role: 'assistant', content: content }
         if (payload.messages.some(msg => msg === responseMsg) && content.length > 5) {

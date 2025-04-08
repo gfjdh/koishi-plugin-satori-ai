@@ -51,8 +51,6 @@ export class SAT extends Sat {
       auxiliary_LLM_URL: this.config.auxiliary_LLM_URL,
       auxiliary_LLM: this.config.auxiliary_LLM,
       auxiliary_LLM_key: this.config.auxiliary_LLM_key,
-      content_max_tokens: this.config.content_max_tokens,
-      content_max_length: this.config.content_max_length,
       maxRetryTimes: this.config.maxRetryTimes,
       retry_delay_time: this.config.retry_delay_time,
       temperature: this.config.temperature,
@@ -318,6 +316,7 @@ export class SAT extends Sat {
     let response = await this.apiClient.chat(user, await messages)
     if (this.config.log_ask_response) logger.info(`Satori AI：${response.content}`)
     if (this.config.reasoner_filter) response.content = filterResponse(response.content, this.config.reasoner_filter_word.split('-'))
+    if (response.error) updateUserUsage(this.ctx, user, -1)
     return response
   }
 
@@ -348,16 +347,20 @@ export class SAT extends Sat {
   // 构建系统提示
   private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
     let systemPrompt = this.config.prompt
+    const reasonerPrompt = this.config.reasoner_prompt
     const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
     const user = await getUser(this.ctx, session.userId)
+    const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
 
     if (user?.items?.['觉的衣柜']?.count) {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
       if (clothes) systemPrompt += `\n你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
     }
 
+    if (this.config.enable_reasoner && !hasTicket)
+      systemPrompt += `\n${reasonerPrompt}\n`
     systemPrompt += commonSense
     systemPrompt += channelDialogue
     systemPrompt += userMemory
@@ -403,8 +406,6 @@ export class SAT extends Sat {
     }
     return response
   }
-
-
 
   // 清空会话
   private clearSession(session: Session, global: boolean) {
