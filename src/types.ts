@@ -104,6 +104,10 @@ export interface APIConfig {
   baseURL: string
   keys: string[]
   appointModel: string
+  not_reasoner_LLM_URL: string
+  not_reasoner_LLM: string
+  not_reasoner_LLM_key: string[]
+  use_not_reasoner_LLM_length: number
   auxiliary_LLM_URL: string
   auxiliary_LLM: string
   auxiliary_LLM_key: string[]
@@ -168,10 +172,15 @@ export namespace Sat {
     baseURL: string
     key: string[]
     appointModel: string
+    not_reasoner_LLM_URL: string
+    not_reasoner_LLM: string
+    not_reasoner_LLM_key: string[]
+    use_not_reasoner_LLM_length: number
     auxiliary_LLM_URL: string
     auxiliary_LLM: string
     auxiliary_LLM_key: string[]
     prompt: string
+    reasoner_prompt: string
 
     no_system_prompt: boolean
     max_tokens: number
@@ -198,8 +207,7 @@ export namespace Sat {
     dailogues_topN: number
     enable_fixed_dialogues: boolean
 
-    enable_reasoner: boolean
-    reasoner_prompt: string
+    enable_reasoner_like: boolean
     max_usage: number[]
     private: boolean
     nick_name: boolean
@@ -248,12 +256,20 @@ export namespace Sat {
 
   export const Config: Schema<Config> = Schema.intersect([
     Schema.object({
-      baseURL: Schema.string().default('https://api.deepseek.com').description('请求地址'),
+      baseURL: Schema.string().default('https://api.deepseek.com').description('深度思考模型请求地址'),
       key: Schema.union([
         Schema.array(String).role('secret'),
         Schema.transform(String, value => [value]),
-      ]).default([]).role('secret').description('api_key'),
-      appointModel: Schema.string().default('deepseek-reasoner').description('主模型'),
+      ]).default([]).role('secret').description('深度思考模型api_key'),
+      appointModel: Schema.string().default('deepseek-reasoner').description('深度思考模型'),
+      not_reasoner_LLM_URL: Schema.string().default('https://api.deepseek.com').description('非深度思考模型请求地址'),
+      not_reasoner_LLM: Schema.string().default('deepseek-chat').description('非深度思考模型(用于节省成本'),
+      not_reasoner_LLM_key: Schema.union([
+        Schema.array(String).role('secret'),
+        Schema.transform(String, value => [value]),
+      ]).default([]).role('secret').description('非深度思考模型api_key'),
+      use_not_reasoner_LLM_length: Schema.number().default(8).description('触发使用非深度思考模型的字数（输入少于此字数时）,如果你希望始终使用非深度思考模型进行对话，请将此值设置成一个较大的值'),
+      enable_reasoner_like: Schema.boolean().default(true).description('是否启用非深度思考模型模仿思维链（可以在节省成本的同时提高效果）'),
       auxiliary_LLM_URL: Schema.string().default('https://api.deepseek.com').description('辅助模型请求地址'),
       auxiliary_LLM: Schema.string().default('deepseek-chat').description('辅助模型(用于好感度调整等功能，如不需要可不填，建议使用低成本模型'),
       auxiliary_LLM_key: Schema.union([
@@ -261,9 +277,8 @@ export namespace Sat {
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('辅助模型api_key'),
       prompt: Schema.string().role('textarea').description('人格设定'),
-      enable_reasoner: Schema.boolean().default(false).description('是否启用模仿思维链（针对非深度思考模型）'),
-      reasoner_prompt: Schema.string().role('textarea').description('思考提示词（请勿改动<think>和</think>标签）')
-      .default('你的【思考要求】：请你在最终回复前先输出思维链内容，所有思维链内容使用<think>和</think>包裹输出，而后在最后输出正式的回复内容。你在思考时应当逐步分析以下内容：1.当前对话的禁止事项；2.是否与群聊中其他人的发言有关联；3.是否与当前用户之前说的话有关联；4.对话的具体要求；5.用户的意图如何；6.最终的发言的主要内容。'),
+      reasoner_prompt: Schema.string().role('textarea').description('思考提示词（对于深度思考模型和非深度思考模型模仿思维链时生效）')
+      .default('你在思考时应当逐步分析以下内容：1.当前对话的禁止事项；2.是否与群聊中其他人的发言有关联；3.是否与当前用户之前说的话有关联；4.对话的具体要求；5.用户的意图如何；6.最终的发言的主要内容。'),
     }).description('基础设置'),
 
     Schema.object({

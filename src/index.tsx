@@ -48,6 +48,10 @@ export class SAT extends Sat {
       baseURL: this.config.baseURL,
       keys: this.config.key,
       appointModel: this.config.appointModel,
+      not_reasoner_LLM_URL: this.config.not_reasoner_LLM_URL,
+      not_reasoner_LLM: this.config.not_reasoner_LLM,
+      not_reasoner_LLM_key: this.config.not_reasoner_LLM_key,
+      use_not_reasoner_LLM_length: this.config.use_not_reasoner_LLM_length,
       auxiliary_LLM_URL: this.config.auxiliary_LLM_URL,
       auxiliary_LLM: this.config.auxiliary_LLM,
       auxiliary_LLM_key: this.config.auxiliary_LLM_key,
@@ -347,36 +351,38 @@ export class SAT extends Sat {
   // 构建系统提示
   private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
     let systemPrompt = this.config.prompt
-    const reasonerPrompt = this.config.reasoner_prompt
     const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
     const user = await getUser(this.ctx, session.userId)
-    const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
 
-    if (user?.items?.['觉的衣柜']?.count) {
-      const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
-      if (clothes) systemPrompt += `\n你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
-    }
-
-    if (this.config.enable_reasoner && !hasTicket)
-      systemPrompt += `\n${reasonerPrompt}\n`
+    systemPrompt += this.getThinkingPrompt(user, prompt)
     systemPrompt += commonSense
     systemPrompt += channelDialogue
     systemPrompt += userMemory
-
-    // 添加用户画像
     systemPrompt += this.portraitManager.getUserPortrait(session)
+    systemPrompt += `用户的名字是：${session.username}, id是：${session.userId}`
+
     // 添加用户名
     const nickName = user.items['情侣合照']?.metadata?.userNickName
-    systemPrompt += `用户的名字是：${session.username}, id是：${session.userId}`
     if (nickName) systemPrompt += `, 昵称是：${nickName},称呼用户时请优先使用昵称`
     // 添加好感度提示
-    if (this.config.enable_favorability) {
-      systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig(), user)
-    }
+    if (this.config.enable_favorability) systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig(), user)
     if (this.config.no_system_prompt) systemPrompt += '如果你明白以上内容，请回复“已明确对话要求”'
     return systemPrompt
+  }
+
+  // 思考提示
+  private getThinkingPrompt(user: User, prompt: string): string {
+    const reasonerPrompt = this.config.reasoner_prompt
+    const promptForNoReasoner = `请你在最终回复前先输出思考内容，所有思考内容使用<think>和</think>包裹输出，而后在最后输出正式的回复内容。${reasonerPrompt}\n`
+    const promptForReasoner = `你需要将所有思考内容使用<think>和</think>包裹输出在思维链中，注意不要在最终的输出内包含思考内容。${reasonerPrompt}\n`
+    const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
+    const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
+    const useNoReasoner = prompt.length <= maxLength
+    if (!this.config.enable_reasoner_like && useNoReasoner) return ''
+    const reasonerText = `\n以下是你的【思考要求】：{\n${useNoReasoner ? promptForNoReasoner : promptForReasoner}\n}\n`
+    return reasonerText
   }
 
   // 处理回复
