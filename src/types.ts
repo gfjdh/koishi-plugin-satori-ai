@@ -247,6 +247,7 @@ export namespace Sat {
     retry_delay_time: number
     enable_game: boolean
     enable_gobang: boolean
+    enable_fencing: boolean
   }
 
   export const Config: Schema<Config> = Schema.intersect([
@@ -347,6 +348,7 @@ export namespace Sat {
     Schema.object({
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),
       enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏'),
+      enable_fencing: Schema.boolean().default(false).description('是否开启击剑游戏'),
     }).description('拓展模块-游戏设置(开发中)'),
   ])
 }

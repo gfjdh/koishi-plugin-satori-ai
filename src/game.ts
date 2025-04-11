@@ -1,5 +1,6 @@
 import { Session, Logger, Context } from 'koishi'
 import { goBang, goBangGameResult, winFlag } from './gamegobang'
+import { fencing } from './gamefencing'
 import { abstractGame } from './abstractGame'
 import { Sat } from './types'
 
@@ -9,7 +10,7 @@ const logger = new Logger('satori-game')
  * 游戏总控类，管理所有可用游戏和命令
  */
 export class Game {
-  private GAMES = ['五子棋']                             // 支持的游戏列表
+  private GAMES = ['五子棋', '击剑']                             // 支持的游戏列表
   private channelGames: Map<string, string> = new Map()  // 频道ID到游戏名称的映射
   private availableGames: Map<string, abstractGame<any>> = new Map() // 游戏名称到实例的映射
   private context: Context
@@ -18,6 +19,7 @@ export class Game {
     this.context = ctx
     this.config = cfg
     if (this.config.enable_gobang) this.availableGames.set('五子棋', new goBang())      // 注册五子棋
+    if (this.config.enable_fencing) this.availableGames.set('击剑', new fencing())                          // 注册击剑
     this.registerCommands(ctx)                          // 注册命令
 
     // 监听游戏结果事件（如胜负判定）
@@ -49,7 +51,9 @@ export class Game {
   public async startGame(session: Session, gameName: string, args: string[]) {
     if (this.channelGames.get(session.channelId)) return '当前频道已经有游戏在进行中'
     if (!this.GAMES.includes(gameName)) return '没有这个游戏哦'
-    await this.selectGame(session, gameName, args)
+    const game = this.availableGames.get(gameName)
+    if (!game) return '没有这个游戏哦'
+    game.startGame(session, this.context, args) // 调用抽象类的启动方法
     this.channelGames.set(session.channelId, gameName)
     logger.info(`游戏${gameName}已开始于${session.channelId}`)
   }
@@ -61,12 +65,5 @@ export class Game {
     this.availableGames.get(gameName).endGame(session, this.context)
     this.channelGames.delete(session.channelId)
     logger.info(`${session.channelId}的游戏已结束`)
-  }
-
-  // 选择并启动具体游戏实例
-  private async selectGame(session: Session, gameName: string, args: string[]) {
-    const game = this.availableGames.get(gameName)
-    if (!game) return '没有这个游戏哦'
-    game.startGame(session, this.context, args) // 调用抽象类的启动方法
   }
 }
