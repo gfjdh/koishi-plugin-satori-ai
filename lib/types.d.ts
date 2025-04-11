@@ -76,7 +76,6 @@ export interface MemoryConfig {
 }
 export interface MiddlewareConfig {
     private: boolean;
-    mention: boolean;
     nick_name: boolean;
     nick_name_list: string[];
     nick_name_block_words: string[];
@@ -88,11 +87,13 @@ export interface APIConfig {
     baseURL: string;
     keys: string[];
     appointModel: string;
+    not_reasoner_LLM_URL: string;
+    not_reasoner_LLM: string;
+    not_reasoner_LLM_key: string[];
+    use_not_reasoner_LLM_length: number;
     auxiliary_LLM_URL: string;
     auxiliary_LLM: string;
     auxiliary_LLM_key: string[];
-    content_max_tokens: number;
-    content_max_length: number;
     temperature: number;
     frequency_penalty: number;
     presence_penalty: number;
@@ -144,14 +145,17 @@ export declare namespace Sat {
         baseURL: string;
         key: string[];
         appointModel: string;
+        not_reasoner_LLM_URL: string;
+        not_reasoner_LLM: string;
+        not_reasoner_LLM_key: string[];
+        use_not_reasoner_LLM_length: number;
         auxiliary_LLM_URL: string;
         auxiliary_LLM: string;
         auxiliary_LLM_key: string[];
         prompt: string;
+        reasoner_prompt: string;
         no_system_prompt: boolean;
         max_tokens: number;
-        content_max_tokens: number;
-        content_max_length: number;
         message_max_length: number;
         remember_min_length: number;
         temperature: number;
@@ -173,12 +177,13 @@ export declare namespace Sat {
         common_topN: number;
         dailogues_topN: number;
         enable_fixed_dialogues: boolean;
+        enable_reasoner_like: boolean;
         max_usage: number[];
         private: boolean;
-        mention: boolean;
         nick_name: boolean;
         nick_name_list: string[];
         nick_name_block_words: string[];
+        input_prompt: string;
         reasoner_filter: boolean;
         reasoner_filter_word: string;
         duplicateDialogueCheck: boolean;
@@ -213,6 +218,8 @@ export declare namespace Sat {
         prompt_4: string;
         maxRetryTimes: number;
         retry_delay_time: number;
+        enable_game: boolean;
+        enable_gobang: boolean;
     }
     const Config: Schema<Config>;
 }

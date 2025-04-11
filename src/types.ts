@@ -91,7 +91,6 @@ export interface MemoryConfig {
 // 中间件配置
 export interface MiddlewareConfig {
   private: boolean
-  mention: boolean
   nick_name: boolean
   nick_name_list: string[]
   nick_name_block_words: string[]
@@ -105,11 +104,13 @@ export interface APIConfig {
   baseURL: string
   keys: string[]
   appointModel: string
+  not_reasoner_LLM_URL: string
+  not_reasoner_LLM: string
+  not_reasoner_LLM_key: string[]
+  use_not_reasoner_LLM_length: number
   auxiliary_LLM_URL: string
   auxiliary_LLM: string
   auxiliary_LLM_key: string[]
-  content_max_tokens: number
-  content_max_length: number
   temperature: number
   frequency_penalty: number
   presence_penalty: number
@@ -171,15 +172,18 @@ export namespace Sat {
     baseURL: string
     key: string[]
     appointModel: string
+    not_reasoner_LLM_URL: string
+    not_reasoner_LLM: string
+    not_reasoner_LLM_key: string[]
+    use_not_reasoner_LLM_length: number
     auxiliary_LLM_URL: string
     auxiliary_LLM: string
     auxiliary_LLM_key: string[]
     prompt: string
+    reasoner_prompt: string
 
     no_system_prompt: boolean
     max_tokens: number
-    content_max_tokens: number
-    content_max_length: number
     message_max_length: number
     remember_min_length: number
     temperature: number
@@ -203,12 +207,13 @@ export namespace Sat {
     dailogues_topN: number
     enable_fixed_dialogues: boolean
 
+    enable_reasoner_like: boolean
     max_usage: number[]
     private: boolean
-    mention: boolean
     nick_name: boolean
     nick_name_list: string[]
     nick_name_block_words: string[]
+    input_prompt: string
     reasoner_filter: boolean
     reasoner_filter_word: string
     duplicateDialogueCheck: boolean
@@ -252,28 +257,36 @@ export namespace Sat {
 
   export const Config: Schema<Config> = Schema.intersect([
     Schema.object({
-      baseURL: Schema.string().default('https://api.deepseek.com').description('请求地址'),
+      baseURL: Schema.string().default('https://api.deepseek.com').description('深度思考模型请求地址'),
       key: Schema.union([
         Schema.array(String).role('secret'),
         Schema.transform(String, value => [value]),
-      ]).default([]).role('secret').description('api_key'),
-      appointModel: Schema.string().default('deepseek-reasoner').description('主模型'),
+      ]).default([]).role('secret').description('深度思考模型api_key'),
+      appointModel: Schema.string().default('deepseek-reasoner').description('深度思考模型'),
+      not_reasoner_LLM_URL: Schema.string().default('https://api.deepseek.com').description('非深度思考模型请求地址'),
+      not_reasoner_LLM: Schema.string().default('deepseek-chat').description('非深度思考模型(用于节省成本'),
+      not_reasoner_LLM_key: Schema.union([
+        Schema.array(String).role('secret'),
+        Schema.transform(String, value => [value]),
+      ]).default([]).role('secret').description('非深度思考模型api_key'),
+      use_not_reasoner_LLM_length: Schema.number().default(8).description('触发使用非深度思考模型的字数（输入少于此字数时）,如果你希望始终使用非深度思考模型进行对话，请将此值设置成一个较大的值'),
+      enable_reasoner_like: Schema.boolean().default(true).description('是否启用非深度思考模型模仿思维链（可以在节省成本的同时提高效果）'),
       auxiliary_LLM_URL: Schema.string().default('https://api.deepseek.com').description('辅助模型请求地址'),
       auxiliary_LLM: Schema.string().default('deepseek-chat').description('辅助模型(用于好感度调整等功能，如不需要可不填，建议使用低成本模型'),
       auxiliary_LLM_key: Schema.union([
         Schema.array(String).role('secret'),
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('辅助模型api_key'),
-      prompt: Schema.string().role('textarea').description('人格设定')
+      prompt: Schema.string().role('textarea').description('人格设定'),
+      reasoner_prompt: Schema.string().role('textarea').description('思考提示词（对于深度思考模型和非深度思考模型模仿思维链时生效）')
+      .default('你在思考时应当逐步分析以下内容：1.当前对话的禁止事项；2.是否与群聊中其他人的发言有关联；3.是否与当前用户之前说的话有关联；4.对话的具体要求；5.用户的意图如何；6.最终的发言的主要内容。'),
     }).description('基础设置'),
 
     Schema.object({
       alias: Schema.array(String).default(['ai']).description('触发命令;别名'),
       authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
-      no_system_prompt: Schema.boolean().default(false).description('是否将系统提示的system替换为user（用于具有思维链的模型或一些特殊的api格式，例如硅基流动）'),
+      no_system_prompt: Schema.boolean().default(false).description('是否将系统提示的system替换为user（用于具有思维链的模型）'),
       max_tokens: Schema.number().description('最大请求长度（字符数）').default(100),
-      content_max_tokens: Schema.number().description('最大回答长度（思维链+输出token）').default(4096),
-      content_max_length: Schema.number().description('最大回答长度（仅输出，字符数）').default(100),
       message_max_length: Schema.number().description('最大频道上下文长度（条数）').default(10),
       temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
       frequency_penalty: Schema.number().default(0.0).description('频率惩罚'),
@@ -304,10 +317,10 @@ export namespace Sat {
     Schema.object({
       max_usage: Schema.tuple([Number, Number, Number, Number, Number]).default([40, 240, 3000, 9999, 0]).description('每日最大使用次数(对应用户level0~level4)(0为不限制)'),
       private: Schema.boolean().default(false).description('开启后私聊AI可触发对话, 不需要使用指令'),
-      mention: Schema.boolean().default(false).description('开启后机器人被提及(at/引用)可触发对话'),
       nick_name: Schema.boolean().default(true).description('是否使用昵称触发对话（发言中含有昵称时）'),
       nick_name_list: Schema.array(String).default(['昵称1']).description('昵称列表'),
       nick_name_block_words: Schema.array(String).default(['屏蔽词1']).description('昵称屏蔽词(含有屏蔽词的消息不会触发昵称对话)'),
+      input_prompt: Schema.string().role('textarea').default('(注意专注对话主题，遵守对话要求，不要复读)').description('每轮对话前的补充提示（可用于强调要求）不需要时可不填'),
       reasoner_filter: Schema.boolean().default(true).description('是否启用返回内容过滤,开启后在对话时会过滤掉在括号内且含有过滤词的那一句,用于缓解思维链溢出问题'),
       reasoner_filter_word: Schema.string().role('textarea').default('系统-提示-用户-设定-回复')
       .description('返回内容过滤词，使用“-”分隔，在括号内且含有过滤词的那一句会被过滤，用于缓解思维链溢出问题'),
@@ -348,7 +361,11 @@ export namespace Sat {
     Schema.object({
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),
       enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏'),
+<<<<<<< HEAD
       enable_fencing: Schema.boolean().default(false).description('是否开启击剑游戏'),
     }).description('拓展模块-游戏设置(开发中)'),
+=======
+    }).description('拓展模块-游戏设置(无效，开发中)'),
+>>>>>>> 1f60a8960ed2316ecc0507f86f670efb41e29128
   ])
 }

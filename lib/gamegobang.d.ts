@@ -8,8 +8,16 @@ export declare enum winFlag {
 }
 export interface goBangGameResult extends gameResult {
     win: winFlag;
+    level: number;
 }
+/**
+ * 五子棋单局实现类，继承自 abstractGameSingleGame
+ */
 declare class goBangSingleGame extends abstractGameSingleGame {
+    private playerFlag;
+    private winningFlag;
+    level: number;
+    private board;
     constructor(disposeListener: () => boolean, session: Session);
     startGame: () => string;
     endGame: () => {
@@ -17,15 +25,18 @@ declare class goBangSingleGame extends abstractGameSingleGame {
         win: winFlag;
         gameName: string;
     };
-    private playerFlag;
-    private winningFlag;
-    level: number;
+    /**
+     * 处理玩家输入（落子坐标）
+     * @param str 输入内容，格式为 "x y"
+     */
     processInput(str: string): Promise<string>;
     private checkWin;
-    static readonly numberEmojis: string[];
+    private checkDirection;
     private printBoard;
-    private board;
 }
+/**
+ * 五子棋管理类，继承自 abstractGame
+ */
 export declare class goBang extends abstractGame<goBangSingleGame> {
     constructor();
     startGame(session: Session, ctx: Context, args: string[]): goBangSingleGame;

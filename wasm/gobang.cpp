@@ -460,8 +460,7 @@ int wholeScore(int player, const Game &game) {
             if (temp.score == 0)
                 continue;
             if (temp.score == player) {
-                if (player == BLACK)
-                    Score += singleScore(temp, player, game); // 己方落子的单点分相加
+                Score += singleScore(temp, player, game); // 己方落子的单点分相加
             } else
                 Score -= singleScore(temp, 3 - player, game); // 对方落子的单点分相加
         }
@@ -475,11 +474,10 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game) {
         for (int j = 0; j < BOARD_SIZE; j++) {
             if (game.MAP.board[i][j] == 0) {
                 coordinate temp = {i, j, 0};
-                if (hasNeighbor(temp, 2, game)) {
+                if (hasNeighbor(temp, 3, game)) {
                     scoreBoard[length] = temp;
                     scoreBoard[length].score = singleScore(temp, 3 - player, game);
-                    if (player == BLACK)
-                        scoreBoard[length].score += singleScore(temp, player, game);
+                    scoreBoard[length].score += singleScore(temp, player, game);
                     length++;
                 }
             }
@@ -541,17 +539,18 @@ coordinate entrance(int depth, int alpha, int beta, int player, coordinate comma
     int length;
     length = inspireSearch(steps, player, game); // 搜索可落子点
     if (length == 1 || game.draw)
-        return steps[0];
+      return steps[0];
     for (int i = 0; i < length; i++) {
-        place(steps[i], player, game);                                               // 模拟落子
-        temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 递归
-        temp.score *= -1;
-        place(steps[i], 0, game); // 还原落子
-        if (temp.score > alpha) {
-            alpha = temp.score;
-            best = steps[i]; // 记录最佳落子
-        }
+      place(steps[i], player, game);                                               // 模拟落子
+      temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 递归
+      temp.score *= -1;
+      place(steps[i], 0, game); // 还原落子
+      if (temp.score > alpha) {
+          alpha = temp.score;
+          best = steps[i]; // 记录最佳落子
+      }
     }
+    best.score = alpha;
     return best;
 }
 
@@ -560,8 +559,15 @@ coordinate entrance(int depth, int alpha, int beta, int player, coordinate comma
   * @param myFlag: 我方棋子颜色
   * @param depth: 搜索深度
   * @return: 返回落子位置
+  * @outX: 落子横坐标指针
+  * @outY: 落子纵坐标指针
+  * @outScore: 落子分数指针
+  * outX: 落子横坐标
+  * outY: 落子纵坐标
+  * outScore: 落子分数
+  * -1: 游戏平局
   */
-extern "C" int decideMove(const int board[BOARD_SIZE * BOARD_SIZE], int myFlag, int depth) {
+extern "C" void decideMove(const int board[BOARD_SIZE * BOARD_SIZE], int myFlag, int depth, int* outX, int* outY, int* outScore) {
     Game localGame;
     for (int i = 0; i < BOARD_SIZE; i++) {
         for (int j = 0; j < BOARD_SIZE; j++) {
@@ -575,7 +581,12 @@ extern "C" int decideMove(const int board[BOARD_SIZE * BOARD_SIZE], int myFlag, 
     coordinate cmd, current;
     coordinate result = entrance(depth, _INF, INF, localGame.myFlag, cmd, current, localGame);
     if (localGame.draw) {
-        return -1;
+        *outX = -1;
+        *outY = -1;
+        *outScore = -1;
+        return;
     }
-    return result.x * 1000 + result.y;
+    *outX = result.x;
+    *outY = result.y;
+    *outScore = result.score;
 }

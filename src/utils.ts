@@ -1,5 +1,7 @@
 // src/utils.ts
-import { Logger, Session } from 'koishi'
+import { Context, Logger, Session } from 'koishi'
+import { updateUserP } from './database'
+import { User } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -109,6 +111,7 @@ export function isErrorWithMessage(
 export function processPrompt(prompt: string): string {
   if (!prompt) return '';
   if (prompt.includes(':poke')) return '戳戳';
+  prompt = prompt.replace(/<[^>]*?avatar[^>]*>/g, '。回复：');
   prompt = prompt.replace(/<[^>]*?img[^>]*>/g, '[图片]');
   prompt = prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `@${name}`);
   return prompt;
@@ -129,8 +132,14 @@ export function filterResponse(prompt: string, words: string[]): string {
     }
     return part;
   }).join('');
+  // 删除<think>和</think>标签中的内容
+  const regex = /<think>[\s\S]*?<\/think>/g;
+  const filteredThink = filtered.replace(regex, '');
+  // 删除<think>和</think>标签
+  const regex2 = /<think>|<\/think>/g;
+  const filtered2 = filteredThink.replace(regex2, '');
   // 清理首尾空白并处理空结果
-  const trimmedResult = filtered.trim();
+  const trimmedResult = filtered2.trim();
   return trimmedResult === '' ? '……' : trimmedResult;
 }
 
@@ -145,4 +154,12 @@ export function addOutputCensor(session: Session, word: string, baseURL: string)
   blockWords.push(word);
   fs.writeFileSync(blockWordsPath, blockWords.join(','));
   session.send(`添加"${word}"成功`);
+}
+
+// 如果用户有通行证，更新用户p点数
+export async function updateUserPWithTicket(ctx: Context, user: User, adjustment: number): Promise<void> {
+  if (!user) return
+  if (user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on') {
+    await updateUserP(ctx, user, adjustment)
+  }
 }

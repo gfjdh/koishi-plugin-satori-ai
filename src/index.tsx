@@ -9,7 +9,7 @@ import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFa
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
-import { addOutputCensor, filterResponse, processPrompt, splitSentences } from './utils'
+import { addOutputCensor, filterResponse, processPrompt, splitSentences, updateUserPWithTicket } from './utils'
 import { UserPortraitManager } from './userportrait'
 import { Game } from './game'
 
@@ -40,7 +40,7 @@ export class SAT extends Sat {
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
     this.registerCommands(ctx)
-    if (this.config.enable_game) this.game = new Game(ctx, config)
+    if (this.config.enable_game) this.game = new Game(ctx, config, this)
   }
 
   private getAPIConfig(): APIConfig {
@@ -48,11 +48,13 @@ export class SAT extends Sat {
       baseURL: this.config.baseURL,
       keys: this.config.key,
       appointModel: this.config.appointModel,
+      not_reasoner_LLM_URL: this.config.not_reasoner_LLM_URL,
+      not_reasoner_LLM: this.config.not_reasoner_LLM,
+      not_reasoner_LLM_key: this.config.not_reasoner_LLM_key,
+      use_not_reasoner_LLM_length: this.config.use_not_reasoner_LLM_length,
       auxiliary_LLM_URL: this.config.auxiliary_LLM_URL,
       auxiliary_LLM: this.config.auxiliary_LLM,
       auxiliary_LLM_key: this.config.auxiliary_LLM_key,
-      content_max_tokens: this.config.content_max_tokens,
-      content_max_length: this.config.content_max_length,
       maxRetryTimes: this.config.maxRetryTimes,
       retry_delay_time: this.config.retry_delay_time,
       temperature: this.config.temperature,
@@ -80,7 +82,6 @@ export class SAT extends Sat {
   private getMiddlewareConfig(): MiddlewareConfig & FavorabilityConfig {
       return {
         private: this.config.private,
-        mention: this.config.mention,
         nick_name: this.config.nick_name,
         nick_name_list: this.config.nick_name_list,
         nick_name_block_words: this.config.nick_name_block_words,
@@ -155,6 +156,10 @@ export class SAT extends Sat {
     ctx.command('sat.add_output_censor <text:text>', '添加输出敏感词', { authority: 4 })
       .alias('添加输出屏蔽词')
       .action(async ({ session }, word) => addOutputCensor(session, word, this.config.dataDir))
+
+    ctx.command('sat.get_user_portrait <text:text>', '查看用户画像', { authority: 4 })
+      .alias('查看画像')
+      .action(async ({}, userId) => this.portraitManager.getUserPortraitById(userId))
   }
 
   private async handleSatCommand(session: Session, prompt: string) {
@@ -165,12 +170,12 @@ export class SAT extends Sat {
     const favorabilityBlock = await this.checkFavorabilityBlock(session)
     if (favorabilityBlock) return favorabilityBlock
     // 前置检查
-    const preCheckResult = this.performPreChecks(session, prompt)
+    const preCheckResult = this.performPreChecks(session, processedPrompt)
     if (preCheckResult) return preCheckResult
     // 重复对话检查
     const channelId = this.config.enable_self_memory ? session.userId : session.channelId
     const recentDialogues = this.memoryManager.getChannelMemory(channelId).slice(-10)
-    const duplicateCheck = await this.checkDuplicateDialogue(session, prompt, recentDialogues, user)
+    const duplicateCheck = await this.checkDuplicateDialogue(session, processedPrompt, recentDialogues, user)
     if (duplicateCheck) return duplicateCheck
     // 固定对话处理
     const fixedResponse = await this.handleFixedDialoguesCheck(session, user, processedPrompt)
@@ -180,10 +185,13 @@ export class SAT extends Sat {
     if (dialogueCountCheck) return dialogueCountCheck
     // 更新频道并发数
     await this.updateChannelParallelCount(session, 1)
+    // 生成回复
     const response = await this.generateResponse(session, processedPrompt)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆
     await this.memoryManager.updateMemories(session, processedPrompt, this.getMemoryConfig(), response)
+    // 更新用户p
+    if (!response.error) await updateUserPWithTicket(this.ctx, user, 10)
     // 更新用户画像
     if (user.usage == this.config.portrait_usage - 1)
       this.portraitManager.generatePortrait(session, user, this.apiClient)
@@ -309,8 +317,10 @@ export class SAT extends Sat {
     const messages = this.buildMessages(session, prompt)
     logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
     const user = await getUser(this.ctx, session.userId)
-    const response = await this.apiClient.chat(user, await messages)
+    let response = await this.apiClient.chat(user, await messages)
     if (this.config.log_ask_response) logger.info(`Satori AI：${response.content}`)
+    if (this.config.reasoner_filter) response.content = filterResponse(response.content, this.config.reasoner_filter_word.split('-'))
+    if (response.error) updateUserUsage(this.ctx, user, -1)
     return response
   }
 
@@ -325,18 +335,14 @@ export class SAT extends Sat {
       messages.push({ role: 'system', content: await this.buildSystemPrompt(session, prompt) })
     }
     // 添加上下文记忆
-    if (this.config.personal_memory) {
-      const userMemory = this.memoryManager.getChannelContext(session.userId)
-      messages.push(...userMemory)
-    } else {
-      const channelMemory = this.memoryManager.getChannelContext(session.channelId)
-      messages.push(...channelMemory)
+    const userMemory = this.memoryManager.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
+    messages.push(...userMemory)
+    if(this.config.input_prompt && messages.length > 1){
+      messages.push({ role: 'user', content: 'system:' + this.config.input_prompt })
+      messages.push({ role: 'assistant', content: '好的，我会按您的要求进行回复。' })
     }
     // 添加当前对话
-    messages.push({
-      role: 'user',
-      content: prompt
-    })
+    messages.push({ role: 'user', content: prompt })
     let payload = messages.map(msg => msg.role + ':' + msg.content).join('\n')
     if (this.config.log_system_prompt) logger.info(`系统提示：\n${payload}`)
     return messages
@@ -350,27 +356,37 @@ export class SAT extends Sat {
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
     const user = await getUser(this.ctx, session.userId)
 
+    systemPrompt += this.getThinkingPrompt(user, prompt)
     if (user?.items?.['觉的衣柜']?.count) {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
       if (clothes) systemPrompt += `\n你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
     }
-
     systemPrompt += commonSense
     systemPrompt += channelDialogue
     systemPrompt += userMemory
-
-    // 添加用户画像
     systemPrompt += this.portraitManager.getUserPortrait(session)
+    systemPrompt += `用户的名字是：${session.username}, id是：${session.userId}`
+
     // 添加用户名
     const nickName = user.items['情侣合照']?.metadata?.userNickName
-    systemPrompt += `用户的名字是：${session.username}, id是：${session.userId}`
     if (nickName) systemPrompt += `, 昵称是：${nickName},称呼用户时请优先使用昵称`
     // 添加好感度提示
-    if (this.config.enable_favorability) {
-      systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig(), user)
-    }
+    if (this.config.enable_favorability) systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig(), user)
     if (this.config.no_system_prompt) systemPrompt += '如果你明白以上内容，请回复“已明确对话要求”'
     return systemPrompt
+  }
+
+  // 思考提示
+  private getThinkingPrompt(user: User, prompt: string): string {
+    const reasonerPrompt = this.config.reasoner_prompt
+    const promptForNoReasoner = `请你在回复时先进行分析思考并输出思考内容，所有思考内容使用<think>和</think>包裹输出，而后在最后输出正式的回复内容。${reasonerPrompt}\n`
+    const promptForReasoner = `你需要将所有思考内容使用<think>和</think>包裹输出在思维链中，注意不要在最终的输出内包含思考内容。${reasonerPrompt}\n`
+    const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
+    const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
+    const useNoReasoner = prompt.length <= maxLength
+    if (!this.config.enable_reasoner_like && useNoReasoner) return ''
+    const reasonerText = `\n以下是你的【思考要求】：{\n${useNoReasoner ? promptForNoReasoner : promptForReasoner}\n}\n`
+    return reasonerText
   }
 
   // 处理回复
@@ -379,7 +395,6 @@ export class SAT extends Sat {
     this.updateChannelParallelCount(session, -1)
     this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
     if (!response) return session.text('commands.sat.messages.no-response')
-    if (this.config.reasoner_filter) response = filterResponse(response, this.config.reasoner_filter_word.split('-'))
 
     const catEar = user?.items?.['猫耳发饰']?.description && user.items['猫耳发饰'].description == 'on'
     const fumo = user?.items?.['觉fumo']?.description && user.items['觉fumo'].description == 'on'
@@ -401,8 +416,6 @@ export class SAT extends Sat {
     }
     return response
   }
-
-
 
   // 清空会话
   private clearSession(session: Session, global: boolean) {
@@ -434,10 +447,10 @@ export class SAT extends Sat {
   // 更新用户等级
   private async handleUserLevel(session: Session, options: { id?: string , level?: number }) {
     const userId = options.id || session.userId
-    const level = options.level || 1
     const user = await ensureUserExists(this.ctx, userId, session.username)
+    const level = options.level || (user.userlevel > 1 ? user.userlevel : 1)
     const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
-    if (enableUserKey) await this.portraitManager.generatePortrait(session, user, this.apiClient)
+    if (enableUserKey || level > 3) await this.portraitManager.generatePortrait(session, user, this.apiClient)
     await updateUserLevel(this.ctx, user, level)
     return session.text('commands.sat.messages.update_level_succeed', [level])
   }
@@ -456,8 +469,6 @@ export class SAT extends Sat {
       result += session.text('commands.sat.messages.usage', [userUsage, maxUsage]) + '\n'
     if (this.portraitManager.hasPortrait(user.userid))
       result += '用户画像生效中\n'
-    else
-      result += '用户画像未生效\n'
     return result
   }
 

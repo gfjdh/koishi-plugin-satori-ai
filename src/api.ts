@@ -23,14 +23,20 @@ export class APIClient {
     let modle: string
     let baseURL: string
     if (enableUserKey) {
-      const key = user.items['地灵殿通行证'].metadata?.key
-      keys = [key]
-      modle = user.items['地灵殿通行证'].metadata?.model
-      baseURL = user.items['地灵殿通行证'].metadata?.baseURL
+      const ticket = user.items['地灵殿通行证'].metadata
+      keys = [ticket?.key]
+      modle = ticket?.model
+      baseURL = ticket?.baseURL
+      const not_reasoner_model = ticket?.not_reasoner_model
+      const length = ticket?.use_not_reasoner_LLM_length
+      if (not_reasoner_model && length && messages[messages.length - 1].content.length <= length)
+        modle = not_reasoner_model
     } else {
-      keys = this.config.keys
-      modle = this.config.appointModel
-      baseURL = this.config.baseURL
+      const config = this.config;
+      const useNotReasoner = messages[messages.length - 1].content.length <= config.use_not_reasoner_LLM_length;
+      keys = useNotReasoner ? config.not_reasoner_LLM_key : config.keys;
+      modle = useNotReasoner ? config.not_reasoner_LLM : config.appointModel;
+      baseURL = useNotReasoner ? config.not_reasoner_LLM_URL : config.baseURL;
     }
     const payload = this.createPayload(messages, modle)
     for (let i = 0; i < keys.length; i++) {
@@ -113,7 +119,6 @@ export class APIClient {
     return {
       model: model,
       messages,
-      max_tokens: this.config.content_max_tokens,
       temperature: this.config.temperature,
       top_p: 1,
       frequency_penalty: this.config.frequency_penalty,
@@ -140,16 +145,11 @@ export class APIClient {
       try {
         const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
         content = response.choices[0].message.content
-        const reasoning_content = response.choices[0].message.reasoning_content
-        if (this.config.reasoning_content) logger.info(`思维链: ${reasoning_content || '无'}`)
+        const reasoning_content = response.choices[0].message.reasoning_content || '无'
+        if (this.config.reasoning_content) logger.info(`思维链: ${reasoning_content}`)
         if (!content && reasoning_content) {
           logger.warn('返回内容为空,但存在推理内容')
           content = response.choices[0].message.reasoning_content
-        }
-        if (content.length > this.config.content_max_length) {
-          logger.warn(`返回内容超过最大长度(${content.length} > ${this.config.content_max_length})`)
-          if (i >= 2) return { content: '返回内容超过最大长度', error: true }
-          continue
         }
         const responseMsg:Sat.Msg = { role: 'assistant', content: content }
         if (payload.messages.some(msg => msg === responseMsg) && content.length > 5) {

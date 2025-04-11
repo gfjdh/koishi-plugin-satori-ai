@@ -11,6 +11,7 @@ export declare function updateFavorability(ctx: Context, user: User, adjustment:
 export declare function updateUserLevel(ctx: Context, user: User, level: number): Promise<void>;
 export declare function updateUserUsage(ctx: Context, user: User, adjustment?: number): Promise<number | void>;
 export declare function updateUserItems(ctx: Context, user: User): Promise<void>;
+export declare function updateUserP(ctx: Context, user: User, adjustment: number): Promise<void>;
 export declare function getUser(ctx: Context, userId: string): Promise<User | null>;
 export declare function ensureUserExists(ctx: Context, userId: string, username: string): Promise<User>;
 export declare function extendDatabase(ctx: Context): void;

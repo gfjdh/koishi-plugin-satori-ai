@@ -43,6 +43,7 @@ export async function updateFavorability(ctx: Context, user: User, adjustment: F
 // 更新用户等级
 export async function updateUserLevel(ctx: Context, user: User, level: number): Promise<void> {
   if (!user) return
+  level = level < 5 ? level : 4
   await ctx.database.set('p_system', { userid: user.userid }, { userlevel: level })
 }
 
@@ -59,6 +60,13 @@ export async function updateUserUsage(ctx: Context, user: User, adjustment: numb
 export async function updateUserItems(ctx: Context, user: User): Promise<void> {
   if (!user) return
   await ctx.database.set('p_system', { userid: user.userid }, { items: user.items })
+}
+
+// 更新用户p点数
+export async function updateUserP(ctx: Context, user: User, adjustment: number): Promise<void> {
+  if (!user) return
+  if (user.p + adjustment < 0) adjustment = -user.p
+  await ctx.database.set('p_system', { userid: user.userid }, { p: user.p + adjustment })
 }
 
 export async function getUser(ctx: Context, userId: string): Promise<User | null> {

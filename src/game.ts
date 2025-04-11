@@ -3,6 +3,8 @@ import { goBang, goBangGameResult, winFlag } from './gamegobang'
 import { fencing } from './gamefencing'
 import { abstractGame } from './abstractGame'
 import { Sat } from './types'
+import { get } from 'http'
+import { getUser } from './database'
 
 const logger = new Logger('satori-game')
 
@@ -15,19 +17,23 @@ export class Game {
   private availableGames: Map<string, abstractGame<any>> = new Map() // 游戏名称到实例的映射
   private context: Context
   private config: Sat.Config
-  constructor(ctx: Context, cfg: Sat.Config) {
+  private sat: Sat
+  constructor(ctx: Context, cfg: Sat.Config, sat: Sat) {
     this.context = ctx
     this.config = cfg
+    this.sat = sat
     if (this.config.enable_gobang) this.availableGames.set('五子棋', new goBang())      // 注册五子棋
     if (this.config.enable_fencing) this.availableGames.set('击剑', new fencing())                          // 注册击剑
     this.registerCommands(ctx)                          // 注册命令
 
     // 监听游戏结果事件（如胜负判定）
-    ctx.on('game-result', (session, result) => {
+    ctx.on('game-result', async (session, result) => {
       switch (result.gameName) {
         case '五子棋':
           const res = result as goBangGameResult
-          // 根据胜负发送不同消息（可扩展积分逻辑）
+          // 根据level决定奖励
+          let user = await getUser(ctx, session.userId)
+          user.p += 10 * res.level * res.level
           if (res.win === winFlag.win) session.send('你赢了')
           else if (res.win === winFlag.lose) session.send('你输了')
           else if (res.win === winFlag.draw) session.send('平局')
