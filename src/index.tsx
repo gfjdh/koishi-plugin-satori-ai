@@ -357,6 +357,10 @@ export class SAT extends Sat {
     const user = await getUser(this.ctx, session.userId)
 
     systemPrompt += this.getThinkingPrompt(user, prompt)
+    if (user?.items?.['觉的衣柜']?.count) {
+      const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
+      if (clothes) systemPrompt += `\n你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
+    }
     systemPrompt += commonSense
     systemPrompt += channelDialogue
     systemPrompt += userMemory
@@ -375,7 +379,7 @@ export class SAT extends Sat {
   // 思考提示
   private getThinkingPrompt(user: User, prompt: string): string {
     const reasonerPrompt = this.config.reasoner_prompt
-    const promptForNoReasoner = `请你在最终回复前先输出思考内容，所有思考内容使用<think>和</think>包裹输出，而后在最后输出正式的回复内容。${reasonerPrompt}\n`
+    const promptForNoReasoner = `请你在回复时先进行分析思考并输出思考内容，所有思考内容使用<think>和</think>包裹输出，而后在最后输出正式的回复内容。${reasonerPrompt}\n`
     const promptForReasoner = `你需要将所有思考内容使用<think>和</think>包裹输出在思维链中，注意不要在最终的输出内包含思考内容。${reasonerPrompt}\n`
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
