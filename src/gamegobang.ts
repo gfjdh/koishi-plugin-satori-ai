@@ -70,17 +70,32 @@ class goBangSingleGame extends abstractGameSingleGame {
     // 调用 WASM 计算 AI 落子
     const flatBoard = this.board.flat()
     const arrayPtr = wasmModule._malloc(flatBoard.length * 4) // 分配内存
-    wasmModule.HEAP32.set(flatBoard, arrayPtr / 4)            // 写入棋盘状态
-    const result = wasmModule._decideMove(arrayPtr, this.playerFlag, this.level)
-    wasmModule._free(arrayPtr) // 释放内存
+    wasmModule.HEAP32.set(flatBoard, arrayPtr / 4) // 将棋盘数据写入 WASM 内存
 
-    if (result === -1) {
+    // 分配用于返回坐标和分数的内存
+    const xPtr = wasmModule._malloc(4)
+    const yPtr = wasmModule._malloc(4)
+    const scorePtr = wasmModule._malloc(4)
+
+    // 调用 C++ decideMove
+    wasmModule._decideMove(arrayPtr, this.playerFlag, this.level, xPtr, yPtr, scorePtr)
+
+    // 解析坐标与分数
+    const aiX = wasmModule.HEAP32[xPtr >> 2]
+    const aiY = wasmModule.HEAP32[yPtr >> 2]
+    const score = wasmModule.HEAP32[scorePtr >> 2]
+
+    // 释放内存
+    wasmModule._free(arrayPtr)
+    wasmModule._free(xPtr)
+    wasmModule._free(yPtr)
+    wasmModule._free(scorePtr)
+
+    // 若返回 -1 -1 -1，则表示平局
+    if (aiX === -1 && aiY === -1 && score === -1) {
       this.winningFlag = winFlag.draw
       return '平局，发送endGame退出'
     }
-    logger.info(result)
-    // 解析 AI 落子坐标并更新棋盘
-    const [score, aiX, aiY] = [Math.floor(result / 10000), Math.floor(result / 100) % 100, result % 100]
     logger.info(`AI 落子坐标: ${aiX} ${aiY}，得分: ${score}`)
     this.board[aiX][aiY] = 3 - this.playerFlag // AI 使用对方颜色
     if (this.checkWin(aiX, aiY)) return this.printBoard() + '\n游戏已结束'

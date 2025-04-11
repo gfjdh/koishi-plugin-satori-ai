@@ -559,8 +559,15 @@ coordinate entrance(int depth, int alpha, int beta, int player, coordinate comma
   * @param myFlag: 我方棋子颜色
   * @param depth: 搜索深度
   * @return: 返回落子位置
+  * @outX: 落子横坐标指针
+  * @outY: 落子纵坐标指针
+  * @outScore: 落子分数指针
+  * outX: 落子横坐标
+  * outY: 落子纵坐标
+  * outScore: 落子分数
+  * -1: 游戏平局
   */
-extern "C" int decideMove(const int board[BOARD_SIZE * BOARD_SIZE], int myFlag, int depth) {
+extern "C" void decideMove(const int board[BOARD_SIZE * BOARD_SIZE], int myFlag, int depth, int* outX, int* outY, int* outScore) {
     Game localGame;
     for (int i = 0; i < BOARD_SIZE; i++) {
         for (int j = 0; j < BOARD_SIZE; j++) {
@@ -574,7 +581,12 @@ extern "C" int decideMove(const int board[BOARD_SIZE * BOARD_SIZE], int myFlag, 
     coordinate cmd, current;
     coordinate result = entrance(depth, _INF, INF, localGame.myFlag, cmd, current, localGame);
     if (localGame.draw) {
-        return -1;
+        *outX = -1;
+        *outY = -1;
+        *outScore = -1;
+        return;
     }
-    return result.score * 10000 + result.x * 100 + result.y;
+    *outX = result.x;
+    *outY = result.y;
+    *outScore = result.score;
 }

@@ -40,7 +40,7 @@ export class SAT extends Sat {
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
     this.registerCommands(ctx)
-    //if (this.config.enable_game) this.game = new Game(ctx, config, this)
+    if (this.config.enable_game) this.game = new Game(ctx, config, this)
   }
 
   private getAPIConfig(): APIConfig {
