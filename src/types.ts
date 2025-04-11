@@ -361,11 +361,7 @@ export namespace Sat {
     Schema.object({
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),
       enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏'),
-<<<<<<< HEAD
       enable_fencing: Schema.boolean().default(false).description('是否开启击剑游戏'),
-    }).description('拓展模块-游戏设置(开发中)'),
-=======
     }).description('拓展模块-游戏设置(无效，开发中)'),
->>>>>>> 1f60a8960ed2316ecc0507f86f670efb41e29128
   ])
 }
