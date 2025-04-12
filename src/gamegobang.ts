@@ -155,8 +155,8 @@ export class goBang extends abstractGame<goBangSingleGame> {
     if (!isNaN(parseInt(args[0])))
       level = parseInt(args[0])
     else {
-      session.send('未输入难度等级(2-9)，默认设为5')
-      level = 5
+      session.send('未输入难度等级(2-9)，默认设为4')
+      level = 4
     }
     if (level < 2 || level > 8) {
       level = level < 2 ? 2 : 8

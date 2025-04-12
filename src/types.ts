@@ -225,6 +225,20 @@ export namespace Sat {
     max_parallel_count: number
     reply_pointing: boolean
 
+    enable_mood: boolean
+    max_mood: number
+    value_of_input_mood: number
+    output_censor_mood: boolean
+    value_of_output_mood: number
+    mood_div_1: number
+    mood_prompt_0: string
+    mood_div_2: number
+    mood_prompt_1: string
+    enable_pocket_money: boolean
+    min_pocket_money: number
+    max_pocket_money: number
+    pocket_money_cost: number
+
     enable_favorability: boolean
     max_favorability_perday: number
     input_censor_favorability: boolean
@@ -268,7 +282,7 @@ export namespace Sat {
         Schema.array(String).role('secret'),
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('非深度思考模型api_key'),
-      use_not_reasoner_LLM_length: Schema.number().default(8).description('触发使用非深度思考模型的字数（输入少于此字数时）,如果你希望始终使用非深度思考模型进行对话，请将此值设置成一个较大的值'),
+      use_not_reasoner_LLM_length: Schema.number().default(8).description('触发使用非深度思考模型的字数（输入少于此字数时）,如果你希望始终使用非深度思考模型进行对话，请将此值设置成一个较大的值,反之亦然'),
       enable_reasoner_like: Schema.boolean().default(true).description('是否启用非深度思考模型模仿思维链（可以在节省成本的同时提高效果）'),
       auxiliary_LLM_URL: Schema.string().default('https://api.deepseek.com').description('辅助模型请求地址'),
       auxiliary_LLM: Schema.string().default('deepseek-chat').description('辅助模型(用于好感度调整等功能，如不需要可不填，建议使用低成本模型'),
@@ -316,7 +330,7 @@ export namespace Sat {
     Schema.object({
       max_usage: Schema.tuple([Number, Number, Number, Number, Number]).default([40, 240, 3000, 9999, 0]).description('每日最大使用次数(对应用户level0~level4)(0为不限制)'),
       private: Schema.boolean().default(false).description('开启后私聊AI可触发对话, 不需要使用指令'),
-      nick_name: Schema.boolean().default(true).description('是否使用昵称触发对话（发言中含有昵称时）'),
+      nick_name: Schema.boolean().default(true).description('是否使用昵称触发对话（发言中含有昵称时）（把qq号加入昵称可以被at和戳一戳触发）'),
       nick_name_list: Schema.array(String).default(['昵称1']).description('昵称列表'),
       nick_name_block_words: Schema.array(String).default(['屏蔽词1']).description('昵称屏蔽词(含有屏蔽词的消息不会触发昵称对话)'),
       input_prompt: Schema.string().role('textarea').default('(注意专注对话主题，遵守对话要求，不要复读)').description('每轮对话前的补充提示（可用于强调要求）不需要时可不填'),
@@ -336,9 +350,9 @@ export namespace Sat {
       enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统(每次对话默认+1好感度)'),
       max_favorability_perday: Schema.number().default(100).description('每日有效(引发好感度增长)对话次数上限'),
       input_censor_favorability: Schema.boolean().default(false).description('是否开启好感度审查(通过输入屏蔽词扣除好感)'),
-      value_of_input_favorability: Schema.number().default(15).description('输入触发屏蔽词每次扣除的好感度'),
+      value_of_input_favorability: Schema.number().default(15).description('输入触发输入屏蔽词每次扣除的好感度'),
       output_censor_favorability: Schema.boolean().default(false).description('通过输出屏蔽词扣除好感,在dataDir中的output_censor.txt修改)'),
-      value_of_output_favorability: Schema.number().default(15).description('输出触发屏蔽词每次扣除的好感度'),
+      value_of_output_favorability: Schema.number().default(15).description('输出触发输出屏蔽词每次扣除的好感度'),
       enable_auxiliary_LLM: Schema.boolean().default(false).description('是否使用辅助大模型判断好感度增减(量与输入屏蔽词每次扣除的好感度相关,不稳定，慎用)'),
       offset_of_fafavorability: Schema.number().default(3.5).description('辅助大模型好感度偏移量(越大越容易扣好感度)'),
       visible_favorability: Schema.boolean().default(true).description('是否开启好感度升降显示'),
@@ -356,6 +370,22 @@ export namespace Sat {
       favorability_div_4: Schema.number().default(1000).description('思慕-恋慕分界线'),
       prompt_4: Schema.string().role('textarea').description('恋慕好感补充设定'),
     }).description('好感度设置'),
+
+    Schema.object({
+      enable_mood: Schema.boolean().default(false).description('是否开启心情系统（通过屏蔽词降低心情，正常聊天心情+1，每天重置为0）'),
+      max_mood: Schema.number().default(10).description('心情上限'),
+      value_of_input_mood: Schema.number().default(15).description('输入触发屏蔽词每次扣除的心情'),
+      output_censor_mood: Schema.boolean().default(false).description('通过输出屏蔽词扣除心情,在dataDir中的output_censor.txt修改)'),
+      value_of_output_mood: Schema.number().default(10).description('输出触发屏蔽词每次扣除的心情'),
+      mood_div_1: Schema.number().default(-5).description('心情正常-烦躁分界线'),
+      mood_prompt_0: Schema.string().role('textarea').default('你现在的心情是：有点烦躁').description('烦躁心情补充设定'),
+      mood_div_2: Schema.number().default(-30).description('烦躁-生气分界线'),
+      mood_prompt_1: Schema.string().role('textarea').default('你现在的心情是：非常生气').description('生气心情补充设定'),
+      enable_pocket_money: Schema.boolean().default(false).description('开启要零花钱指令（通过消耗心情换随机数量p点）'),
+      min_pocket_money: Schema.number().default(200).description('随机p点最小值'),
+      max_pocket_money: Schema.number().default(400).description('随机p点最大值'),
+      pocket_money_cost: Schema.number().default(5).description('消耗心情换p点的心情值'),
+    }).description('好感度拓展：心情设置（需要开启好感度模块才能生效）'),
 
     Schema.object({
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),

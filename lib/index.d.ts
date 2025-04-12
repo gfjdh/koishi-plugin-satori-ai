@@ -7,6 +7,7 @@ export declare class SAT extends Sat {
     private portraitManager;
     private ChannelParallelCount;
     private onlineUsers;
+    private moodManager;
     private game;
     constructor(ctx: Context, config: Sat.Config);
     private getAPIConfig;
@@ -24,7 +25,10 @@ export declare class SAT extends Sat {
     private updateChannelParallelCount;
     private getChannelParallelCount;
     private processInput;
-    private generateResponse;
+    generateResponse(session: Session, prompt: string): Promise<{
+        content: string;
+        error: boolean;
+    }>;
     private buildMessages;
     private buildSystemPrompt;
     private getThinkingPrompt;

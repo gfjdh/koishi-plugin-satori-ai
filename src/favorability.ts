@@ -2,6 +2,7 @@
 import { Context, Session } from 'koishi'
 import { User, FavorabilityLevel, FavorabilityConfig } from './types'
 import { getUser, updateFavorability, ensureUserExists, updateUserItems } from './database'
+import { MoodManager } from './mood'
 import { Sat } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -92,7 +93,8 @@ export async function inputContentCheck(
   content: string,
   userid: string,
   config: FavorabilityConfig,
-  session: Session
+  session: Session,
+  moodManager: MoodManager
 ): Promise<number> {
   const user = await getUser(ctx, userid)
   if (!user) return 0
@@ -101,14 +103,15 @@ export async function inputContentCheck(
   const hasCensor = regex.test(content)
 
   if (hasCensor && config.input_censor_favorability) {
-    await applyFavorabilityEffect(ctx, user, -1 * config.value_of_input_favorability, session)
+    await applyFavorabilityEffect(ctx, user, -1 * config.value_of_input_favorability, session) // 应用好感度效果
+    moodManager.handleInputMoodChange(user) // 处理心情变化
     return -1 * config.value_of_input_favorability
   }
+  // 正常情况增加1点心情
+  moodManager.applyMoodChange(user, 1)
   // 如果开启辅助LLM或者当天好感度已达上限则不增加好感度
-  if (config.enable_auxiliary_LLM || user.usage > config.max_favorability_perday) {
-    return 0
-  }
-  // 正常情况增加1点
+  if (config.enable_auxiliary_LLM || user.usage > config.max_favorability_perday) return 0
+  // 正常情况增加1点好感度
   await applyFavorabilityEffect(ctx, user, 1, session)
   return 1
 }
@@ -119,7 +122,8 @@ export async function outputContentCheck(
   response: { content: string; error: boolean },
   userid: string,
   config: FavorabilityConfig,
-  session: Session
+  session: Session,
+  moodManager: MoodManager
 ): Promise<number> {
   if (response.error) return 0
   const user = await getUser(ctx, userid)
@@ -133,7 +137,13 @@ export async function outputContentCheck(
     // 敏感词检测
     const regex = /\*\*/g
     const hasCensor = regex.test(censoredContent)
+    const moodLevel = moodManager.getMoodLevel(user.userid)
     if (hasCensor) {
+      await applyFavorabilityEffect(ctx, user, -1 * config.value_of_output_favorability, session)
+      moodManager.handleOutputMoodChange(user) // 处理心情变化
+      return -1 * config.value_of_output_favorability
+    }
+    if (moodLevel === 'angry') {
       await applyFavorabilityEffect(ctx, user, -1 * config.value_of_output_favorability, session)
       return -1 * config.value_of_output_favorability
     }

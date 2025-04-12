@@ -114,6 +114,9 @@ export function processPrompt(prompt: string): string {
   prompt = prompt.replace(/<[^>]*?avatar[^>]*>/g, '。回复：');
   prompt = prompt.replace(/<[^>]*?img[^>]*>/g, '[图片]');
   prompt = prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `@${name}`);
+  // 处理输入的字符串，删除其中的‘**’
+  prompt = prompt.replace(/\*\*/g, '');
+  if (!prompt) return '**';
   return prompt;
 }
 
