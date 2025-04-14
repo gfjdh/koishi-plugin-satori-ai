@@ -142,12 +142,12 @@ export async function outputContentCheck(
       const mood = moodManager.getMoodValue(user.userid)
       moodManager.handleOutputMoodChange(user) // 处理心情变化
       if (mood <= 0) {
-        await applyFavorabilityEffect(ctx, user, -1 * config.value_of_output_favorability, session)
+        await updateFavorability(ctx, user, -1 * config.value_of_output_favorability)
         return -config.value_of_output_favorability
       }
     }
     if (moodLevel === 'angry') {
-      await applyFavorabilityEffect(ctx, user, -1 * config.value_of_output_favorability, session)
+      await updateFavorability(ctx, user, -1 * config.value_of_output_favorability)
       return -config.value_of_output_favorability
     }
   }

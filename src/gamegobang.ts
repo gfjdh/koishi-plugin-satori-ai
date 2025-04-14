@@ -28,7 +28,7 @@ export interface goBangGameResult extends gameResult {
 class goBangSingleGame extends abstractGameSingleGame {
   private playerFlag: number         // 玩家棋子颜色（1: 黑棋，2: 白棋）
   private winningFlag: winFlag = winFlag.pending // 当前胜负状态
-  public level = 5                   // AI 难度等级
+  public level: number                  // AI 难度等级
   private board: number[][] = []     // 12x12 棋盘状态
 
   constructor(disposeListener: () => boolean, session: Session) {
@@ -39,6 +39,7 @@ class goBangSingleGame extends abstractGameSingleGame {
   public override startGame = () => {
     this.board = Array.from({ length: 12 }, () => Array(12).fill(0))
     this.playerFlag = Math.round(Math.random()) + 1
+    logger.info(`level: ${this.level}, playerFlag: ${this.playerFlag}`)
     if (this.playerFlag === 1) {
       return '游戏开始，你随机到了先手\n' + this.printBoard()
     } else {
@@ -65,7 +66,7 @@ class goBangSingleGame extends abstractGameSingleGame {
 
     // 玩家落子
     this.board[x][y] = this.playerFlag
-    if (this.checkWin(x, y)) return this.printBoard() + '\n游戏已结束，发送endGame退出'
+    if (this.checkWin(x, y)) return this.printBoard() + '\n游戏已结束，发送结束游戏退出'
 
     // 调用 WASM 计算 AI 落子
     const flatBoard = this.board.flat()
@@ -94,7 +95,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     // 若返回 -1 -1 -1，则表示平局
     if (aiX === -1 && aiY === -1 && score === -1) {
       this.winningFlag = winFlag.draw
-      return '平局，发送endGame退出'
+      return '平局，发送结束游戏退出'
     }
     logger.info(`AI 落子坐标: ${aiX} ${aiY}，得分: ${score}`)
     this.board[aiX][aiY] = 3 - this.playerFlag // AI 使用对方颜色
@@ -110,7 +111,11 @@ class goBangSingleGame extends abstractGameSingleGame {
       // 向两个方向延伸检查
       for (let i = 1; i < 5; i++) {
         if (this.checkDirection(x, y, dx, dy, i)) count++
+        else break
+      }
+      for (let i = 1; i < 5; i++) {
         if (this.checkDirection(x, y, -dx, -dy, i)) count++
+        else break
       }
       if (count >= 5) {
         this.winningFlag = this.board[x][y] === this.playerFlag ? winFlag.win : winFlag.lose
@@ -155,15 +160,15 @@ export class goBang extends abstractGame<goBangSingleGame> {
     if (!isNaN(parseInt(args[0])))
       level = parseInt(args[0])
     else {
-      session.send('未输入难度等级(2-9)，默认设为4')
+      session.send('未输入难度等级(2-7)，默认设为4')
       level = 4
     }
-    if (level < 2 || level > 8) {
-      level = level < 2 ? 2 : 8
-      session.send('难度等级必须在2到8之间,已调整为' + level)
+    if (level < 2 || level > 7) {
+      level = level < 2 ? 2 : 7
+      session.send('难度等级必须在2到7之间,已调整为' + level)
     }
+    args[0] = level.toString()
     const game = super.startGame(session, ctx, args) as goBangSingleGame
-    game.level = level
     return game
   }
 }
