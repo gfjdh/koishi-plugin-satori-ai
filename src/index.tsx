@@ -168,6 +168,12 @@ export class SAT extends Sat {
       ctx.command('sat.pocket_money', '消耗心情值换取p点')
         .alias('要零花钱')
         .action(async ({ session }) => this.moodManager.handlePocketMoney(session))
+
+      ctx.command('sat.set_mood', '设置心情值', { authority: 4 })
+        .alias('设置心情')
+        .option('id', '-i <id:string>', { authority: 4 })
+        .option('value', '-v <value:number>', { authority: 4 })
+        .action(async ({ session, options }) => this.moodManager.setMood(options.id || session.userId, options.value || 0))
     }
   }
 
@@ -323,18 +329,25 @@ export class SAT extends Sat {
       await new Promise(resolve => setTimeout(resolve, 1000))
       this.updateChannelParallelCount(session, 1)
     }
-    const messages = this.buildMessages(session, prompt)
+    const messages = await this.buildMessages(session, prompt)
     logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
     const user = await getUser(this.ctx, session.userId)
-    let response = await this.apiClient.chat(user, await messages)
+    let response = await this.getChatResponse(user, messages)
+    if (response.error) response = await this.getChatResponse(user, messages)
+    if (response.error) updateUserUsage(this.ctx, user, -1)
+    return response
+  }
+
+  // 获取聊天回复
+  public async getChatResponse(user: User, messages: Sat.Msg[]): Promise<{ content: string; error: boolean }> {
+    let response = await this.apiClient.chat(user, messages)
     if (this.config.log_ask_response){
       if (this.config.enable_favorability && this.config.enable_mood)
         logger.info(`Satori AI：（心情值：${this.moodManager.getMoodValue(user.userid)}）${response.content}`)
       else
         logger.info(`Satori AI：${response.content}`)
     }
-    if (this.config.reasoner_filter) response.content = filterResponse(response.content, this.config.reasoner_filter_word.split('-'))
-    if (response.error) updateUserUsage(this.ctx, user, -1)
+    if (this.config.reasoner_filter) response = filterResponse(response.content, this.config.reasoner_filter_word.split('-'))
     return response
   }
 
@@ -385,10 +398,15 @@ export class SAT extends Sat {
     if (nickName) systemPrompt += `, 昵称是：${nickName},称呼用户时请优先使用昵称`
     // 添加好感度提示
     if (this.config.enable_favorability) {
-      systemPrompt += generateLevelPrompt(getFavorabilityLevel(user, this.getFavorabilityConfig()), this.getFavorabilityConfig(), user)
+      const favorabilityLevel = getFavorabilityLevel(user, this.getFavorabilityConfig())
       if (this.config.enable_mood) {
+        const moodLevel = this.moodManager.getMoodLevel(user.userid)
+        if (moodLevel == 'normal' || favorabilityLevel == '厌恶')
+          systemPrompt += generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
         const moodPrompt = this.moodManager.generateMoodPrompt(user.userid)
         systemPrompt += `\n${moodPrompt}\n` // 添加心情提示
+      } else {
+        systemPrompt += generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
       }
     }
     if (this.config.no_system_prompt) systemPrompt += '如果你明白以上内容，请回复“已明确对话要求”'
@@ -398,8 +416,8 @@ export class SAT extends Sat {
   // 思考提示
   private getThinkingPrompt(user: User, prompt: string): string {
     const reasonerPrompt = this.config.reasoner_prompt
-    const promptForNoReasoner = `请你在回复时先进行分析思考并输出思考内容，所有思考内容使用<think>和</think>包裹输出，而后在最后输出正式的回复内容。${reasonerPrompt}\n`
-    const promptForReasoner = `你需要将所有思考内容使用<think>和</think>包裹输出在思维链中，注意不要在最终的输出内包含思考内容。${reasonerPrompt}\n`
+    const promptForNoReasoner = `请你在回复时先进行分析思考并输出思考内容，所有思考内容必须使用<think>和</think>包裹输出，而后在最后输出正式的回复内容。${reasonerPrompt}\n`
+    const promptForReasoner = `你必须将所有思考内容使用<think>和</think>标签包裹并输出在思维链中，注意不要在最终的输出内包含思考内容。${reasonerPrompt}\n`
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength
@@ -422,7 +440,7 @@ export class SAT extends Sat {
 
     if (catEar) response += ' 喵~'
     if (fumo) response += '\nfumofumo'
-    if (this.config.enable_mood) {
+    if (this.config.enable_mood && this.config.enable_favorability && this.config.visible_mood) {
       const moodLevel = this.moodManager.getMoodLevel(user.userid)
       if (moodLevel == 'angry') response += '（怒）'
       if (moodLevel == 'upset') response += '（烦躁）'

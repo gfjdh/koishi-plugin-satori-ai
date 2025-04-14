@@ -1,5 +1,5 @@
 import { Context, Session } from 'koishi';
-import { Sat } from './types';
+import { Sat, User } from './types';
 export declare class SAT extends Sat {
     config: Sat.Config;
     private apiClient;
@@ -26,6 +26,10 @@ export declare class SAT extends Sat {
     private getChannelParallelCount;
     private processInput;
     generateResponse(session: Session, prompt: string): Promise<{
+        content: string;
+        error: boolean;
+    }>;
+    getChatResponse(user: User, messages: Sat.Msg[]): Promise<{
         content: string;
         error: boolean;
     }>;

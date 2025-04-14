@@ -103,8 +103,8 @@ export async function inputContentCheck(
   const hasCensor = regex.test(content)
 
   if (hasCensor && config.input_censor_favorability) {
-    await applyFavorabilityEffect(ctx, user, -1 * config.value_of_input_favorability, session) // 应用好感度效果
     moodManager.handleInputMoodChange(user) // 处理心情变化
+    await applyFavorabilityEffect(ctx, user, -1 * config.value_of_input_favorability, session) // 应用好感度效果
     return -1 * config.value_of_input_favorability
   }
   // 正常情况增加1点心情
@@ -139,13 +139,16 @@ export async function outputContentCheck(
     const hasCensor = regex.test(censoredContent)
     const moodLevel = moodManager.getMoodLevel(user.userid)
     if (hasCensor) {
-      await applyFavorabilityEffect(ctx, user, -1 * config.value_of_output_favorability, session)
+      const mood = moodManager.getMoodValue(user.userid)
       moodManager.handleOutputMoodChange(user) // 处理心情变化
-      return -1 * config.value_of_output_favorability
+      if (mood <= 0) {
+        await applyFavorabilityEffect(ctx, user, -1 * config.value_of_output_favorability, session)
+        return -config.value_of_output_favorability
+      }
     }
     if (moodLevel === 'angry') {
       await applyFavorabilityEffect(ctx, user, -1 * config.value_of_output_favorability, session)
-      return -1 * config.value_of_output_favorability
+      return -config.value_of_output_favorability
     }
   }
   return 0

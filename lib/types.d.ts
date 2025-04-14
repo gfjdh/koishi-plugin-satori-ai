@@ -197,8 +197,8 @@ export declare namespace Sat {
         enable_mood: boolean;
         max_mood: number;
         value_of_input_mood: number;
-        output_censor_mood: boolean;
         value_of_output_mood: number;
+        visible_mood: boolean;
         mood_div_1: number;
         mood_prompt_0: string;
         mood_div_2: number;

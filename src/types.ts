@@ -228,8 +228,8 @@ export namespace Sat {
     enable_mood: boolean
     max_mood: number
     value_of_input_mood: number
-    output_censor_mood: boolean
     value_of_output_mood: number
+    visible_mood: boolean
     mood_div_1: number
     mood_prompt_0: string
     mood_div_2: number
@@ -375,16 +375,16 @@ export namespace Sat {
       enable_mood: Schema.boolean().default(false).description('是否开启心情系统（通过屏蔽词降低心情，正常聊天心情+1，每天重置为0）'),
       max_mood: Schema.number().default(10).description('心情上限'),
       value_of_input_mood: Schema.number().default(15).description('输入触发屏蔽词每次扣除的心情'),
-      output_censor_mood: Schema.boolean().default(false).description('通过输出屏蔽词扣除心情,在dataDir中的output_censor.txt修改)'),
-      value_of_output_mood: Schema.number().default(10).description('输出触发屏蔽词每次扣除的心情'),
+      value_of_output_mood: Schema.number().default(10).description('输出触发屏蔽词每次扣除的心情,若当时心情大于0,此次不扣好感度'),
+      visible_mood: Schema.boolean().default(false).description('是否开启心情状态显示'),
       mood_div_1: Schema.number().default(-5).description('心情正常-烦躁分界线'),
       mood_prompt_0: Schema.string().role('textarea').default('你现在的心情是：有点烦躁').description('烦躁心情补充设定'),
       mood_div_2: Schema.number().default(-30).description('烦躁-生气分界线'),
       mood_prompt_1: Schema.string().role('textarea').default('你现在的心情是：非常生气').description('生气心情补充设定'),
       enable_pocket_money: Schema.boolean().default(false).description('开启要零花钱指令（通过消耗心情换随机数量p点）'),
-      min_pocket_money: Schema.number().default(200).description('随机p点最小值'),
+      min_pocket_money: Schema.number().default(100).description('随机p点最小值'),
       max_pocket_money: Schema.number().default(400).description('随机p点最大值'),
-      pocket_money_cost: Schema.number().default(5).description('消耗心情换p点的心情值'),
+      pocket_money_cost: Schema.number().default(10).description('消耗心情换p点的心情值'),
     }).description('好感度拓展：心情设置（需要开启好感度模块才能生效）'),
 
     Schema.object({

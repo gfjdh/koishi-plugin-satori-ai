@@ -125,7 +125,7 @@ export function processPrompt(prompt: string): string {
  * @param words 需要过滤的关键词
  * @returns 处理后的字符串，删除含有关键词的部分
  */
-export function filterResponse(prompt: string, words: string[]): string {
+export function filterResponse(prompt: string, words: string[]): {content: string, error: boolean} {
   // 匹配中文括号及其内容，使用非贪婪模式
   const parts = prompt.split(/([（(][^）)]*[）)])/g);
   // 删除含有关键词的部分
@@ -135,6 +135,8 @@ export function filterResponse(prompt: string, words: string[]): string {
     }
     return part;
   }).join('');
+  if (filtered.includes('<think>') && !filtered.includes('</think>'))
+    return {content: '……', error: true}
   // 删除<think>和</think>标签中的内容
   const regex = /<think>[\s\S]*?<\/think>/g;
   const filteredThink = filtered.replace(regex, '');
@@ -143,7 +145,7 @@ export function filterResponse(prompt: string, words: string[]): string {
   const filtered2 = filteredThink.replace(regex2, '');
   // 清理首尾空白并处理空结果
   const trimmedResult = filtered2.trim();
-  return trimmedResult === '' ? '……' : trimmedResult;
+  return trimmedResult === '' ? {content: '……', error: true} : {content: trimmedResult, error: false};
 }
 
 // 添加输出屏蔽词

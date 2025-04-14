@@ -37,6 +37,7 @@ export class MoodManager {
 
   // 处理输入内容心情变化
   public async handleInputMoodChange(user: User): Promise<void> {
+    if (!this.config.enable_mood) return
     const userId = user.userid
     if (!this.moodMap.has(userId)) this.initUser(userId)
     this.checkDailyReset(userId)
@@ -46,6 +47,7 @@ export class MoodManager {
 
   // 处理输出内容心情变化
   public async handleOutputMoodChange(user: User): Promise<void> {
+    if (!this.config.enable_mood) return
     const userId = user.userid
     if (!this.moodMap.has(userId)) this.initUser(userId)
     this.checkDailyReset(userId)
@@ -55,6 +57,7 @@ export class MoodManager {
 
   // 应用心情变化
   public applyMoodChange(user: User, delta: number): void {
+    if (!this.config.enable_mood) return
     const userId = user.userid
     let data = this.moodMap.get(userId)
     if (!data) {
@@ -75,6 +78,7 @@ export class MoodManager {
 
   // 获取心情等级
   public getMoodLevel(userId: string): string {
+    if (!this.config.enable_mood) return 'normal'
     const data = this.moodMap.get(userId)
     if (!data) {
       this.initUser(userId)
@@ -87,6 +91,7 @@ export class MoodManager {
 
   // 获取心情值
   public getMoodValue(userId: string): number {
+    if (!this.config.enable_mood) return 0
     const data = this.moodMap.get(userId)
     if (!data) {
       this.initUser(userId)
@@ -107,8 +112,8 @@ export class MoodManager {
 
   public async handlePocketMoney(session: Session): Promise<string> {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
-    const level = this.getMoodLevel(user.userid)
-    if (level === 'angry' || level === 'upset') {
+    const mood = this.getMoodValue(user.userid)
+    if (mood < this.config.max_mood / 2) {
       updateFavorability(this.ctx, user, -this.config.value_of_output_favorability)
       return session.text('commands.sat.messages.not_good_mood')
     }
@@ -116,5 +121,13 @@ export class MoodManager {
     const pocketMoney = randomInt(this.config.min_pocket_money, this.config.max_pocket_money + 1)
     updateUserP(this.ctx, user, pocketMoney)
     return session.text('commands.sat.messages.pocket_money', [pocketMoney])
+  }
+
+  public setMood(id: string, mood: number): string {
+    this.moodMap.set(id, {
+      mood: Math.min(this.config.max_mood, mood),
+      lastUpdate: Date.now()
+    })
+    return '已设置' + id + '心情值为' + mood
   }
 }
