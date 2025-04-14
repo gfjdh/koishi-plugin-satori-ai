@@ -15,6 +15,8 @@ commands:
       usage: 今日次数{0}/{1}
       hatMan: 叮！帽子先生保护了你的好感度，快说谢谢帽子先生吧！
       rockBottom: 叮！谷底小石保护了你的好感度，快说谢谢谷底小石吧！
+      not_good_mood: 别得寸进尺……（好感↓）
+      pocket_money: 心情不错，给你点零花钱吧~（获得了{0}p点）
       block1: 我讨厌你！
       block2: 我讨厌你们！
   sat.clear:

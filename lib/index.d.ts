@@ -1,5 +1,5 @@
 import { Context, Session } from 'koishi';
-import { Sat } from './types';
+import { Sat, User } from './types';
 export declare class SAT extends Sat {
     config: Sat.Config;
     private apiClient;
@@ -7,6 +7,7 @@ export declare class SAT extends Sat {
     private portraitManager;
     private ChannelParallelCount;
     private onlineUsers;
+    private moodManager;
     private game;
     constructor(ctx: Context, config: Sat.Config);
     private getAPIConfig;
@@ -24,7 +25,14 @@ export declare class SAT extends Sat {
     private updateChannelParallelCount;
     private getChannelParallelCount;
     private processInput;
-    private generateResponse;
+    generateResponse(session: Session, prompt: string): Promise<{
+        content: string;
+        error: boolean;
+    }>;
+    getChatResponse(user: User, messages: Sat.Msg[]): Promise<{
+        content: string;
+        error: boolean;
+    }>;
     private buildMessages;
     private buildSystemPrompt;
     private getThinkingPrompt;

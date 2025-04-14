@@ -3,8 +3,8 @@ import { goBang, goBangGameResult, winFlag } from './gamegobang'
 import { fencing } from './gamefencing'
 import { abstractGame } from './abstractGame'
 import { Sat } from './types'
-import { get } from 'http'
-import { getUser } from './database'
+import { SAT } from './index'
+import { getUser, updateUserP } from './database'
 
 const logger = new Logger('satori-game')
 
@@ -17,8 +17,8 @@ export class Game {
   private availableGames: Map<string, abstractGame<any>> = new Map() // 游戏名称到实例的映射
   private context: Context
   private config: Sat.Config
-  private sat: Sat
-  constructor(ctx: Context, cfg: Sat.Config, sat: Sat) {
+  private sat: SAT
+  constructor(ctx: Context, cfg: Sat.Config, sat: SAT) {
     this.context = ctx
     this.config = cfg
     this.sat = sat
@@ -31,10 +31,11 @@ export class Game {
       switch (result.gameName) {
         case '五子棋':
           const res = result as goBangGameResult
-          // 根据level决定奖励
-          let user = await getUser(ctx, session.userId)
-          user.p += 10 * res.level * res.level
-          if (res.win === winFlag.win) session.send('你赢了')
+          if (res.win === winFlag.win) {
+            // 根据level决定奖励
+            let user = await getUser(ctx, session.userId)
+            updateUserP(ctx, user, 20 * res.level * res.level)
+          }
           else if (res.win === winFlag.lose) session.send('你输了')
           else if (res.win === winFlag.draw) session.send('平局')
           else session.send('游戏中断，你输了')
@@ -71,5 +72,21 @@ export class Game {
     this.availableGames.get(gameName).endGame(session, this.context)
     this.channelGames.delete(session.channelId)
     logger.info(`${session.channelId}的游戏已结束`)
+  }
+
+  // 选择并启动具体游戏实例
+  private async selectGame(session: Session, gameName: string, args: string[]) {
+    const game = this.availableGames.get(gameName)
+    if (!game) return '没有这个游戏哦'
+    game.startGame(session, this.context, args) // 调用抽象类的启动方法
+  }
+
+  private async chat(session: Session, gameName: string, prompt: string) {
+    switch (gameName) {
+      case '五子棋':
+        const response = (await this.sat.generateResponse(session,'')).content
+      default:
+        return '没有这个游戏哦'
+    }
   }
 }

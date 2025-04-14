@@ -45,40 +45,63 @@ export function trimSlash(url: string): string {
   return url.replace(/\/$/, '')
 }
 
-// 使用正则表达式分割文本为引号内外的部分
-export function splitSentences(text: string): string[] {
-  const parts = text.split(/(“[^”]*”|"[^"]*")/g);
-  const result: string[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (i % 2 === 1) { // 引号内的部分，直接加入结果
-      result.push(part);
-    } else { // 引号外的部分，使用原逻辑处理
-      const outerSentences = splitOuterSentences(part);
-      result.push(...outerSentences);
-    }
-  }
-  // 过滤空字符串并返回
-  return result.filter(s => s.trim() !== '');
-}
+export function splitSentences(text: string, MIN_LENGTH: number, MAX_LENGTH:number): string[] {
+  // 标点符号正则表达式（包括全角和半角句号、感叹号、问号，以及省略号）
+  const PUNCTUATION_REGEX = /([。！？!?…]+)/g;
 
-// 处理引号外部分的分句逻辑
-function splitOuterSentences(text: string): string[] {
-  const sentences = text.split(/(?<=[。！？!?])/g).filter(s => s.trim());
-  const result: string[] = [];
-  let temp = '';
-  for (let i = 0; i < sentences.length; i++) {
-    if (i === sentences.length - 2) {
-      temp = sentences[i] + sentences[i + 1];
-      result.push(temp);
-      break;
+  // 第一步：按标点符号初步分割
+  const rawSegments = text.split(PUNCTUATION_REGEX);
+  const initialSentences: string[] = [];
+
+  // 合并标点符号到前一个句子
+  for (let i = 0; i < rawSegments.length; i += 2) {
+    const sentence = rawSegments[i]?.trim() || '';
+    const punctuation = rawSegments[i + 1]?.trim() || '';
+    if (sentence) initialSentences.push(sentence + punctuation);
+  }
+
+  // 第二步：智能合并短句
+  const finalSentences: string[] = [];
+  let currentSentence = '';
+
+  for (const sentence of initialSentences) {
+    const potentialLength = currentSentence.length + sentence.length;
+
+    // 如果当前句子过长，直接提交（保留超长原句）
+    if (sentence.length > MAX_LENGTH) {
+      if (currentSentence) finalSentences.push(currentSentence);
+      finalSentences.push(sentence);
+      currentSentence = '';
+      continue;
+    }
+
+    // 合并策略
+    if (potentialLength <= MAX_LENGTH) {
+      currentSentence += sentence;
+      // 达到最小长度时，如果接近上限则提前提交
+      if (currentSentence.length >= MIN_LENGTH &&
+          potentialLength >= MAX_LENGTH * 0.8) {
+        finalSentences.push(currentSentence);
+        currentSentence = '';
+      }
     } else {
-      temp += sentences[i];
-      result.push(temp);
-      temp = '';
+      finalSentences.push(currentSentence);
+      currentSentence = sentence;
     }
   }
-  return result;
+
+  // 处理剩余内容
+  if (currentSentence) finalSentences.push(currentSentence);
+
+  // 第三步：后处理短句合并
+  return finalSentences.reduce((result, sentence) => {
+    if (sentence.length < MIN_LENGTH && result.length > 0) {
+      result[result.length - 1] += sentence;
+    } else {
+      result.push(sentence);
+    }
+    return result;
+  }, [] as string[]);
 }
 
 // 敏感词过滤
@@ -114,6 +137,9 @@ export function processPrompt(prompt: string): string {
   prompt = prompt.replace(/<[^>]*?avatar[^>]*>/g, '。回复：');
   prompt = prompt.replace(/<[^>]*?img[^>]*>/g, '[图片]');
   prompt = prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `@${name}`);
+  // 处理输入的字符串，删除其中的‘**’
+  prompt = prompt.replace(/\*\*/g, '');
+  if (!prompt) return '**';
   return prompt;
 }
 
@@ -122,7 +148,7 @@ export function processPrompt(prompt: string): string {
  * @param words 需要过滤的关键词
  * @returns 处理后的字符串，删除含有关键词的部分
  */
-export function filterResponse(prompt: string, words: string[]): string {
+export function filterResponse(prompt: string, words: string[]): {content: string, error: boolean} {
   // 匹配中文括号及其内容，使用非贪婪模式
   const parts = prompt.split(/([（(][^）)]*[）)])/g);
   // 删除含有关键词的部分
@@ -132,6 +158,8 @@ export function filterResponse(prompt: string, words: string[]): string {
     }
     return part;
   }).join('');
+  if (filtered.includes('<think>') && !filtered.includes('</think>'))
+    return {content: '……', error: true}
   // 删除<think>和</think>标签中的内容
   const regex = /<think>[\s\S]*?<\/think>/g;
   const filteredThink = filtered.replace(regex, '');
@@ -140,7 +168,7 @@ export function filterResponse(prompt: string, words: string[]): string {
   const filtered2 = filteredThink.replace(regex2, '');
   // 清理首尾空白并处理空结果
   const trimmedResult = filtered2.trim();
-  return trimmedResult === '' ? '……' : trimmedResult;
+  return trimmedResult === '' ? {content: '……', error: true} : {content: trimmedResult, error: false};
 }
 
 // 添加输出屏蔽词

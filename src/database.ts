@@ -65,6 +65,7 @@ export async function updateUserItems(ctx: Context, user: User): Promise<void> {
 // 更新用户p点数
 export async function updateUserP(ctx: Context, user: User, adjustment: number): Promise<void> {
   if (!user) return
+  user.p = await ctx.database.get('p_system', { userid: user.userid })[0]?.p || user.p
   if (user.p + adjustment < 0) adjustment = -user.p
   await ctx.database.set('p_system', { userid: user.userid }, { p: user.p + adjustment })
 }
