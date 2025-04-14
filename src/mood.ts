@@ -132,4 +132,20 @@ export class MoodManager {
     })
     return '已设置' + id + '心情值为' + mood
   }
+
+  public viewMood(session: Session, id: string): string {
+    if (!this.config.enable_mood) return 'normal'
+    const level = this.getMoodLevel(id)
+    if (id === session.userId) {
+      switch (level) {
+        case 'upset': return `！`
+        case 'angry': return `滚`
+        case 'happy': return `♥`
+        case 'normal': return `~`
+        default: return `你的心情等级为 ${level}`
+      }
+    }
+    else
+      return `用户 ${id} 的心情等级为 ${level}`
+  }
 }

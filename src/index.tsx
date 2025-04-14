@@ -174,6 +174,11 @@ export class SAT extends Sat {
         .option('id', '-i <id:string>', { authority: 4 })
         .option('value', '-v <value:number>', { authority: 4 })
         .action(async ({ session, options }) => this.moodManager.setMood(options.id || session.userId, options.value || 0))
+
+      ctx.command('sat.get_mood', '查看心情状态')
+        .alias('查看心情')
+        .option('id', '-i <id:string>', { authority: 4 })
+        .action(async ({ session, options }) => this.moodManager.viewMood(session, options.id || session.userId))
     }
   }
 

@@ -15,4 +15,5 @@ export declare class MoodManager {
     generateMoodPrompt(userId: string): string;
     handlePocketMoney(session: Session): Promise<string>;
     setMood(id: string, mood: number): string;
+    viewMood(session: Session, id: string): string;
 }
