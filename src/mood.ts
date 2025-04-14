@@ -84,6 +84,7 @@ export class MoodManager {
       this.initUser(userId)
       return 'normal'
     }
+    if (data.mood == this.config.max_mood) return 'happy'
     if (data.mood <= this.config.mood_div_2) return 'angry'
     if (data.mood <= this.config.mood_div_1) return 'upset'
     return 'normal'
@@ -104,8 +105,9 @@ export class MoodManager {
   public generateMoodPrompt(userId: string): string {
     const level = this.getMoodLevel(userId)
     return {
-      'angry': `\n${this.config.mood_prompt_1}\n`,
       'upset': `\n${this.config.mood_prompt_0}\n`,
+      'angry': `\n${this.config.mood_prompt_1}\n`,
+      'happy': `\n${this.config.mood_prompt_2}\n`,
       'normal': ''
     }[level]
   }

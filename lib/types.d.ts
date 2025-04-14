@@ -191,6 +191,8 @@ export declare namespace Sat {
         random_min_tokens: number;
         randnum: number;
         sentences_divide: boolean;
+        min_sentences_length: number;
+        max_sentences_length: number;
         time_interval: number;
         max_parallel_count: number;
         reply_pointing: boolean;
@@ -203,6 +205,7 @@ export declare namespace Sat {
         mood_prompt_0: string;
         mood_div_2: number;
         mood_prompt_1: string;
+        mood_prompt_2: string;
         enable_pocket_money: boolean;
         min_pocket_money: number;
         max_pocket_money: number;

@@ -221,6 +221,8 @@ export namespace Sat {
     random_min_tokens: number
     randnum: number
     sentences_divide: boolean
+    min_sentences_length: number
+    max_sentences_length: number
     time_interval: number
     max_parallel_count: number
     reply_pointing: boolean
@@ -234,6 +236,7 @@ export namespace Sat {
     mood_prompt_0: string
     mood_div_2: number
     mood_prompt_1: string
+    mood_prompt_2: string
     enable_pocket_money: boolean
     min_pocket_money: number
     max_pocket_money: number
@@ -342,6 +345,8 @@ export namespace Sat {
       random_min_tokens: Schema.number().default(20).description('随机触发对话的最小长度'),
       randnum: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('在群聊中随机触发对话的概率，如需关闭可设置为 0'),
       sentences_divide: Schema.boolean().default(true).description('是否分句发送'),
+      min_sentences_length: Schema.number().default(10).description('每个分句的最小长度'),
+      max_sentences_length: Schema.number().default(20).description('每个分句的最大长度'),
       time_interval: Schema.number().default(1000).description('每句话的时间间隔'),
       reply_pointing: Schema.boolean().default(true).description('是否在与多人同时对话时显示回复指向'),
     }).description('对话设置'),
@@ -377,6 +382,7 @@ export namespace Sat {
       value_of_input_mood: Schema.number().default(15).description('输入触发屏蔽词每次扣除的心情'),
       value_of_output_mood: Schema.number().default(10).description('输出触发屏蔽词每次扣除的心情,若当时心情大于0,此次不扣好感度'),
       visible_mood: Schema.boolean().default(false).description('是否开启心情状态显示'),
+      mood_prompt_2: Schema.string().role('textarea').default('你现在的心情十分愉悦').description('心情达到最高补充设定'),
       mood_div_1: Schema.number().default(-5).description('心情正常-烦躁分界线'),
       mood_prompt_0: Schema.string().role('textarea').default('你现在的心情是：有点烦躁').description('烦躁心情补充设定'),
       mood_div_2: Schema.number().default(-30).description('烦躁-生气分界线'),

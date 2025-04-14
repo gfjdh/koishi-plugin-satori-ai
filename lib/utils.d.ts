@@ -6,7 +6,7 @@ export declare function parseTime(timestamp: number): number;
 export declare function getTimeOfDay(hours: number): string;
 export declare function detectEnglishLetters(text: string): number;
 export declare function trimSlash(url: string): string;
-export declare function splitSentences(text: string): string[];
+export declare function splitSentences(text: string, MIN_LENGTH: number, MAX_LENGTH: number): string[];
 export declare function shouldFilterContent(content: string, blockWords: string[]): boolean;
 export declare function probabilisticCheck(probability: number): boolean;
 export declare function isErrorWithMessage(error: unknown): error is {

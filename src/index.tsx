@@ -449,7 +449,7 @@ export class SAT extends Sat {
     if (replyPointing) { response = `@${session.username} ` + response }
 
     if (this.config.sentences_divide && response.length > 10) {
-      const sentences = splitSentences(response).map(text => h.text(text))
+      const sentences = splitSentences(response, this.config.min_sentences_length, this.config.max_sentences_length).map(text => h.text(text))
       for (const sentence of sentences) {
         await session.send(sentence)
         await new Promise(resolve => setTimeout(resolve, this.config.time_interval))
