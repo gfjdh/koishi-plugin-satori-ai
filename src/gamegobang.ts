@@ -36,10 +36,10 @@ class goBangSingleGame extends abstractGameSingleGame {
   }
 
   // 初始化棋盘，随机决定玩家先手
-  public override startGame = () => {
+  public override startGame = ( ) => {
     this.board = Array.from({ length: 12 }, () => Array(12).fill(0))
     this.playerFlag = Math.round(Math.random()) + 1
-    logger.info(`level: ${this.level}, playerFlag: ${this.playerFlag}`)
+
     if (this.playerFlag === 1) {
       return '游戏开始，你随机到了先手\n' + this.printBoard()
     } else {
@@ -63,7 +63,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     if (x < 0 || x >= 12 || y < 0 || y >= 12) return '坐标超出范围'
     if (this.board[x][y] !== 0) return '这个位置已经有棋子了'
     if (this.winningFlag !== winFlag.pending) return '游戏已结束'
-
+    logger.info(`level: ${this.level}, playerFlag: ${this.playerFlag}`)
     // 玩家落子
     this.board[x][y] = this.playerFlag
     if (this.checkWin(x, y)) return this.printBoard() + '\n游戏已结束，发送结束游戏退出'
@@ -160,15 +160,15 @@ export class goBang extends abstractGame<goBangSingleGame> {
     if (!isNaN(parseInt(args[0])))
       level = parseInt(args[0])
     else {
-      session.send('未输入难度等级(2-7)，默认设为4')
+      session.send('未输入难度等级(2-8)，默认设为4')
       level = 4
     }
-    if (level < 2 || level > 7) {
-      level = level < 2 ? 2 : 7
-      session.send('难度等级必须在2到7之间,已调整为' + level)
+    if (level < 2 || level > 8) {
+      level = level < 2 ? 2 : 8
+      session.send('难度等级必须在2到8之间,已调整为' + level)
     }
-    args[0] = level.toString()
-    const game = super.startGame(session, ctx, args) as goBangSingleGame
+    let game = super.startGame(session, ctx, args) as goBangSingleGame
+    game.level = level
     return game
   }
 }
