@@ -60,6 +60,7 @@ class goBangSingleGame extends abstractGameSingleGame {
    */
   public override async processInput(str: string) {
     const [x, y] = str.split(' ').map(Number)
+    if(isNaN(x) || isNaN(y)) return
     if (x < 0 || x >= 12 || y < 0 || y >= 12) return '坐标超出范围'
     if (this.board[x][y] !== 0) return '这个位置已经有棋子了'
     if (this.winningFlag !== winFlag.pending) return '游戏已结束'
@@ -167,8 +168,9 @@ export class goBang extends abstractGame<goBangSingleGame> {
       level = level < 2 ? 2 : 7
       session.send('难度等级必须在2到7之间,已调整为' + level)
     }
-    args[0] = level.toString()
+    // args[0] = level.toString()
     const game = super.startGame(session, ctx, args) as goBangSingleGame
+    game.level = level
     return game
   }
 }
