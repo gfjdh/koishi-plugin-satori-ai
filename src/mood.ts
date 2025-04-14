@@ -18,7 +18,7 @@ export class MoodManager {
   // 初始化用户心情
   private initUser(userId: string) {
     this.moodMap.set(userId, {
-      mood: 0,
+      mood: this.config.mood_div_1 + this.config.value_of_output_mood,
       lastUpdate: Date.now()
     })
   }
@@ -108,7 +108,7 @@ export class MoodManager {
       'upset': `\n${this.config.mood_prompt_0}\n`,
       'angry': `\n${this.config.mood_prompt_1}\n`,
       'happy': `\n${this.config.mood_prompt_2}\n`,
-      'normal': ''
+      'normal': '你现在的心情很平淡',
     }[level]
   }
 

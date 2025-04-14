@@ -531,8 +531,6 @@ export class SAT extends Sat {
   // 昵称中间件转接
   public async handleNickNameMiddleware(session: Session, prompt: string) {
     const user = await getUser(this.ctx, session.userId)
-    const processedPrompt = processPrompt(session.content)
-    if (this.performPreChecks(session, processedPrompt)) return null
     if (await this.checkUserDialogueCount(session, user, 0)) return null
     if (await this.checkFavorabilityBlock(session)) return null
     return this.handleSatCommand(session, prompt)
