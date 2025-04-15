@@ -1,4 +1,4 @@
-﻿// emcc gobang.cpp -O3 -s EXPORTED_FUNCTIONS="['_decideMove', '_malloc', '_free']" -s MODULARIZE=1 -s ENVIRONMENT='node' -o gobang.js
+﻿// emcc gobang.cpp -O3 -s EXPORTED_FUNCTIONS="['_wholeScore', '_malloc', '_free', '_inspireSearch']" -s ALLOW_MEMORY_GROWTH -s ASSERTIONS -s MODULARIZE=1 -s ENVIRONMENT='node' -o gobang.js
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
@@ -11,13 +11,6 @@
 #define WHITE 2          // 白棋
 #define INF 2147483647   // 正无穷
 #define _INF -2147483647 // 负无穷
-#define DEPTH 5          // 搜索深度
-#define START "START"    // 开始游戏
-#define PLACE "PLACE"    // 放置棋子
-#define TURN "TURN"      // 轮到我方下棋
-#define END "END"        // 游戏结束
-const int BOARD_MIDDLE_1 = (BOARD_SIZE + 1) / 2 - 1;
-const int BOARD_MIDDLE_2 = BOARD_SIZE / 2;
 struct chessType {
     int win5;   // 连五
     int alive4; // 活4
@@ -43,16 +36,7 @@ struct coordinate {
 struct Nude {
     int board[BOARD_SIZE][BOARD_SIZE] = {{0}}; // 棋盘状态
     int state = 0;                             // 棋盘状态标识
-    Nude() {
-        // 初始化棋盘，放置初始棋子
-        board[BOARD_MIDDLE_1][BOARD_MIDDLE_1] = WHITE;
-        board[BOARD_MIDDLE_2][BOARD_MIDDLE_2] = WHITE;
-        board[BOARD_MIDDLE_2][BOARD_MIDDLE_1] = BLACK;
-        board[BOARD_MIDDLE_1][BOARD_MIDDLE_2] = BLACK;
-    }
-    void arr_input(int x, int y, int playerround) {
-        board[x][y] = playerround; // 在指定位置放置棋子
-    }
+    Nude() {}
 };
 class Game {
 public:
@@ -61,13 +45,9 @@ public:
     bool draw;
     Nude MAP;
     Game() :
-            myFlag(0), enemyFlag(0), draw(0) {}
+      myFlag(0), enemyFlag(0), draw(0) {}
 };
-// Game game;
-void debug(const char *str) {
-    printf("DEBUG %s\n", str);
-    fflush(stdout);
-}
+
 // 判断坐标是否在棋盘范围内
 bool judgeInRange(coordinate temp) {
     if (temp.x < 0)
@@ -87,10 +67,7 @@ int getColor(coordinate target, const Game &game) {
     else
         return game.enemyFlag;
 }
-// 在指定位置放置棋子
-void place(coordinate target, int player, Game &game) {
-    game.MAP.board[target.x][target.y] = player;
-}
+
 // 快速排序函数
 int partition(coordinate *s, int high, int low) {
     int pi = s[high].score;
@@ -109,6 +86,7 @@ int partition(coordinate *s, int high, int low) {
     return i;
 }
 void quickSort(coordinate *s, int high, int low = 0) {
+    if (high < 0) return;
     if (low < high) {
         int pi = partition(s, high, low);
         quickSort(s, pi - 1, low);
@@ -388,8 +366,7 @@ chessType typeAnalysis(coordinate p, int dire, int player, const Game &game) {
                         else if (b[3] == 0)
                             temp.conti2++; // 001012xxx
                     }
-                } else
-                    temp.conti1++; // xxx012xxx
+                }
             }
         } else {
             if (b[4] == 0) {
@@ -414,8 +391,6 @@ chessType typeAnalysis(coordinate p, int dire, int player, const Game &game) {
                     } else if (b[6] == 0) {
                         if (b[7] == player)
                             temp.conti2++; // xxx210001
-                        else if (b[7] == 0)
-                            temp.conti1++; // xxx210000
                     }
                 }
             }
@@ -426,29 +401,24 @@ chessType typeAnalysis(coordinate p, int dire, int player, const Game &game) {
 // 单点得分
 int singleScore(coordinate p, int player, const Game &game) {
     chessType chesstype = typeAnalysis(p, 0, player, game);
+    int score = 0;
     for (int i = 1; i < 4; i++) {
         chessType temp;
         temp = typeAnalysis(p, i, player, game);
-        chesstype.win5 += temp.win5;
+        if (temp.win5) return (1 << 15); // 连五
         chesstype.alive4 += temp.alive4;
         chesstype.conti4 += temp.conti4;
         chesstype.alive3 += temp.alive3;
-        chesstype.conti3 += temp.conti3;
-        chesstype.jump3 += temp.jump3;
-        chesstype.alive2 += temp.alive2;
-        chesstype.conti2 += temp.conti2;
-        chesstype.jump2 += temp.jump2;
-        chesstype.alive1 += temp.alive1;
-        chesstype.conti1 += temp.conti1;
+        score += temp.conti3 << 5;
+        score += temp.jump3 << 6;
+        score += temp.alive2 << 4;
+        score += temp.conti2;
+        score += temp.jump2 << 3;
+        score += temp.alive1;
     }
-    if (chesstype.win5) // 胜
-        return 1048576;
-    int score = ((chesstype.conti4 << 12) +
-                 (chesstype.alive3 << 12) + (chesstype.conti3 << 8) + (chesstype.jump3 << 10) +
-                 (chesstype.alive2 << 8) + (chesstype.conti2 << 3) + (chesstype.jump2 << 6) +
-                 (chesstype.alive1 << 3) + chesstype.conti1);
-    if (chesstype.alive3 >= 2 || (chesstype.conti4 && chesstype.alive3) || chesstype.alive4 || chesstype.conti4 >= 2) // 必胜?
-        score += 65536;
+    score += ((chesstype.conti4 << 9) + (chesstype.alive3 << 9));
+    if (chesstype.alive3 > 1 || (chesstype.conti4 && chesstype.alive3) || chesstype.alive4 || chesstype.conti4 > 1) // 必胜?
+        score += (1 << 12);
     return score;
 }
 // 棋盘整体局面分
@@ -468,13 +438,13 @@ int wholeScore(int player, const Game &game) {
     return Score; // 己方总分减对方总分 得到当前对己方来说的局势分
 }
 // 启发性搜索
-int inspireSearch(coordinate *scoreBoard, int player, Game &game) {
+int inspireSearch(coordinate *scoreBoard, int player, Game &game, int max_length) {
     int length = 0;
     for (int i = 0; i < BOARD_SIZE; i++) {
         for (int j = 0; j < BOARD_SIZE; j++) {
             if (game.MAP.board[i][j] == 0) {
                 coordinate temp = {i, j, 0};
-                if (hasNeighbor(temp, 3, game)) {
+                if (hasNeighbor(temp, 2, game)) {
                     scoreBoard[length] = temp;
                     scoreBoard[length].score = singleScore(temp, 3 - player, game);
                     scoreBoard[length].score += singleScore(temp, player, game);
@@ -487,7 +457,7 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game) {
     quickSort(scoreBoard, length - 1);
     // 找到最高分数
     int maxScore = scoreBoard[0].score;
-    if (maxScore < 5)
+    if (maxScore < 5 || length == 0)
         game.draw = 1;
     const int threshold = maxScore / 3;
     // 找到分界线
@@ -501,92 +471,50 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game) {
     // 更新 length 为分界线的位置
     length = boundary;
     // 返回 length，最多不超过
-    return length > 10 ? 10 : length;
-}
-// 负极大极小值搜索
-coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate command, coordinate current, Game &game) {
-    coordinate temp = command;
-    if (depth == 0) {
-        temp.score = wholeScore(player, game);
-        return temp;
-    }
-    coordinate steps[BOARD_SIZE * BOARD_SIZE];
-    int length = inspireSearch(steps, player, game); // 搜索可落子点
-    if (length > 7 && depth > 1)
-        depth--;
-    else if (length > 2)
-        depth--;
-    for (int i = 0; i < length; i++) {
-        place(steps[i], player, game);                                               // 模拟落子
-        temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 取负值并交换alpha和beta
-        temp.score *= -1;
-        place(steps[i], 0, game); // 还原落子
-        if (temp.score >= beta) {
-            temp.score = beta;
-            return temp; // 剪枝
-        }
-        if (temp.score > alpha)
-            alpha = temp.score;
-    }
-    temp.score = alpha;
-    return temp;
-}
-// 搜索入口
-coordinate entrance(int depth, int alpha, int beta, int player, coordinate command, coordinate current, Game &game) {
-    coordinate steps[BOARD_SIZE * BOARD_SIZE]{};
-    coordinate temp;
-    coordinate best;
-    int length;
-    length = inspireSearch(steps, player, game); // 搜索可落子点
-    if (length == 1 || game.draw)
-      return steps[0];
-    for (int i = 0; i < length; i++) {
-      place(steps[i], player, game);                                               // 模拟落子
-      temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 递归
-      temp.score *= -1;
-      place(steps[i], 0, game); // 还原落子
-      if (temp.score > alpha) {
-          alpha = temp.score;
-          best = steps[i]; // 记录最佳落子
-      }
-    }
-    best.score = alpha;
-    return best;
+    return length > max_length ? max_length : length;
 }
 
 /*
+  * @param scoreBoard: 棋盘状态
+  * @param player: 我方棋子颜色
   * @param board: 棋盘状态
-  * @param myFlag: 我方棋子颜色
-  * @param depth: 搜索深度
-  * @return: 返回落子位置
-  * @outX: 落子横坐标指针
-  * @outY: 落子纵坐标指针
-  * @outScore: 落子分数指针
-  * outX: 落子横坐标
-  * outY: 落子纵坐标
-  * outScore: 落子分数
+  * @param max_length: 最大长度
   * -1: 游戏平局
   */
-extern "C" void decideMove(const int board[BOARD_SIZE * BOARD_SIZE], int myFlag, int depth, int* outX, int* outY, int* outScore) {
+extern "C" int inspireSearch(coordinate *scoreBoard, int player, const int board[BOARD_SIZE * BOARD_SIZE], int max_length) {
+  Game localGame;
+  for (int i = 0; i < BOARD_SIZE; i++) {
+      for (int j = 0; j < BOARD_SIZE; j++) {
+          localGame.MAP.board[i][j] = board[i * BOARD_SIZE + j];
+      }
+  }
+  localGame.myFlag = player;
+  localGame.enemyFlag = 3 - player;
+  localGame.draw = 0;
+  coordinate *tempScoreBoard = new coordinate[BOARD_SIZE * BOARD_SIZE];
+  int length = inspireSearch(tempScoreBoard, player, localGame, max_length);
+  for (int i = 0; i < length; i++) {
+      scoreBoard[i].x = tempScoreBoard[i].x;
+      scoreBoard[i].y = tempScoreBoard[i].y;
+      scoreBoard[i].score = tempScoreBoard[i].score;
+  }
+  delete[] tempScoreBoard;
+  if (localGame.draw) {
+      scoreBoard[0].x = -1;
+      scoreBoard[0].y = -1;
+      scoreBoard[0].score = -1;
+  }
+  return length;
+}
+
+extern "C" int wholeScore(int player, const int board[BOARD_SIZE * BOARD_SIZE]) {
     Game localGame;
     for (int i = 0; i < BOARD_SIZE; i++) {
         for (int j = 0; j < BOARD_SIZE; j++) {
             localGame.MAP.board[i][j] = board[i * BOARD_SIZE + j];
         }
     }
-    localGame.myFlag = myFlag;
-    localGame.enemyFlag = 3 - myFlag;
-    localGame.draw = 0;
-
-    coordinate cmd, current;
-    coordinate result = entrance(depth, _INF, INF, localGame.myFlag, cmd, current, localGame);
-    if (localGame.draw) {
-        *outX = -1;
-        *outY = -1;
-        *outScore = -1;
-        return;
-    }
-    *outX = result.x;
-    *outY = result.y;
-    *outScore = result.score;
+    localGame.myFlag = player;
+    localGame.enemyFlag = 3 - player;
+    return wholeScore(player, localGame);
 }

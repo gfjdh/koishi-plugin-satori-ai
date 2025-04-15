@@ -183,7 +183,6 @@ export declare namespace Sat {
         nick_name: boolean;
         nick_name_list: string[];
         nick_name_block_words: string[];
-        input_prompt: string;
         reasoner_filter: boolean;
         reasoner_filter_word: string;
         duplicateDialogueCheck: boolean;
@@ -236,6 +235,7 @@ export declare namespace Sat {
         retry_delay_time: number;
         enable_game: boolean;
         enable_gobang: boolean;
+        enable_fencing: boolean;
     }
     const Config: Schema<Config>;
 }

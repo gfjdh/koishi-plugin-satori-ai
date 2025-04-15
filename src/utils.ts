@@ -150,10 +150,11 @@ export function processPrompt(prompt: string): string {
  */
 export function filterResponse(prompt: string, words: string[]): {content: string, error: boolean} {
   // 匹配中文括号及其内容，使用非贪婪模式
-  const parts = prompt.split(/([（(][^）)]*[）)])/g);
+  const parts = prompt.split(/([（\[【(][^）)]*[）\]】)])/g);
   // 删除含有关键词的部分
   const filtered = parts.map(part => {
-    if (part.startsWith('（') && part.endsWith('）') || part.startsWith('(') && part.endsWith(')')) {
+    if (part.startsWith('（') && part.endsWith('）') || part.startsWith('(') && part.endsWith(')') ||
+        part.startsWith('[') && part.endsWith(']') || part.startsWith('【') && part.endsWith('】')) {
       return words.some(word => part.includes(word)) ? '' : part;
     }
     return part;

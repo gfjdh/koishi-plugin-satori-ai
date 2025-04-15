@@ -213,7 +213,6 @@ export namespace Sat {
     nick_name: boolean
     nick_name_list: string[]
     nick_name_block_words: string[]
-    input_prompt: string
     reasoner_filter: boolean
     reasoner_filter_word: string
     duplicateDialogueCheck: boolean
@@ -337,7 +336,6 @@ export namespace Sat {
       nick_name: Schema.boolean().default(true).description('是否使用昵称触发对话（发言中含有昵称时）（把qq号加入昵称可以被at和戳一戳触发）'),
       nick_name_list: Schema.array(String).default(['昵称1']).description('昵称列表'),
       nick_name_block_words: Schema.array(String).default(['屏蔽词1']).description('昵称屏蔽词(含有屏蔽词的消息不会触发昵称对话)'),
-      input_prompt: Schema.string().role('textarea').default('(注意专注对话主题，遵守对话要求，不要复读)').description('每轮对话前的补充提示（可用于强调要求）不需要时可不填'),
       reasoner_filter: Schema.boolean().default(true).description('是否启用返回内容过滤,开启后在对话时会过滤掉在括号内且含有过滤词的那一句,用于缓解思维链溢出问题'),
       reasoner_filter_word: Schema.string().role('textarea').default('系统-提示-用户-设定-回复')
       .description('返回内容过滤词，使用“-”分隔，在括号内且含有过滤词的那一句会被过滤，用于缓解思维链溢出问题'),

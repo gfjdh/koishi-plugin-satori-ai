@@ -369,10 +369,6 @@ export class SAT extends Sat {
     // 添加上下文记忆
     const userMemory = this.memoryManager.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
     messages.push(...userMemory)
-    if(this.config.input_prompt && messages.length > 1){
-      messages.push({ role: 'user', content: 'system:' + this.config.input_prompt })
-      messages.push({ role: 'assistant', content: '好的，我会按您的要求进行回复。' })
-    }
     // 添加当前对话
     messages.push({ role: 'user', content: prompt })
     let payload = messages.map(msg => msg.role + ':' + msg.content).join('\n')

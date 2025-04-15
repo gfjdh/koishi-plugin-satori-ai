@@ -18,6 +18,7 @@ declare class goBangSingleGame extends abstractGameSingleGame {
     private winningFlag;
     level: number;
     private board;
+    private inspireSearchLength;
     constructor(disposeListener: () => boolean, session: Session);
     startGame: () => string;
     endGame: () => {
@@ -32,6 +33,10 @@ declare class goBangSingleGame extends abstractGameSingleGame {
     processInput(str: string): Promise<string>;
     private checkWin;
     private checkDirection;
+    private place;
+    private alphaBeta;
+    private entrance;
+    private wasmInspireSearch;
     private printBoard;
 }
 /**
