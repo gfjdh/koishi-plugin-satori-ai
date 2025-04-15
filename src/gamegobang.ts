@@ -3,12 +3,24 @@ import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame
 
 const logger = new Logger('satori-game-gobang')
 const BOARD_SIZE = 12;    // 棋盘大小
+const inspireSearchLength = 8 // 启发式搜索长度
 const INF = 2147483647;   // 正无穷
 
 // 加载 WASM 模块（五子棋 AI 逻辑）
 const Module = require('../wasm/gobang.js')
+// 预定义内存池对象，存储棋盘和候选点的指针
+let wasmMemoryPool = {
+  boardPtr: null as number,     // 棋盘数据内存指针
+  scoreBoardPtr: null as number // 候选点数组内存指针
+};
 let wasmModule
-Module().then((mod) => { wasmModule = mod })
+Module().then((mod) => {
+  wasmModule = mod;
+  // 预分配棋盘内存（BOARD_SIZE * BOARD_SIZE * 4字节）
+  wasmMemoryPool.boardPtr = wasmModule._malloc(BOARD_SIZE * BOARD_SIZE * 4);
+  // 预分配候选点内存（BOARD_SIZE * BOARD_SIZE * 3 * 4字节）
+  wasmMemoryPool.scoreBoardPtr = wasmModule._malloc(BOARD_SIZE * BOARD_SIZE * 4 * 3);
+});
 
 // 胜负标志枚举
 export enum winFlag {
@@ -44,8 +56,8 @@ class goBangSingleGame extends abstractGameSingleGame {
   private winningFlag: winFlag = winFlag.pending // 当前胜负状态
   public level: number                  // AI 难度等级
   private board: number[][] = []     // BOARD_SIZExBOARD_SIZE 棋盘状态
-  private inspireSearchLength: number = 8 // 启发式搜索长度
-
+  private lastScore: number = 0 // 上次评分
+  private turnsCount: number = 0 // 回合数
   constructor(disposeListener: () => boolean, session: Session) {
     super(disposeListener, session)
   }
@@ -53,18 +65,32 @@ class goBangSingleGame extends abstractGameSingleGame {
   // 初始化棋盘，随机决定玩家先手
   public override startGame = ( ) => {
     this.board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0))
+    this.turnsCount = 0
     this.playerFlag = Math.round(Math.random()) + 1
-
+    const randomX = Math.round(BOARD_SIZE / 2) - 2 + Math.round(2 * Math.random())
+    const randomY = Math.round(BOARD_SIZE / 2) - 2 + Math.round(2 * Math.random())
     if (this.playerFlag === 1) {
-      return '游戏开始，你随机到了先手\n' + this.printBoard()
+      this.board[randomX][randomY] = 1
+      this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY + (Math.round(Math.random()) ? -1 : 1)] = 2
+      return '游戏开始，你随机到了先手(黑)\n输入两个数字以下棋，先行后列，例如：“5 6”\n' + this.printBoard()
     } else {
-      this.board[5][6] = 1 // AI 先手落子中点
-      return '游戏开始，你随机到了后手\n' + this.printBoard()
+      this.board[randomX][randomY] = 1
+      this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY + (Math.round(Math.random()) ? -1 : 1)] = 2
+      this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY] = 1
+      return '游戏开始，你随机到了后手(白)\n输入两个数字以下棋，先行后列，例如：“5 6”\n' + this.printBoard()
     }
   }
 
   // 结束游戏，返回结果
   public override endGame = () => {
+    if (wasmMemoryPool.boardPtr) {
+      wasmModule._free(wasmMemoryPool.boardPtr);
+      wasmMemoryPool.boardPtr = null;
+    }
+    if (wasmMemoryPool.scoreBoardPtr) {
+      wasmModule._free(wasmMemoryPool.scoreBoardPtr);
+      wasmMemoryPool.scoreBoardPtr = null;
+    }
     super.endGame()
     return { message: '五子棋游戏结束', win: this.winningFlag, gameName: '五子棋' }
   }
@@ -76,12 +102,13 @@ class goBangSingleGame extends abstractGameSingleGame {
   public override async processInput(str: string) {
     const [x, y] = str.split(' ').map(Number)
     if(isNaN(x) || isNaN(y)) return
-    if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return '坐标超出范围'
-    if (this.board[x][y] !== 0) return '这个位置已经有棋子了'
+    if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return '坐标超出范围了'
+    if (this.board[x][y] !== 0) return '这个位置已经有棋子了，别想耍赖'
     if (this.winningFlag !== winFlag.pending) return '游戏已结束'
-    logger.info(`level: ${this.level}, playerFlag: ${this.playerFlag}`)
     // 玩家落子
     this.board[x][y] = this.playerFlag
+    logger.info(`level: ${this.level}, player: x: ${x}, y: ${y}`)
+
     if (this.checkWin(x, y)) return this.printBoard() + '\n游戏已结束，发送结束游戏退出'
 
     const starttime = Date.now()
@@ -95,8 +122,11 @@ class goBangSingleGame extends abstractGameSingleGame {
     }
     logger.info(`AI 落子坐标: ${aiMove.x} ${aiMove.y}，得分: ${aiMove.score}，AI 落子耗时: ${endtime - starttime}ms`)
     this.board[aiMove.x][aiMove.y] = 3 - this.playerFlag // AI 使用对方颜色
-    if (this.checkWin(aiMove.x, aiMove.y)) return this.printBoard() + '\n游戏已结束'
-    return this.printBoard()
+    if (this.turnsCount > 5) this.session.send(this.generateChat(aiMove.score))
+    this.lastScore = aiMove.score
+    this.turnsCount++
+    if (this.checkWin(aiMove.x, aiMove.y)) return this.printBoard() + '\n游戏已结束，发送结束游戏退出'
+    return this.printBoard() + '\n我这一步下在这里哦(' + aiMove.x + ' ' + aiMove.y + ')'
   }
 
   // 检查是否连成五子
@@ -137,10 +167,8 @@ class goBangSingleGame extends abstractGameSingleGame {
     let temp = command;
     if (depth === 0) {
       const flatBoard = this.board.flat()
-      const arrayPtr = wasmModule._malloc(flatBoard.length * 4) // 分配内存
-      wasmModule.HEAP32.set(flatBoard, arrayPtr / 4) // 将棋盘数据写入 WASM 内存
-      temp.score = wasmModule._wholeScore(player, arrayPtr);
-      wasmModule._free(arrayPtr) // 释放内存
+      wasmModule.HEAP32.set(flatBoard, wasmMemoryPool.boardPtr / 4) // 将棋盘数据写入 WASM 内存
+      temp.score = wasmModule._wholeScore(player, wasmMemoryPool.boardPtr);
       return temp;
     }
 
@@ -204,30 +232,34 @@ class goBangSingleGame extends abstractGameSingleGame {
   }
 
   private async wasmInspireSearch(player: number): Promise<Coordinate[]> {
-    const flatBoard = this.board.flat()
-    const arrayPtr = wasmModule._malloc(flatBoard.length * 4) // 分配内存
-    wasmModule.HEAP32.set(flatBoard, arrayPtr / 4) // 将棋盘数据写入 WASM 内存
-    const scoreBoardPtr = wasmModule._malloc(this.inspireSearchLength * 4 * 3) // 分配内存
+    const flatBoard = this.board.flat();
+    // 使用预分配的棋盘内存
+    wasmModule.HEAP32.set(flatBoard, wasmMemoryPool.boardPtr / 4);
 
-    const length: number = await wasmModule._inspireSearch(scoreBoardPtr, player, arrayPtr, this.inspireSearchLength) // 调用 WASM 搜索函数
-    const scoreBoard = new Int32Array(wasmModule.HEAP32.buffer, scoreBoardPtr, length * 3)
-    let steps: Coordinate[] = []
+    // 调用 WASM 函数，传入预分配的 scoreBoardPtr
+    const length: number = await wasmModule._inspireSearch(
+      wasmMemoryPool.scoreBoardPtr, // 直接使用预分配指针
+      player,
+      wasmMemoryPool.boardPtr,      // 直接使用预分配指针
+      inspireSearchLength
+    );
+
+    // 从预分配内存中读取结果
+    const scoreBoard = new Int32Array(
+      wasmModule.HEAP32.buffer,
+      wasmMemoryPool.scoreBoardPtr,
+      length * 3
+    );
+
+    let steps: Coordinate[] = [];
     for (let i = 0; i < length; i++) {
       steps.push(new Coordinate(
         scoreBoard[i * 3],
         scoreBoard[i * 3 + 1],
         scoreBoard[i * 3 + 2]
-      ))
+      ));
     }
-    // 释放内存
-    try {
-      wasmModule._free(arrayPtr)
-      wasmModule._free(scoreBoardPtr)
-    } catch (e) {
-      logger.info(`AI 落子坐标: ${steps[0].x} ${steps[0].y}，得分: ${steps[0].score}, ${steps.length}个候选落子`)
-      logger.error('释放内存失败', e)
-    }
-    return steps
+    return steps;
   }
 
   // 生成带表情符号的棋盘字符串
@@ -242,6 +274,33 @@ class goBangSingleGame extends abstractGameSingleGame {
       res += '\n'
     }
     return res
+  }
+
+  private generateChat(Score: number): string {
+    if (this.lastScore < 5000000 && Score > 5000000) {
+      return '我觉得你要输了哦~'
+    }
+    if (this.lastScore < 1000000 && Score > 1000000) {
+      return '只能下在这里了~'
+    }
+    if (4000 <= Score && Score < 10000) {
+      return '这招怎么样？'
+    }
+    if (2000 <= Score && Score < 4000 && Math.random() < 0.5) {
+      return {
+        0:'有点意思哦~',
+        1:'真是焦灼的局面',
+        2:'势均力敌呢~',
+        3:'你在想什么呢？',
+        4:'走这里会不会太冒险了？'
+      }[Math.floor(Math.random() * 5)]
+    }
+    if (Score < 1000) {
+      return '感觉有点不妙……'
+    }
+    if (Score < 0) {
+      return '你还真是厉害呢~'
+    }
   }
 }
 

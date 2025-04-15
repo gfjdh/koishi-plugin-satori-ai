@@ -1,4 +1,4 @@
-﻿// emcc gobang.cpp -O3 -s EXPORTED_FUNCTIONS="['_wholeScore', '_malloc', '_free', '_inspireSearch']" -s ALLOW_MEMORY_GROWTH -s ASSERTIONS -s MODULARIZE=1 -s ENVIRONMENT='node' -o gobang.js
+﻿// emcc gobang.cpp -O3 -flto -s EXPORTED_FUNCTIONS="['_wholeScore', '_malloc', '_free', '_inspireSearch']" -s ALLOW_MEMORY_GROWTH -s ASSERTIONS -s MODULARIZE=1 -s ENVIRONMENT='node' -o gobang.js
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
@@ -403,20 +403,21 @@ int singleScore(coordinate p, int player, const Game &game) {
     chessType chesstype = typeAnalysis(p, 0, player, game);
     int score = 0;
     for (int i = 1; i < 4; i++) {
-        chessType temp;
-        temp = typeAnalysis(p, i, player, game);
-        if (temp.win5) return (1 << 15); // 连五
+        chessType temp = typeAnalysis(p, i, player, game);
+        chesstype.win5 += temp.win5;
         chesstype.alive4 += temp.alive4;
         chesstype.conti4 += temp.conti4;
         chesstype.alive3 += temp.alive3;
-        score += temp.conti3 << 5;
-        score += temp.jump3 << 6;
-        score += temp.alive2 << 4;
-        score += temp.conti2;
-        score += temp.jump2 << 3;
-        score += temp.alive1;
+        chesstype.conti3 += temp.conti3;
+        chesstype.jump3 += temp.jump3;
+        chesstype.alive2 += temp.alive2;
+        chesstype.conti2 += temp.conti2;
+        chesstype.jump2 += temp.jump2;
+        chesstype.alive1 += temp.alive1;
     }
-    score += ((chesstype.conti4 << 9) + (chesstype.alive3 << 9));
+    score += chesstype.win5 << 20;
+    score += ((chesstype.conti4 << 9) + (chesstype.alive3 << 8) + (chesstype.conti3 << 7) +
+              (chesstype.jump3 << 6) + (chesstype.alive2 << 5) + (chesstype.jump2 << 3) + chesstype.conti2 + chesstype.alive1);
     if (chesstype.alive3 > 1 || (chesstype.conti4 && chesstype.alive3) || chesstype.alive4 || chesstype.conti4 > 1) // 必胜?
         score += (1 << 12);
     return score;
@@ -446,8 +447,7 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game, int max_length
                 coordinate temp = {i, j, 0};
                 if (hasNeighbor(temp, 2, game)) {
                     scoreBoard[length] = temp;
-                    scoreBoard[length].score = singleScore(temp, 3 - player, game);
-                    scoreBoard[length].score += singleScore(temp, player, game);
+                    scoreBoard[length].score = singleScore(temp, 3 - player, game) + singleScore(temp, player, game);
                     length++;
                 }
             }
@@ -491,14 +491,9 @@ extern "C" int inspireSearch(coordinate *scoreBoard, int player, const int board
   localGame.myFlag = player;
   localGame.enemyFlag = 3 - player;
   localGame.draw = 0;
-  coordinate *tempScoreBoard = new coordinate[BOARD_SIZE * BOARD_SIZE];
-  int length = inspireSearch(tempScoreBoard, player, localGame, max_length);
-  for (int i = 0; i < length; i++) {
-      scoreBoard[i].x = tempScoreBoard[i].x;
-      scoreBoard[i].y = tempScoreBoard[i].y;
-      scoreBoard[i].score = tempScoreBoard[i].score;
-  }
-  delete[] tempScoreBoard;
+
+  int length = inspireSearch(scoreBoard, player, localGame, max_length);
+
   if (localGame.draw) {
       scoreBoard[0].x = -1;
       scoreBoard[0].y = -1;
