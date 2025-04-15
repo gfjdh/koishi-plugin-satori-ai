@@ -13,8 +13,11 @@ import { addOutputCensor, filterResponse, processPrompt, splitSentences, updateU
 import { UserPortraitManager } from './userportrait'
 import { MoodManager } from './mood'
 import { Game } from './game'
+import Puppeteer, { } from 'koishi-plugin-puppeteer'
 
 const logger = new Logger('satori-ai')
+
+export let puppeteer : Puppeteer | null = null
 
 export class SAT extends Sat {
   private apiClient: APIClient
@@ -31,6 +34,8 @@ export class SAT extends Sat {
     super(ctx, config)
     // 初始化本地化
     ctx.i18n.define('zh', require('./locales/zh'))
+    // 实例化puppeteer
+    puppeteer = ctx.puppeteer
     // 初始化数据库
     extendDatabase(ctx)
     // 初始化模块

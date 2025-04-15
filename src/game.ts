@@ -22,8 +22,12 @@ export class Game {
     this.context = ctx
     this.config = cfg
     this.sat = sat
-    if (this.config.enable_gobang) this.availableGames.set('五子棋', new goBang())      // 注册五子棋
-    if (this.config.enable_fencing) this.availableGames.set('击剑', new fencing())                          // 注册击剑
+    if (this.config.enable_gobang) {
+      this.availableGames.set('五子棋', new goBang())
+    }      // 注册五子棋
+    if (this.config.enable_fencing) {
+      this.availableGames.set('击剑', new fencing())
+    }                          // 注册击剑
     this.registerCommands(ctx)                          // 注册命令
 
     // 监听游戏结果事件（如胜负判定）
@@ -84,7 +88,7 @@ export class Game {
   private async chat(session: Session, gameName: string, prompt: string) {
     switch (gameName) {
       case '五子棋':
-        const response = (await this.sat.generateResponse(session,'')).content
+        const response = (await this.sat.generateResponse(session, '')).content
       default:
         return '没有这个游戏哦'
     }

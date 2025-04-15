@@ -24,16 +24,16 @@ export abstract class abstractGameSingleGame {
 
   constructor(disposeListener: () => boolean, session: Session) {
     this.session = session
-    this.disposeListener = disposeListener 
+    this.disposeListener = disposeListener
   }
 
   // 开始游戏，返回初始提示
-  public startGame() {
+  public async startGame() {
     return '游戏开始'
   }
 
   // 结束游戏，清理资源并返回结果
-  public endGame() {
+  public async endGame() {
     this.disposeListener()
     return { message: '游戏结束', gameName: 'null' }
   }
@@ -80,22 +80,22 @@ export abstract class abstractGame<T extends abstractGameSingleGame> {
    * @param ctx Koishi 上下文
    * @param args 启动参数（如难度等级）
    */
-  public startGame(session: Session, ctx: Context, args: string[]): abstractGameSingleGame | null {
+  public async startGame(session: Session, ctx: Context, args: string[]): Promise<abstractGameSingleGame | null> {
     if (this.channelGames.has(session.channelId)) return null // 避免重复启动
     const dispose = ctx.on('message', this.listener(session.userId, session.guildId)) // 注册监听
     const game = new this.gameClass(dispose, session)
     this.channelGames.set(session.channelId, game)
-    session.send(game.startGame()) // 发送初始消息
+    session.send(await game.startGame()) // 发送初始消息
     return game
   }
 
   /**
    * 结束游戏实例，触发结果事件
    */
-  public endGame(session: Session, ctx: Context) {
+  public async endGame(session: Session, ctx: Context) {
     const game = this.channelGames.get(session.channelId)
     if (!game) return '当前频道没有游戏在进行中'
-    const gameRes = game.endGame()
+    const gameRes = await game.endGame()
     ctx.emit('game-result', session, gameRes) // 通知外部模块
     this.channelGames.delete(session.channelId)
     logger.info(`游戏已结束`)
