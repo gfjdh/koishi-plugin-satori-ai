@@ -144,7 +144,7 @@ export interface FixedDialogue {
 
 export class Sat extends Service {
   static inject = {
-    required: ['console', 'database'],
+    required: ['console', 'database','puppeteer'],
     optional: ['censor']
   }
   constructor(ctx: Context, config: Sat.Config) {

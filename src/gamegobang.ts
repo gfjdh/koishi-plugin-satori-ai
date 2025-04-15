@@ -1,5 +1,7 @@
 import { Session, Logger, Context } from 'koishi'
 import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame'
+import Puppeteer, { } from 'koishi-plugin-puppeteer'
+import { puppeteer } from '.'
 
 const logger = new Logger('satori-game-gobang')
 const BOARD_SIZE = 12;    // 棋盘大小
@@ -42,10 +44,25 @@ class Coordinate {
   score: number;
 
   constructor(a: number = 0, b: number = 0, s: number = 0) {
-      this.x = a;
-      this.y = b;
-      this.score = s;
+    this.x = a;
+    this.y = b;
+    this.score = s;
   }
+}
+
+async function wrapInHTML(str: string): Promise<string> {
+  if (!puppeteer) {
+    logger.warn('puppeteer未就绪')
+    return '出现错误，请联系管理员'
+  }
+  return puppeteer.render(`<html><body>${str.replaceAll(/\n/g, '<BR>')}</body>
+          <style>
+          body {
+            padding: 10px;
+            display: inline-block;
+           }
+          </style>
+          </html>`);
 }
 
 /**
@@ -63,7 +80,7 @@ class goBangSingleGame extends abstractGameSingleGame {
   }
 
   // 初始化棋盘，随机决定玩家先手
-  public override startGame = ( ) => {
+  public override startGame = () => {
     this.board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0))
     this.turnsCount = 0
     this.playerFlag = Math.round(Math.random()) + 1
@@ -72,17 +89,17 @@ class goBangSingleGame extends abstractGameSingleGame {
     if (this.playerFlag === 1) {
       this.board[randomX][randomY] = 1
       this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY + (Math.round(Math.random()) ? -1 : 1)] = 2
-      return '游戏开始，你随机到了先手(黑)\n输入两个数字以下棋，先行后列，例如：“5 6”\n' + this.printBoard()
+      return wrapInHTML('游戏开始，你随机到了先手(黑)\n输入两个数字以下棋，先行后列，例如：“5 6”\n' + this.printBoard())
     } else {
       this.board[randomX][randomY] = 1
       this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY + (Math.round(Math.random()) ? -1 : 1)] = 2
       this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY] = 1
-      return '游戏开始，你随机到了后手(白)\n输入两个数字以下棋，先行后列，例如：“5 6”\n' + this.printBoard()
+      return wrapInHTML('游戏开始，你随机到了后手(白)\n输入两个数字以下棋，先行后列，例如：“5 6”\n' + this.printBoard())
     }
   }
 
   // 结束游戏，返回结果
-  public override endGame = () => {
+  public override endGame = async () => {
     if (wasmMemoryPool.boardPtr) {
       wasmModule._free(wasmMemoryPool.boardPtr);
       wasmMemoryPool.boardPtr = null;
@@ -101,7 +118,7 @@ class goBangSingleGame extends abstractGameSingleGame {
    */
   public override async processInput(str: string) {
     const [x, y] = str.split(' ').map(Number)
-    if(isNaN(x) || isNaN(y)) return
+    if (isNaN(x) || isNaN(y)) return
     if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return '坐标超出范围了'
     if (this.board[x][y] !== 0) return '这个位置已经有棋子了，别想耍赖'
     if (this.winningFlag !== winFlag.pending) return '游戏已结束'
@@ -109,7 +126,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     this.board[x][y] = this.playerFlag
     logger.info(`level: ${this.level}, player: x: ${x}, y: ${y}`)
 
-    if (this.checkWin(x, y)) return this.printBoard() + '\n游戏已结束，发送结束游戏退出'
+    if (this.checkWin(x, y)) return wrapInHTML(this.printBoard() + '\n游戏已结束，发送结束游戏退出')
 
     const starttime = Date.now()
     const aiMove = await this.entrance(this.level, -INF, INF, 3 - this.playerFlag, this)
@@ -125,8 +142,8 @@ class goBangSingleGame extends abstractGameSingleGame {
     if (this.turnsCount > 5) this.session.send(this.generateChat(aiMove.score))
     this.lastScore = aiMove.score
     this.turnsCount++
-    if (this.checkWin(aiMove.x, aiMove.y)) return this.printBoard() + '\n游戏已结束，发送结束游戏退出'
-    return this.printBoard() + '\n我这一步下在这里哦(' + aiMove.x + ' ' + aiMove.y + ')'
+    if (this.checkWin(aiMove.x, aiMove.y)) return wrapInHTML(this.printBoard() + '\n游戏已结束，发送结束游戏退出')
+    return wrapInHTML(this.printBoard() + '\n我这一步下在这里哦(' + aiMove.x + ' ' + aiMove.y + ')')
   }
 
   // 检查是否连成五子
@@ -222,8 +239,8 @@ class goBangSingleGame extends abstractGameSingleGame {
       this.place(steps[i], 0, game); // 还原落子
 
       if (temp.score > alpha) {
-          alpha = temp.score;
-          best = steps[i]; // 记录最佳落子
+        alpha = temp.score;
+        best = steps[i]; // 记录最佳落子
       }
     }
 
@@ -288,11 +305,11 @@ class goBangSingleGame extends abstractGameSingleGame {
     }
     if (2000 <= Score && Score < 4000 && Math.random() < 0.5) {
       return {
-        0:'有点意思哦~',
-        1:'真是焦灼的局面',
-        2:'势均力敌呢~',
-        3:'你在想什么呢？',
-        4:'走这里会不会太冒险了？'
+        0: '有点意思哦~',
+        1: '真是焦灼的局面',
+        2: '势均力敌呢~',
+        3: '你在想什么呢？',
+        4: '走这里会不会太冒险了？'
       }[Math.floor(Math.random() * 5)]
     }
     if (Score < 1000) {
@@ -313,19 +330,24 @@ export class goBang extends abstractGame<goBangSingleGame> {
   }
 
   // 启动游戏时可传入难度参数
-  public override startGame(session: Session, ctx: Context, args: string[]) {
+  public override async startGame(session: Session, ctx: Context, args: string[]) {
     let level: number
     if (!isNaN(parseInt(args[0])))
       level = parseInt(args[0])
     else {
-      session.send('未输入难度等级(2-8)，默认设为4')
+      setTimeout(() => {
+        session.send('未输入难度等级(2-8)，默认设为4')
+      }, 500);
+
       level = 4
     }
     if (level < 2 || level > 8) {
       level = level < 2 ? 2 : 8
-      session.send('难度等级必须在2到8之间,已调整为' + level)
+      setTimeout(() => {
+        session.send('难度等级必须在2到8之间,已调整为' + level)
+      }, 500);
     }
-    const game = super.startGame(session, ctx, args) as goBangSingleGame
+    const game = await super.startGame(session, ctx, args) as goBangSingleGame
     game.level = level
     return game
   }
