@@ -33,8 +33,9 @@ export class Game {
           const res = result as goBangGameResult
           if (res.win === winFlag.win) {
             // 根据level决定奖励
-            let user = await getUser(ctx, session.userId)
-            updateUserP(ctx, user, 20 * res.level * res.level)
+            // let user = await getUser(ctx, session.userId)
+            // updateUserP(ctx, user, 20 * res.level * res.level)
+            session.send('你赢了')
           }
           else if (res.win === winFlag.lose) session.send('你输了')
           else if (res.win === winFlag.draw) session.send('平局')

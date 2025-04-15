@@ -18,7 +18,8 @@ declare class goBangSingleGame extends abstractGameSingleGame {
     private winningFlag;
     level: number;
     private board;
-    private inspireSearchLength;
+    private lastScore;
+    private turnsCount;
     constructor(disposeListener: () => boolean, session: Session);
     startGame: () => string;
     endGame: () => {
@@ -38,6 +39,7 @@ declare class goBangSingleGame extends abstractGameSingleGame {
     private entrance;
     private wasmInspireSearch;
     private printBoard;
+    private generateChat;
 }
 /**
  * 五子棋管理类，继承自 abstractGame
