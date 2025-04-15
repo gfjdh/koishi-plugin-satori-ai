@@ -35,7 +35,7 @@ export enum winFlag {
 // 五子棋结果扩展接口
 export interface goBangGameResult extends gameResult {
   win: winFlag,
-  level: number
+  message: string
 }
 
 class Coordinate {
@@ -109,7 +109,7 @@ class goBangSingleGame extends abstractGameSingleGame {
       wasmMemoryPool.scoreBoardPtr = null;
     }
     super.endGame()
-    return { message: '五子棋游戏结束', win: this.winningFlag, gameName: '五子棋' }
+    return { message: `${this.level}`, win: this.winningFlag, gameName: '五子棋' }
   }
 
   /**
@@ -139,7 +139,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     }
     logger.info(`AI 落子坐标: ${aiMove.x} ${aiMove.y}，得分: ${aiMove.score}，AI 落子耗时: ${endtime - starttime}ms`)
     this.board[aiMove.x][aiMove.y] = 3 - this.playerFlag // AI 使用对方颜色
-    if (this.turnsCount > 5) this.session.send(this.generateChat(aiMove.score))
+    if (this.turnsCount > 5) setTimeout(() => {this.session.send(this.generateChat(aiMove.score)),1000})
     this.lastScore = aiMove.score
     this.turnsCount++
     if (this.checkWin(aiMove.x, aiMove.y)) return wrapInHTML(this.printBoard() + '\n游戏已结束，发送结束游戏退出')
@@ -182,7 +182,7 @@ class goBangSingleGame extends abstractGameSingleGame {
   // 负极大极小值搜索
   private async alphaBeta(depth: number, alpha: number, beta: number, player: number, command: Coordinate, game: goBangSingleGame): Promise<Coordinate> {
     let temp = command;
-    if (depth === 0) {
+    if (depth === 0 || temp.score === -1) {
       const flatBoard = this.board.flat()
       wasmModule.HEAP32.set(flatBoard, wasmMemoryPool.boardPtr / 4) // 将棋盘数据写入 WASM 内存
       temp.score = wasmModule._wholeScore(player, wasmMemoryPool.boardPtr);
@@ -193,9 +193,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     const steps = await this.wasmInspireSearch(player)
     const length = steps.length
 
-    if (length > 7 && depth > 1) {
-      depth--;
-    } else if (length > 2) {
+    if (length > 2) {
       depth--;
     }
 
@@ -312,11 +310,14 @@ class goBangSingleGame extends abstractGameSingleGame {
         4: '走这里会不会太冒险了？'
       }[Math.floor(Math.random() * 5)]
     }
-    if (Score < 1000) {
-      return '感觉有点不妙……'
+    if (Score < -1000000) {
+      return '好猛烈的攻击啊~'
     }
     if (Score < 0) {
       return '你还真是厉害呢~'
+    }
+    if (Score < 100) {
+      return '出乎意料的一手啊'
     }
   }
 }
@@ -336,15 +337,15 @@ export class goBang extends abstractGame<goBangSingleGame> {
       level = parseInt(args[0])
     else {
       setTimeout(() => {
-        session.send('未输入难度等级(2-8)，默认设为4')
+        session.send('未输入难度等级(2-7)，默认设为4')
       }, 500);
 
       level = 4
     }
-    if (level < 2 || level > 8) {
-      level = level < 2 ? 2 : 8
+    if (level < 2 || level > 7) {
+      level = level < 2 ? 2 : 7
       setTimeout(() => {
-        session.send('难度等级必须在2到8之间,已调整为' + level)
+        session.send('难度等级必须在2到7之间,已调整为' + level)
       }, 500);
     }
     const game = await super.startGame(session, ctx, args) as goBangSingleGame

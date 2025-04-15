@@ -21,12 +21,12 @@ declare class fencingSingleGame extends abstractGameSingleGame {
     static fencingActionHint: Map<fencingAction, string>;
     constructor(disposeListener: () => boolean, session: Session);
     private render;
-    startGame: () => string;
-    endGame: () => {
+    startGame: () => Promise<string>;
+    endGame: () => Promise<{
         message: string;
         win: winFlag;
         gameName: string;
-    };
+    }>;
     private enemyDecision;
     processInput(str: string): Promise<string>;
 }

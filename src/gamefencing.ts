@@ -44,7 +44,7 @@ class fencingSingleGame extends abstractGameSingleGame {
         return res
     }
 
-    public override startGame = () => {
+    public override startGame = async () => {
         this.availablePlayerActions.push(fencingAction.attack)
         this.availablePlayerActions.push(fencingAction.defence)
         let res = ''
@@ -56,7 +56,7 @@ class fencingSingleGame extends abstractGameSingleGame {
         return res
     }
 
-    public override endGame = () => {
+    public override endGame = async () => {
         super.endGame()
         return { message: '击剑游戏结束', win: this.winningFlag, gameName: '击剑' }
     }

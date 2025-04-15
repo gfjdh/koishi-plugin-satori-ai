@@ -15,11 +15,11 @@ export declare abstract class abstractGameSingleGame {
     protected session: Session;
     protected disposeListener: () => boolean;
     constructor(disposeListener: () => boolean, session: Session);
-    startGame(): string;
-    endGame(): {
+    startGame(): Promise<string>;
+    endGame(): Promise<{
         message: string;
         gameName: string;
-    };
+    }>;
     processInput(str: string): Promise<string>;
 }
 type Constructor<T> = new (...args: any[]) => T;
@@ -43,10 +43,10 @@ export declare abstract class abstractGame<T extends abstractGameSingleGame> {
      * @param ctx Koishi 上下文
      * @param args 启动参数（如难度等级）
      */
-    startGame(session: Session, ctx: Context, args: string[]): abstractGameSingleGame | null;
+    startGame(session: Session, ctx: Context, args: string[]): Promise<abstractGameSingleGame | null>;
     /**
      * 结束游戏实例，触发结果事件
      */
-    endGame(session: Session, ctx: Context): string;
+    endGame(session: Session, ctx: Context): Promise<string>;
 }
 export {};

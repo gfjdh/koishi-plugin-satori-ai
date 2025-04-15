@@ -35,16 +35,24 @@ export class Game {
       switch (result.gameName) {
         case '五子棋':
           const res = result as goBangGameResult
+          const user = await getUser(ctx, session.userId)
+          const level = parseInt(res.message)
+          const bonus = Math.floor(level * level * (Math.random() * 10 + 20))
           if (res.win === winFlag.win) {
-            // 根据level决定奖励
-            // let user = await getUser(ctx, session.userId)
-            // updateUserP(ctx, user, 20 * res.level * res.level)
-            session.send('你赢了')
+            updateUserP(ctx, user, bonus)
+            session.send('真厉害，奖励你' + bonus + 'p点')
           }
-          else if (res.win === winFlag.lose) session.send('你输了')
-          else if (res.win === winFlag.draw) session.send('平局')
-          else session.send('游戏中断，你输了')
-          break
+          else if (res.win === winFlag.lose) {
+            // 根据level决定惩罚
+            updateUserP(ctx, user, -bonus)
+            session.send('真可惜，你输了' + bonus + 'p点')
+          }
+          else if (res.win === winFlag.draw) session.send('平局，稍后再战吧')
+          else {
+            updateUserP(ctx, user, -bonus)
+            session.send('游戏中断，你输了' + bonus + 'p点')
+          }
+        break
       }
     })
   }

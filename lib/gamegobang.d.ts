@@ -8,7 +8,7 @@ export declare enum winFlag {
 }
 export interface goBangGameResult extends gameResult {
     win: winFlag;
-    level: number;
+    message: string;
 }
 /**
  * 五子棋单局实现类，继承自 abstractGameSingleGame
@@ -21,12 +21,12 @@ declare class goBangSingleGame extends abstractGameSingleGame {
     private lastScore;
     private turnsCount;
     constructor(disposeListener: () => boolean, session: Session);
-    startGame: () => string;
-    endGame: () => {
+    startGame: () => Promise<string>;
+    endGame: () => Promise<{
         message: string;
         win: winFlag;
         gameName: string;
-    };
+    }>;
     /**
      * 处理玩家输入（落子坐标）
      * @param str 输入内容，格式为 "x y"
@@ -46,6 +46,6 @@ declare class goBangSingleGame extends abstractGameSingleGame {
  */
 export declare class goBang extends abstractGame<goBangSingleGame> {
     constructor();
-    startGame(session: Session, ctx: Context, args: string[]): goBangSingleGame;
+    startGame(session: Session, ctx: Context, args: string[]): Promise<goBangSingleGame>;
 }
 export {};
