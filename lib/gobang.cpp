@@ -1,4 +1,5 @@
-﻿#define _CRT_SECURE_NO_WARNINGS
+﻿// g++ -O3 -std=c++11 gobang.cpp -o gobang_ai.exe
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +23,6 @@ struct chessType {
     int conti2; // 眠2
     int jump2;  // 跳2
     int alive1; // 活1
-    int conti1; // 眠1
 };
 // 坐标结构体
 struct coordinate {
@@ -42,6 +42,7 @@ class Game {
 public:
     int myFlag;
     int enemyFlag;
+    int inspireSearchLength;
     bool draw;
     Nude MAP;
     Game() :
@@ -68,6 +69,10 @@ int getColor(coordinate target, const Game &game) {
         return game.enemyFlag;
 }
 
+// 在指定位置放置棋子
+void place(coordinate target, int player, Game &game) {
+  game.MAP.board[target.x][target.y] = player;
+}
 // 快速排序函数
 int partition(coordinate *s, int high, int low) {
     int pi = s[high].score;
@@ -439,7 +444,7 @@ int wholeScore(int player, const Game &game) {
     return Score; // 己方总分减对方总分 得到当前对己方来说的局势分
 }
 // 启发性搜索
-int inspireSearch(coordinate *scoreBoard, int player, Game &game, int max_length) {
+int inspireSearch(coordinate *scoreBoard, int player, Game &game) {
     int length = 0;
     for (int i = 0; i < BOARD_SIZE; i++) {
         for (int j = 0; j < BOARD_SIZE; j++) {
@@ -471,7 +476,7 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game, int max_length
     // 更新 length 为分界线的位置
     length = boundary;
     // 返回 length，最多不超过
-    return length > max_length ? max_length : length;
+    return length > game.inspireSearchLength ? game.inspireSearchLength : length;
 }
 
 // 负极大极小值搜索
@@ -521,4 +526,31 @@ coordinate entrance(int depth, int alpha, int beta, int player, coordinate comma
     }
     best.score = alpha;
     return best;
+}
+
+coordinate calculateNextMove(const std::string& boardStr, int playerFlag, int difficulty, int inspireSearchLength) {
+  Game game;
+  game.myFlag = playerFlag;
+  game.enemyFlag = 3 - playerFlag;
+  game.inspireSearchLength = inspireSearchLength;
+  // 解析棋盘字符串
+  std::istringstream iss(boardStr);
+  for(int i=0; i<BOARD_SIZE; ++i)
+      for(int j=0; j<BOARD_SIZE; ++j)
+          iss >> game.MAP.board[i][j];
+
+  int depth = difficulty + 1;
+  coordinate best = entrance(depth, _INF, INF, game.myFlag, coordinate(), coordinate(), game);
+  if (game.draw) {
+      best.x = -1;
+      best.y = -1;
+      best.score = -1;
+  }
+  return best;
+}
+
+int main(int argc, char* argv[]) {
+  coordinate result = calculateNextMove(argv[1], atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
+  std::cout << result.x << " " << result.y << " " << result.score;
+  return 0;
 }

@@ -2,6 +2,8 @@ import { Session, Logger, Context } from 'koishi'
 import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { puppeteer } from '.'
+import { execSync } from 'child_process'
+import * as path from 'path'
 
 const logger = new Logger('satori-game-gobang')
 const BOARD_SIZE = 12;    // 棋盘大小
@@ -104,11 +106,12 @@ class goBangSingleGame extends abstractGameSingleGame {
     if (this.checkWin(x, y)) return wrapInHTML(this.printBoard() + '\n游戏已结束，发送结束游戏退出')
 
     const starttime = Date.now()
-    const aiMove = {x: -1, y: -1, score: -1}
+    const aiMove = this.getAIMove()
     const endtime = Date.now()
-
-    // 若返回 -1 -1 -1，则表示平局
-    if (aiMove.x === -1 && aiMove.y === -1 && aiMove.score === -1) {
+    
+    if (aiMove.x === -1 || aiMove.y === -1) return '计算失败'
+    // 当回合数超过30次时，判定为平局
+    if (this.turnsCount >= 30) {
       this.winningFlag = winFlag.draw
       return '平局，发送结束游戏退出'
     }
@@ -119,6 +122,30 @@ class goBangSingleGame extends abstractGameSingleGame {
     this.turnsCount++
     if (this.checkWin(aiMove.x, aiMove.y)) return wrapInHTML(this.printBoard() + '\n游戏已结束，发送结束游戏退出')
     return wrapInHTML(this.printBoard() + '\n我这一步下在这里哦(' + aiMove.x + ' ' + aiMove.y + ')')
+  }
+
+  private getAIMove(): Coordinate {
+    try {
+        // 将棋盘转换为字符串（每行用空格分隔）
+        const boardStr = this.board.map(row => row.join(' ')).join(' ')
+
+        // 获取exe路径（假设exe位于项目根目录）
+        const exePath = path.resolve(__dirname, '../lib/gobang_ai.exe')
+
+        // 执行命令并获取输出
+        const stdout = execSync(
+            `"${exePath}" "${boardStr}" ${this.playerFlag} ${this.level} ${inspireSearchLength}`,
+            { timeout: 100000 } // 设置100秒超时
+        ).toString().trim()
+
+        // 解析输出
+        const [x, y, score] = stdout.split(' ').map(Number)
+        return new Coordinate(x, y, score)
+    } catch (error) {
+        logger.error(`AI计算失败: ${error}`)
+    }
+    // 保底逻辑
+    return new Coordinate(-1, -1, -1)
   }
 
   // 检查是否连成五子

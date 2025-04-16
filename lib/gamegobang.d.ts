@@ -32,6 +32,7 @@ declare class goBangSingleGame extends abstractGameSingleGame {
      * @param str 输入内容，格式为 "x y"
      */
     processInput(str: string): Promise<string>;
+    private getAIMove;
     private checkWin;
     private checkDirection;
     private place;
