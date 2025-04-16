@@ -35,7 +35,7 @@ export class Game {
       switch (result.gameName) {
         case '五子棋':
           const res = result as goBangGameResult
-          const user = await getUser(ctx, session.userId)
+          const user = await getUser(ctx, result.playerID)
           const level = parseInt(res.message)
           const bonus = Math.floor(level * level * level * (Math.random() * 2 + 2))
           if (res.win === winFlag.win) {
@@ -53,7 +53,7 @@ export class Game {
             updateUserP(ctx, user, -bonus)
             session.send('游戏中断，你输了' + bonus + 'p点')
           }
-        break
+          break
       }
     })
   }
@@ -86,16 +86,10 @@ export class Game {
   public async endGame(session: Session) {
     const gameName = this.channelGames.get(session.channelId)
     if (!gameName) return '当前频道没有游戏在进行中'
-    this.availableGames.get(gameName).endGame(session, this.context)
-    this.channelGames.delete(session.channelId)
-    logger.info(`${session.channelId}的游戏已结束`)
-  }
-
-  // 选择并启动具体游戏实例
-  private async selectGame(session: Session, gameName: string, args: string[]) {
-    const game = this.availableGames.get(gameName)
-    if (!game) return '没有这个游戏哦'
-    game.startGame(session, this.context, args) // 调用抽象类的启动方法
+    if (await this.availableGames.get(gameName).endGame(session, this.context)) {
+      this.channelGames.delete(session.channelId)
+      logger.info(`${session.channelId}的游戏已结束`)
+    }
   }
 
   private async chat(session: Session, gameName: string, prompt: string) {

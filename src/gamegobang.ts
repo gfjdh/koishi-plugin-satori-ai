@@ -66,6 +66,7 @@ class goBangSingleGame extends abstractGameSingleGame {
 
   // 初始化棋盘，随机决定玩家先手
   public override startGame = () => {
+    super.startGame()
     this.board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0))
     this.turnsCount = 0
     this.playerFlag = Math.round(Math.random()) + 1
@@ -86,7 +87,7 @@ class goBangSingleGame extends abstractGameSingleGame {
   // 结束游戏，返回结果
   public override endGame = async () => {
     super.endGame()
-    return { message: `${this.level}`, win: this.winningFlag, gameName: '五子棋' }
+    return { message: `${this.level}`, win: this.winningFlag, gameName: '五子棋', playerID: this.session.userId }
   }
 
   /**
@@ -100,6 +101,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     if (this.board[x][y] !== 0) return '这个位置已经有棋子了，别想耍赖'
     if (this.winningFlag !== winFlag.pending) return '游戏已结束'
     // 玩家落子
+    this.lastActionTime = Date.now()
     this.board[x][y] = this.playerFlag
     logger.info(`level: ${this.level}, player: x: ${x}, y: ${y}`)
 
@@ -120,7 +122,9 @@ class goBangSingleGame extends abstractGameSingleGame {
     }
     logger.info(`AI 落子坐标: ${aiMove.x} ${aiMove.y}，得分: ${aiMove.score}，AI 落子耗时: ${endtime - starttime}ms`)
     this.board[aiMove.x][aiMove.y] = 3 - this.playerFlag // AI 使用对方颜色
-    if (this.turnsCount > 5) this.session.send(this.generateChat(aiMove.score))
+    if (this.turnsCount > 5) {
+      setTimeout(() => { this.session.send(this.generateChat(aiMove.score)) }, 1000)
+    }
     this.lastScore = aiMove.score
     this.turnsCount++
     if (this.checkWin(aiMove.x, aiMove.y)) return wrapInHTML(this.printBoard() + '\n游戏已结束，发送结束游戏退出')
@@ -129,25 +133,25 @@ class goBangSingleGame extends abstractGameSingleGame {
 
   private getAIMove(): Coordinate {
     try {
-        // 将棋盘转换为字符串（每行用空格分隔）
-        const boardStr = this.board.map(row => row.join(' ')).join(' ')
+      // 将棋盘转换为字符串（每行用空格分隔）
+      const boardStr = this.board.map(row => row.join(' ')).join(' ')
 
-        // 获取exe路径（假设exe位于项目根目录）
-        const exePath = path.resolve(__dirname, '../lib/gobang_ai.exe')
+      // 获取exe路径（假设exe位于项目根目录）
+      const exePath = path.resolve(__dirname, '../lib/gobang_ai.exe')
 
-        const level = this.turnsCount > 3 ? this.level : Math.min(5, this.level) // 前3回合使用简单AI，之后使用指定难度
+      const level = this.turnsCount > 3 ? this.level : Math.min(5, this.level) // 前3回合使用简单AI，之后使用指定难度
 
-        // 执行命令并获取输出
-        const stdout = execSync(
-            `"${exePath}" "${boardStr}" ${this.playerFlag} ${level} ${inspireSearchLength}`,
-            { timeout: 120000 } // 设置120秒超时
-        ).toString().trim()
+      // 执行命令并获取输出
+      const stdout = execSync(
+        `"${exePath}" "${boardStr}" ${this.playerFlag} ${level} ${inspireSearchLength}`,
+        { timeout: 120000 } // 设置120秒超时
+      ).toString().trim()
 
-        // 解析输出
-        const [x, y, score] = stdout.split(' ').map(Number)
-        return new Coordinate(x, y, score)
+      // 解析输出
+      const [x, y, score] = stdout.split(' ').map(Number)
+      return new Coordinate(x, y, score)
     } catch (error) {
-        logger.error(`AI计算失败: ${error}`)
+      logger.error(`AI计算失败: ${error}`)
     }
     // 保底逻辑
     return new Coordinate(-1, -1, -1)
@@ -201,7 +205,6 @@ class goBangSingleGame extends abstractGameSingleGame {
   }
 
   private generateChat(Score: number): string {
-    setTimeout(() => {}, 1000);
     if (this.lastScore < 5000000 && Score > 5000000 && this.level > 4) {
       return '我觉得你要输了哦~'
     }
