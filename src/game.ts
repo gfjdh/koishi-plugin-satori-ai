@@ -4,7 +4,7 @@ import { fencing } from './gamefencing'
 import { abstractGame } from './abstractGame'
 import { Sat } from './types'
 import { SAT } from './index'
-import { getUser, updateUserP } from './database'
+import { getUser, updateFavorability, updateUserP } from './database'
 
 const logger = new Logger('satori-game')
 
@@ -40,6 +40,7 @@ export class Game {
           const bonus = Math.floor(level * level * (Math.random() * 10 + 20))
           if (res.win === winFlag.win) {
             updateUserP(ctx, user, bonus)
+            updateFavorability(ctx, user, level)
             session.send('真厉害，奖励你' + bonus + 'p点')
           }
           else if (res.win === winFlag.lose) {

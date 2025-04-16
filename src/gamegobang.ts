@@ -108,7 +108,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     const starttime = Date.now()
     const aiMove = this.getAIMove()
     const endtime = Date.now()
-    
+
     if (aiMove.x === -1 || aiMove.y === -1) return '计算失败'
     // 当回合数超过30次时，判定为平局
     if (this.turnsCount >= 30) {
@@ -117,7 +117,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     }
     logger.info(`AI 落子坐标: ${aiMove.x} ${aiMove.y}，得分: ${aiMove.score}，AI 落子耗时: ${endtime - starttime}ms`)
     this.board[aiMove.x][aiMove.y] = 3 - this.playerFlag // AI 使用对方颜色
-    if (this.turnsCount > 5) setTimeout(() => {this.session.send(this.generateChat(aiMove.score)),1000})
+    if (this.turnsCount > 5) this.session.send(this.generateChat(aiMove.score))
     this.lastScore = aiMove.score
     this.turnsCount++
     if (this.checkWin(aiMove.x, aiMove.y)) return wrapInHTML(this.printBoard() + '\n游戏已结束，发送结束游戏退出')
@@ -196,6 +196,7 @@ class goBangSingleGame extends abstractGameSingleGame {
   }
 
   private generateChat(Score: number): string {
+    setTimeout(() => {}, 1000);
     if (this.lastScore < 5000000 && Score > 5000000) {
       return '我觉得你要输了哦~'
     }

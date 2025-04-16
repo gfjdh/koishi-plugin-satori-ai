@@ -1,4 +1,4 @@
-﻿// g++ -O3 -std=c++11 gobang.cpp -o gobang_ai.exe
+﻿// 使用DEV-C++编译器编译
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
