@@ -109,9 +109,12 @@ class goBangSingleGame extends abstractGameSingleGame {
     const aiMove = this.getAIMove()
     const endtime = Date.now()
 
-    if (aiMove.x === -1 || aiMove.y === -1) return '计算失败'
-    // 当回合数超过30次时，判定为平局
-    if (this.turnsCount >= 30) {
+    if (aiMove.x === -1 || aiMove.y === -1) {
+      this.winningFlag = winFlag.draw
+      return '计算失败，视为平局，发送结束游戏退出'
+    }
+    // 当回合数超过35次时，判定为平局
+    if (this.turnsCount > 35) {
       this.winningFlag = winFlag.draw
       return '平局，发送结束游戏退出'
     }
@@ -121,7 +124,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     this.lastScore = aiMove.score
     this.turnsCount++
     if (this.checkWin(aiMove.x, aiMove.y)) return wrapInHTML(this.printBoard() + '\n游戏已结束，发送结束游戏退出')
-    return wrapInHTML(this.printBoard() + '\n我这一步下在这里哦(' + aiMove.x + ' ' + aiMove.y + ')')
+    return wrapInHTML(this.printBoard() + '\n我这一步下在这里哦(' + aiMove.x + ' ' + aiMove.y + ' 用时' + (endtime - starttime) + 'ms)')
   }
 
   private getAIMove(): Coordinate {
@@ -132,10 +135,12 @@ class goBangSingleGame extends abstractGameSingleGame {
         // 获取exe路径（假设exe位于项目根目录）
         const exePath = path.resolve(__dirname, '../lib/gobang_ai.exe')
 
+        const level = this.turnsCount > 3 ? this.level : Math.min(5, this.level) // 前3回合使用简单AI，之后使用指定难度
+
         // 执行命令并获取输出
         const stdout = execSync(
-            `"${exePath}" "${boardStr}" ${this.playerFlag} ${this.level} ${inspireSearchLength}`,
-            { timeout: 100000 } // 设置100秒超时
+            `"${exePath}" "${boardStr}" ${this.playerFlag} ${level} ${inspireSearchLength}`,
+            { timeout: 120000 } // 设置120秒超时
         ).toString().trim()
 
         // 解析输出
@@ -197,7 +202,7 @@ class goBangSingleGame extends abstractGameSingleGame {
 
   private generateChat(Score: number): string {
     setTimeout(() => {}, 1000);
-    if (this.lastScore < 5000000 && Score > 5000000) {
+    if (this.lastScore < 5000000 && Score > 5000000 && this.level > 4) {
       return '我觉得你要输了哦~'
     }
     if (this.lastScore < 1000000 && Score > 1000000) {
