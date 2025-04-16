@@ -247,15 +247,15 @@ export class goBang extends abstractGame<goBangSingleGame> {
       level = parseInt(args[0])
     else {
       setTimeout(() => {
-        session.send('未输入难度等级(2-7)，默认设为4')
+        session.send('未输入难度等级(2-6)，默认设为3')
       }, 500);
 
-      level = 4
+      level = 3
     }
-    if (level < 2 || level > 7) {
-      level = level < 2 ? 2 : 7
+    if (level < 2 || level > 6) {
+      level = level < 2 ? 2 : 6
       setTimeout(() => {
-        session.send('难度等级必须在2到7之间,已调整为' + level)
+        session.send('难度等级必须在2到6之间,已调整为' + level)
       }, 500);
     }
     const game = await super.startGame(session, ctx, args) as goBangSingleGame

@@ -37,11 +37,11 @@ export class Game {
           const res = result as goBangGameResult
           const user = await getUser(ctx, session.userId)
           const level = parseInt(res.message)
-          const bonus = Math.floor(level * level * (Math.random() * 10 + 20))
+          const bonus = Math.floor(level * level * level * (Math.random() * 2 + 2))
           if (res.win === winFlag.win) {
-            updateUserP(ctx, user, bonus)
-            updateFavorability(ctx, user, level)
-            session.send('真厉害，奖励你' + bonus + 'p点')
+            updateUserP(ctx, user, bonus * 2)
+            updateFavorability(ctx, user, level * 2)
+            session.send('真厉害，奖励你' + bonus * 2 + 'p点,好感度+' + level * 2)
           }
           else if (res.win === winFlag.lose) {
             // 根据level决定惩罚

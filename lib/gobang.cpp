@@ -421,7 +421,7 @@ int singleScore(coordinate p, int player, const Game &game) {
         chesstype.alive1 += temp.alive1;
     }
     score += chesstype.win5 << 20;
-    score += ((chesstype.conti4 << 9) + (chesstype.alive3 << 8) + (chesstype.conti3 << 7) +
+    score += ((chesstype.conti4 << 9) + (chesstype.alive3 << 8) + (chesstype.conti3 << 7) + (chesstype.alive4 << 10) +
               (chesstype.jump3 << 6) + (chesstype.alive2 << 5) + (chesstype.jump2 << 3) + chesstype.conti2 + chesstype.alive1);
     if (chesstype.alive3 > 1 || (chesstype.conti4 && chesstype.alive3) || chesstype.alive4 || chesstype.conti4 > 1) // 必胜?
         score += (1 << 12);
@@ -473,10 +473,8 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game) {
             break;        // 分数低于阈值，跳出循环
         }
     }
-    // 更新 length 为分界线的位置
-    length = boundary;
-    // 返回 length，最多不超过
-    return length > game.inspireSearchLength ? game.inspireSearchLength : length;
+    // 返回分界线位置
+    return boundary > game.inspireSearchLength ? game.inspireSearchLength : boundary;
 }
 
 // 负极大极小值搜索
