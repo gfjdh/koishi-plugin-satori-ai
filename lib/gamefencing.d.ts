@@ -26,6 +26,7 @@ declare class fencingSingleGame extends abstractGameSingleGame {
         message: string;
         win: winFlag;
         gameName: string;
+        playerID: string;
     }>;
     private enemyDecision;
     processInput(str: string): Promise<string>;

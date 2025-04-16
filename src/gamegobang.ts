@@ -7,7 +7,7 @@ import * as path from 'path'
 
 const logger = new Logger('satori-game-gobang')
 const BOARD_SIZE = 12;    // 棋盘大小
-const inspireSearchLength = 8 // 启发式搜索长度
+const inspireSearchLength = 10 // 启发式搜索长度
 
 // 胜负标志枚举
 export enum winFlag {
@@ -95,7 +95,7 @@ class goBangSingleGame extends abstractGameSingleGame {
    * @param str 输入内容，格式为 "x y"
    */
   public override async processInput(str: string) {
-    const [x, y] = str.split(' ').map(Number)
+    const [x, y] = str.split(' ').map((a) => {return parseInt(a)})
     if (isNaN(x) || isNaN(y)) return
     if (x < 0 || x >= BOARD_SIZE || y < 0 || y >= BOARD_SIZE) return '坐标超出范围了'
     if (this.board[x][y] !== 0) return '这个位置已经有棋子了，别想耍赖'
@@ -226,7 +226,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     if (Score < -1000000) {
       return '好猛烈的攻击啊~'
     }
-    if (Score < 0) {
+    if (Score < 0 && Math.random() < 0.5) {
       return '你还真是厉害呢~'
     }
     if (Score < 100) {

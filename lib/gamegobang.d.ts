@@ -26,6 +26,7 @@ declare class goBangSingleGame extends abstractGameSingleGame {
         message: string;
         win: winFlag;
         gameName: string;
+        playerID: string;
     }>;
     /**
      * 处理玩家输入（落子坐标）

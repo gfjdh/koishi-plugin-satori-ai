@@ -15,6 +15,5 @@ export declare class Game {
     private registerCommands;
     startGame(session: Session, gameName: string, args: string[]): Promise<string>;
     endGame(session: Session): Promise<string>;
-    private selectGame;
     private chat;
 }

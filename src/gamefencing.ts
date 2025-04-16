@@ -58,7 +58,7 @@ class fencingSingleGame extends abstractGameSingleGame {
 
     public override endGame = async () => {
         super.endGame()
-        return { message: '击剑游戏结束', win: this.winningFlag, gameName: '击剑' }
+        return { message: '击剑游戏结束', win: this.winningFlag, gameName: '击剑', playerID: this.session.userId }
     }
 
     private enemyDecision(playerPosition: number, enemyPosition: number): fencingAction {

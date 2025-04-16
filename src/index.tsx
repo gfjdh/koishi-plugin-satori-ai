@@ -424,9 +424,10 @@ export class SAT extends Sat {
   // 思考提示
   private getThinkingPrompt(user: User, prompt: string): string {
     const reasonerPrompt = this.config.reasoner_prompt
-    const promptForNoReasoner = `请你在回复时先进行分析思考，并且按思维链的模式输出思考内容，所有思考内容必须使用<think>和</think>包裹输出，而后在最后输出正式的回复内容，
-在<think>和</think>之外只能有最终回复内容，禁止包含任何多余内容${reasonerPrompt}\n`
-    const promptForReasoner = `你必须将所有思考内容使用<think>和</think>标签包裹并输出在思维链中，注意不要在最终的输出内包含任何思考内容或多余注解。${reasonerPrompt}\n`
+    const promptForNoReasoner = `请你在回复时先进行分析思考，并且按思维链的模式输出思考内容，所有思考内容必须使用<think>和</think>包裹输出，
+注意开头必须使用<think>，结尾必须使用</think>，而后在最后输出正式的回复内容，
+在<think>和</think>之外只能有最终回复内容，最终回复内容禁止包含任何多余注解${reasonerPrompt}\n`
+    const promptForReasoner = `你在思考时必须将所有思考内容使用<think>和</think>标签包裹并输出在思维链中，不要在最终的输出内包含任何多余注解。\n`
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength

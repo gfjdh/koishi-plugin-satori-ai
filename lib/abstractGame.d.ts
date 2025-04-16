@@ -5,6 +5,7 @@ declare module 'koishi' {
     }
 }
 export interface gameResult {
+    playerID: string;
     message: string;
     gameName: string;
 }
@@ -14,12 +15,16 @@ export interface gameResult {
 export declare abstract class abstractGameSingleGame {
     protected session: Session;
     protected disposeListener: () => boolean;
+    protected lastActionTime: number;
     constructor(disposeListener: () => boolean, session: Session);
     startGame(): Promise<string>;
     endGame(): Promise<{
         message: string;
         gameName: string;
+        playerID: string;
     }>;
+    getPlayerID(): string;
+    getLastActionTime(): number;
     processInput(str: string): Promise<string>;
 }
 type Constructor<T> = new (...args: any[]) => T;
@@ -47,6 +52,6 @@ export declare abstract class abstractGame<T extends abstractGameSingleGame> {
     /**
      * 结束游戏实例，触发结果事件
      */
-    endGame(session: Session, ctx: Context): Promise<string>;
+    endGame(session: Session, ctx: Context): Promise<boolean>;
 }
 export {};
