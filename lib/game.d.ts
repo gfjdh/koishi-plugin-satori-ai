@@ -13,7 +13,7 @@ export declare class Game {
     private sat;
     constructor(ctx: Context, cfg: Sat.Config, sat: SAT);
     private registerCommands;
-    startGame(session: Session, gameName: string, args: string[]): Promise<"当前频道已经有游戏在进行中" | "没有这个游戏哦">;
+    startGame(session: Session, gameName: string, args: string[]): Promise<string>;
     endGame(session: Session): Promise<string>;
     private selectGame;
     private chat;

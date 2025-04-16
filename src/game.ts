@@ -74,6 +74,9 @@ export class Game {
     if (!this.GAMES.includes(gameName)) return '没有这个游戏哦'
     const game = this.availableGames.get(gameName)
     if (!game) return '没有这个游戏哦'
+    if (gameName === '五子棋' && !this.config.channel_id_for_gobang.includes(session.channelId)) {
+      return '本群不支持五子棋哦,想玩请加群' + this.config.channel_id_for_gobang[0]
+    }
     game.startGame(session, this.context, args) // 调用抽象类的启动方法
     this.channelGames.set(session.channelId, gameName)
     logger.info(`游戏${gameName}已开始于${session.channelId}`)
