@@ -50,6 +50,7 @@ export interface FavorabilityConfig {
     prompt_3: string;
     favorability_div_4: number;
     prompt_4: string;
+    prompt_5: string;
 }
 export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人' | '夫妻';
 export interface MemoryEntry {
@@ -231,6 +232,7 @@ export declare namespace Sat {
         prompt_3: string;
         favorability_div_4: number;
         prompt_4: string;
+        prompt_5: string;
         maxRetryTimes: number;
         retry_delay_time: number;
         enable_game: boolean;

@@ -1,10 +1,10 @@
-﻿// emcc gobang.cpp -O3 -flto -s EXPORTED_FUNCTIONS="['_wholeScore', '_malloc', '_free', '_inspireSearch']" -s ALLOW_MEMORY_GROWTH -s ASSERTIONS -s MODULARIZE=1 -s ENVIRONMENT='node' -o gobang.js
-
-#define _CRT_SECURE_NO_WARNINGS
+﻿#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <iostream>
+#include <sstream>
 #define BOARD_SIZE 12    // 棋盘大小
 #define EMPTY 0          // 空位
 #define BLACK 1          // 黑棋
@@ -474,42 +474,51 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game, int max_length
     return length > max_length ? max_length : length;
 }
 
-/*
-  * @param scoreBoard: 棋盘状态
-  * @param player: 我方棋子颜色
-  * @param board: 棋盘状态
-  * @param max_length: 最大长度
-  * -1: 游戏平局
-  */
-extern "C" int inspireSearch(coordinate *scoreBoard, int player, const int board[BOARD_SIZE * BOARD_SIZE], int max_length) {
-  Game localGame;
-  for (int i = 0; i < BOARD_SIZE; i++) {
-      for (int j = 0; j < BOARD_SIZE; j++) {
-          localGame.MAP.board[i][j] = board[i * BOARD_SIZE + j];
-      }
-  }
-  localGame.myFlag = player;
-  localGame.enemyFlag = 3 - player;
-  localGame.draw = 0;
-
-  int length = inspireSearch(scoreBoard, player, localGame, max_length);
-
-  if (localGame.draw) {
-      scoreBoard[0].x = -1;
-      scoreBoard[0].y = -1;
-      scoreBoard[0].score = -1;
-  }
-  return length;
-}
-
-extern "C" int wholeScore(int player, const int board[BOARD_SIZE * BOARD_SIZE]) {
-    Game localGame;
-    for (int i = 0; i < BOARD_SIZE; i++) {
-        for (int j = 0; j < BOARD_SIZE; j++) {
-            localGame.MAP.board[i][j] = board[i * BOARD_SIZE + j];
-        }
+// 负极大极小值搜索
+coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate command, coordinate current, Game &game) {
+    coordinate temp = command;
+    if (depth == 0) {
+        temp.score = wholeScore(player, game);
+        return temp;
     }
-    localGame.myFlag = player;
-    localGame.enemyFlag = 3 - player;
-    return wholeScore(player, localGame);
+    coordinate steps[BOARD_SIZE * BOARD_SIZE];
+    int length = inspireSearch(steps, player, game); // 搜索可落子点
+    if (length > 2)
+        depth--;
+    for (int i = 0; i < length; i++) {
+        place(steps[i], player, game);                                               // 模拟落子
+        temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 取负值并交换alpha和beta
+        temp.score *= -1;
+        place(steps[i], 0, game); // 还原落子
+        if (temp.score >= beta) {
+            temp.score = beta;
+            return temp; // 剪枝
+        }
+        if (temp.score > alpha)
+            alpha = temp.score;
+    }
+    temp.score = alpha;
+    return temp;
+}
+// 搜索入口
+coordinate entrance(int depth, int alpha, int beta, int player, coordinate command, coordinate current, Game &game) {
+    coordinate steps[BOARD_SIZE * BOARD_SIZE]{};
+    coordinate temp;
+    coordinate best;
+    int length;
+    length = inspireSearch(steps, player, game); // 搜索可落子点
+    if (length == 1 || game.draw)
+      return steps[0];
+    for (int i = 0; i < length; i++) {
+      place(steps[i], player, game);                                               // 模拟落子
+      temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 递归
+      temp.score *= -1;
+      place(steps[i], 0, game); // 还原落子
+      if (temp.score > alpha) {
+          alpha = temp.score;
+          best = steps[i]; // 记录最佳落子
+      }
+    }
+    best.score = alpha;
+    return best;
 }

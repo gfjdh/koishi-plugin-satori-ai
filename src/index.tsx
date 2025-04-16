@@ -48,7 +48,7 @@ export class SAT extends Sat {
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
     this.registerCommands(ctx)
-    if (this.config.enable_game) this.game = new Game(ctx, config, this)
+    //if (this.config.enable_game) this.game = new Game(ctx, config, this)
   }
 
   private getAPIConfig(): APIConfig {
@@ -113,7 +113,8 @@ export class SAT extends Sat {
         favorability_div_3: this.config.favorability_div_3,
         prompt_3: this.config.prompt_3,
         favorability_div_4: this.config.favorability_div_4,
-        prompt_4: this.config.prompt_4
+        prompt_4: this.config.prompt_4,
+        prompt_5: this.config.prompt_5,
       }
   }
   private getFavorabilityConfig(): FavorabilityConfig {
@@ -135,7 +136,8 @@ export class SAT extends Sat {
       favorability_div_3: this.config.favorability_div_3,
       prompt_3: this.config.prompt_3,
       favorability_div_4: this.config.favorability_div_4,
-      prompt_4: this.config.prompt_4
+      prompt_4: this.config.prompt_4,
+      prompt_5: this.config.prompt_5
     }
   }
 

@@ -8,7 +8,6 @@
   "files": [
     "lib",
     "locales",
-    "wasm",
     "README.md"
   ],
   "license": "MIT",

@@ -47,7 +47,7 @@ export function generateLevelPrompt(
     '朋友': config.prompt_2,
     '暧昧': config.prompt_3,
     '恋人': config.prompt_4,
-    '夫妻': user?.items['订婚戒指']?.metadata?.prompt || '你们的关系是夫妻'
+    '夫妻': config.prompt_5
   }
   return `\n${prompts[level]}\n`
 }

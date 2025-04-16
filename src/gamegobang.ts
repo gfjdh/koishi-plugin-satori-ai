@@ -6,23 +6,6 @@ import { puppeteer } from '.'
 const logger = new Logger('satori-game-gobang')
 const BOARD_SIZE = 12;    // 棋盘大小
 const inspireSearchLength = 8 // 启发式搜索长度
-const INF = 2147483647;   // 正无穷
-
-// 加载 WASM 模块（五子棋 AI 逻辑）
-const Module = require('../wasm/gobang.js')
-// 预定义内存池对象，存储棋盘和候选点的指针
-let wasmMemoryPool = {
-  boardPtr: null as number,     // 棋盘数据内存指针
-  scoreBoardPtr: null as number // 候选点数组内存指针
-};
-let wasmModule
-Module().then((mod) => {
-  wasmModule = mod;
-  // 预分配棋盘内存（BOARD_SIZE * BOARD_SIZE * 4字节）
-  wasmMemoryPool.boardPtr = wasmModule._malloc(BOARD_SIZE * BOARD_SIZE * 4);
-  // 预分配候选点内存（BOARD_SIZE * BOARD_SIZE * 3 * 4字节）
-  wasmMemoryPool.scoreBoardPtr = wasmModule._malloc(BOARD_SIZE * BOARD_SIZE * 4 * 3);
-});
 
 // 胜负标志枚举
 export enum winFlag {
@@ -100,14 +83,6 @@ class goBangSingleGame extends abstractGameSingleGame {
 
   // 结束游戏，返回结果
   public override endGame = async () => {
-    if (wasmMemoryPool.boardPtr) {
-      wasmModule._free(wasmMemoryPool.boardPtr);
-      wasmMemoryPool.boardPtr = null;
-    }
-    if (wasmMemoryPool.scoreBoardPtr) {
-      wasmModule._free(wasmMemoryPool.scoreBoardPtr);
-      wasmMemoryPool.scoreBoardPtr = null;
-    }
     super.endGame()
     return { message: `${this.level}`, win: this.winningFlag, gameName: '五子棋' }
   }
@@ -129,7 +104,7 @@ class goBangSingleGame extends abstractGameSingleGame {
     if (this.checkWin(x, y)) return wrapInHTML(this.printBoard() + '\n游戏已结束，发送结束游戏退出')
 
     const starttime = Date.now()
-    const aiMove = await this.entrance(this.level, -INF, INF, 3 - this.playerFlag, this)
+    const aiMove = {x: -1, y: -1, score: -1}
     const endtime = Date.now()
 
     // 若返回 -1 -1 -1，则表示平局
@@ -177,104 +152,6 @@ class goBangSingleGame extends abstractGameSingleGame {
   // 在指定位置放置棋子
   private place(target: Coordinate, player: number, game: goBangSingleGame): void {
     game.board[target.x][target.y] = player;
-  }
-
-  // 负极大极小值搜索
-  private async alphaBeta(depth: number, alpha: number, beta: number, player: number, command: Coordinate, game: goBangSingleGame): Promise<Coordinate> {
-    let temp = command;
-    if (depth === 0 || temp.score === -1) {
-      const flatBoard = this.board.flat()
-      wasmModule.HEAP32.set(flatBoard, wasmMemoryPool.boardPtr / 4) // 将棋盘数据写入 WASM 内存
-      temp.score = wasmModule._wholeScore(player, wasmMemoryPool.boardPtr);
-      return temp;
-    }
-
-    // 调用 WASM 计算
-    const steps = await this.wasmInspireSearch(player)
-    const length = steps.length
-
-    if (length > 2) {
-      depth--;
-    }
-
-    for (let i = 0; i < length; i++) {
-      this.place(steps[i], player, game); // 模拟落子
-      temp = await this.alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], game); // 取负值并交换alpha和beta
-      temp.score *= -1;
-      this.place(steps[i], 0, game); // 还原落子
-
-      if (temp.score >= beta) {
-        temp.score = beta;
-        return temp; // 剪枝
-      }
-
-      if (temp.score > alpha) {
-        alpha = temp.score;
-      }
-    }
-
-    temp.score = alpha;
-    return temp;
-  }
-
-  // 搜索入口
-  private async entrance(depth: number, alpha: number, beta: number, player: number, game: goBangSingleGame): Promise<Coordinate> {
-    let temp = new Coordinate();
-    let best = new Coordinate();
-
-    // 调用 WASM 计算
-    const steps = await this.wasmInspireSearch(player)
-    const length = steps.length
-
-    if (length === 1) {
-      return steps[0];
-    }
-
-    for (let i = 0; i < length; i++) {
-      this.place(steps[i], player, game); // 模拟落子
-      temp = await this.alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], game); // 递归
-      temp.score *= -1;
-      this.place(steps[i], 0, game); // 还原落子
-
-      if (temp.score > alpha) {
-        alpha = temp.score;
-        best = steps[i]; // 记录最佳落子
-      }
-    }
-
-    best.score = alpha;
-    return best;
-  }
-
-  private async wasmInspireSearch(player: number): Promise<Coordinate[]> {
-    const flatBoard = this.board.flat();
-    // 使用预分配的棋盘内存
-    wasmModule.HEAP32.set(flatBoard, wasmMemoryPool.boardPtr / 4);
-
-    // 调用 WASM 函数，传入预分配的 scoreBoardPtr
-    const length: number = await wasmModule._inspireSearch(
-      wasmMemoryPool.scoreBoardPtr, // 直接使用预分配指针
-      player,
-      wasmMemoryPool.boardPtr,      // 直接使用预分配指针
-      inspireSearchLength
-    );
-
-    // 从预分配内存中读取结果
-    const scoreBoard = new Int32Array(
-      wasmModule.HEAP32.buffer,
-      wasmMemoryPool.scoreBoardPtr,
-      length * 3
-    );
-
-    let steps: Coordinate[] = [];
-    for (let i = 0; i < length; i++) {
-      steps.push(new Coordinate(
-        scoreBoard[i * 3],
-        scoreBoard[i * 3 + 1],
-        scoreBoard[i * 3 + 2]
-      ));
-    }
-    return steps;
   }
 
   // 生成带表情符号的棋盘字符串

@@ -35,9 +35,6 @@ declare class goBangSingleGame extends abstractGameSingleGame {
     private checkWin;
     private checkDirection;
     private place;
-    private alphaBeta;
-    private entrance;
-    private wasmInspireSearch;
     private printBoard;
     private generateChat;
 }

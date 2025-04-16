@@ -60,6 +60,7 @@ export interface FavorabilityConfig {
   prompt_3: string
   favorability_div_4: number
   prompt_4: string
+  prompt_5: string
 }
 //好感度等级
 export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人' | '夫妻'
@@ -263,6 +264,7 @@ export namespace Sat {
     prompt_3: string
     favorability_div_4: number
     prompt_4: string
+    prompt_5: string
 
     maxRetryTimes: number
     retry_delay_time: number
@@ -373,18 +375,19 @@ export namespace Sat {
       prompt_3: Schema.string().role('textarea').description('思慕好感补充设定'),
       favorability_div_4: Schema.number().default(1000).description('思慕-恋慕分界线'),
       prompt_4: Schema.string().role('textarea').description('恋慕好感补充设定'),
+      prompt_5: Schema.string().role('textarea').default('一般此配置项无效').description('夫妻好感补充设定'),
     }).description('好感度设置'),
 
     Schema.object({
       enable_mood: Schema.boolean().default(false).description('是否开启心情系统（通过屏蔽词降低心情，正常聊天心情+1，每天重置为mood_div_1 + value_of_output_mood）'),
-      max_mood: Schema.number().default(5).description('心情上限'),
-      value_of_input_mood: Schema.number().default(6).description('输入触发屏蔽词每次扣除的心情'),
-      value_of_output_mood: Schema.number().default(3).description('输出触发屏蔽词每次扣除的心情,若当时心情大于0,此次不扣好感度'),
+      max_mood: Schema.number().default(10).description('心情上限'),
+      value_of_input_mood: Schema.number().default(10).description('输入触发屏蔽词每次扣除的心情'),
+      value_of_output_mood: Schema.number().default(5).description('输出触发屏蔽词每次扣除的心情,若当时心情大于0,此次不扣好感度'),
       visible_mood: Schema.boolean().default(false).description('是否开启心情状态显示'),
       mood_prompt_2: Schema.string().role('textarea').default('你现在的心情十分愉悦').description('心情达到最高补充设定'),
       mood_div_1: Schema.number().default(-1).description('心情正常-烦躁分界线'),
       mood_prompt_0: Schema.string().role('textarea').default('你现在的心情是：有点烦躁').description('烦躁心情补充设定'),
-      mood_div_2: Schema.number().default(-5).description('烦躁-生气分界线'),
+      mood_div_2: Schema.number().default(-15).description('烦躁-生气分界线'),
       mood_prompt_1: Schema.string().role('textarea').default('你现在的心情是：非常生气').description('生气心情补充设定'),
       enable_pocket_money: Schema.boolean().default(false).description('开启要零花钱指令（通过消耗心情换随机数量p点）'),
       min_pocket_money: Schema.number().default(100).description('随机p点最小值'),
