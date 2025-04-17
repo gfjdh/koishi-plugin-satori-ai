@@ -144,6 +144,7 @@ export class APIClient {
     for (let i = 1; i <= this.config.maxRetryTimes; i++) {
       try {
         const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
+        logger.info(`APIID: ${response.id}, 输入token: ${response.usage.prompt_tokens}, 输出token: ${response.usage.completion_tokens}, 总token: ${response.usage.total_tokens}`)
         content = response.choices[0].message.content
         const reasoning_content = response.choices[0].message.reasoning_content || '无'
         if (this.config.reasoning_content) logger.info(`思维链: ${reasoning_content}`)

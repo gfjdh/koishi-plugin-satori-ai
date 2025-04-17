@@ -150,27 +150,31 @@ export function processPrompt(prompt: string): string {
  */
 export function filterResponse(prompt: string, words: string[]): {content: string, error: boolean} {
   // 匹配中文括号及其内容，使用非贪婪模式
-  const parts = prompt.split(/([（\[【\<《(][^）)]*[）\]】》\>)])/g);
+  const parts = prompt.split(/([（\[【《(][^）)]*[）\]】》)])/g);
   // 删除含有关键词的部分
   const filtered = parts.map(part => {
     if (part.startsWith('（') && part.endsWith('）') || part.startsWith('(') && part.endsWith(')') ||
-        part.startsWith('[') && part.endsWith(']') || part.startsWith('【') && part.endsWith('】') ||
-        part.startsWith('<') && part.endsWith('>') || part.startsWith('《') && part.endsWith('》')) {
+        part.startsWith('[') && part.endsWith(']') || part.startsWith('【') && part.endsWith('】') || part.startsWith('《') && part.endsWith('》')) {
       return words.some(word => part.includes(word)) ? '' : part;
     }
     return part;
   }).join('');
-  if (filtered.includes('<think>') && !filtered.includes('</think>'))
-    return {content: '……', error: true}
-  // 删除<think>和</think>标签中的内容
-  const regex = /<think>[\s\S]*?<\/think>/g;
-  const filteredThink = filtered.replace(regex, '');
-  // 删除<think>和</think>标签
-  const regex2 = /<think>|<\/think>/g;
-  const filtered2 = filteredThink.replace(regex2, '');
-  // 清理首尾空白并处理空结果
-  const trimmedResult = filtered2.trim();
-  return trimmedResult === '' ? {content: '……', error: true} : {content: trimmedResult, error: false};
+  // 删除空格和换行
+  const cleaned = filtered.replace(/\s+/g, '');
+  // 获取<answer>和</answer>标签中的内容
+  const answerRegex = /<answer>[\s\S]*?<\/answer>/g;
+  const answerRegex2 = /<doubaothinking>[\s\S]*?<\/answer>/g;
+  const answerMatches = cleaned.match(answerRegex);
+  const answerMatches2 = cleaned.match(answerRegex2);
+  if (!answerMatches && !answerMatches2) {
+    return {content: '有点问题，稍后再来吧', error: true};
+  }
+  const answerContent = answerMatches ? answerMatches[answerMatches.length - 1] : answerMatches2[answerMatches2.length - 1];
+  // 删除<answer>和</answer>标签
+  const regex = /<answer>|<\/answer>|<doubaothinking>|<\/doubaothinking>/g;
+  const cleanedContent = answerContent.replace(regex, '');
+  // 如果<answer>和</answer>标签中有内容，返回内容
+  return cleanedContent === '' ? {content: '有点问题，稍后再来吧', error: true} : {content: cleanedContent, error: false};
 }
 
 // 添加输出屏蔽词

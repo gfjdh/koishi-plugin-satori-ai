@@ -1,4 +1,4 @@
-﻿// g++ -O3 -static -std=c++11 gobang.cpp -o gobang_ai.exe
+﻿// g++ -O3 -fopenmp -static -std=c++11 gobang.cpp -o gobang_ai.exe
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,6 +6,7 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <omp.h>
 #define BOARD_SIZE 14    // 棋盘大小
 #define EMPTY 0          // 空位
 #define BLACK 1          // 黑棋
@@ -517,7 +518,8 @@ chessType typeAnalysis(coordinate p, int dire, int player, const Game &game)
   return temp;
 }
 // 单点得分
-int singleScore(coordinate p, int player, const Game &game)
+__attribute__((always_inline))
+inline int singleScore(coordinate p, int player, const Game &game)
 {
   chessType chesstype = typeAnalysis(p, 0, player, game);
   int score = 0;
@@ -545,23 +547,30 @@ int singleScore(coordinate p, int player, const Game &game)
 // 棋盘整体局面分
 int wholeScore(int player, const Game &game)
 {
-  int Score = 0;
-  for (int i = 0; i < BOARD_SIZE; i++)
-  {
-    for (int j = 0; j < BOARD_SIZE; j++)
+    int Score = 0;
+    coordinate temps[BOARD_SIZE * BOARD_SIZE];
+    int length = 0;
+    for (int i = 0; i < BOARD_SIZE; i++)
     {
-      coordinate temp = {i, j, game.MAP.board[i][j]};
-      if (temp.score == 0)
-        continue;
-      if (temp.score == player)
-      {
-        Score += singleScore(temp, player, game); // 己方落子的单点分相加
-      }
-      else
-        Score -= singleScore(temp, 3 - player, game); // 对方落子的单点分相加
+        for (int j = 0; j < BOARD_SIZE; j++)
+        {
+            coordinate temp = {i, j, game.MAP.board[i][j]};
+            if (temp.score == 0)
+                continue;
+            temps[length] = temp;
+            length++;
+        }
     }
-  }
-  return Score; // 己方总分减对方总分 得到当前对己方来说的局势分
+    // 计算每个点的分数
+    #pragma omp parallel for reduction(+:Score) schedule(dynamic, 4)
+    for (int i = 0; i < length; i++)
+    {
+        if (temps[i].score == player)
+            Score += singleScore(temps[i], player, game);
+        else
+            Score -= singleScore(temps[i], 3 - player, game);
+    }
+    return Score;
 }
 // 启发性搜索
 int inspireSearch(coordinate *scoreBoard, int player, Game &game)
@@ -603,7 +612,7 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game)
 }
 
 // 负极大极小值搜索
-coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate command, coordinate current, Game &game)
+coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate command, Game &game)
 {
   coordinate temp = command;
   if (depth == 0)
@@ -611,11 +620,14 @@ coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate comm
     temp.score = wholeScore(player, game);
     return temp;
   }
-  if (singleScore(current, player, game) >= (1 << 20)) // 如果当前落子能赢
-  {
-    temp.score = (5 << 20);
-    return temp;
-  }
+  // if (singleScore(temp, player, game) >= (1 << 20)) // 如果当前落子win5
+  // {
+  //   if (player == game.myFlag)
+  //     temp.score = 6000000 + temp.x * 100 + temp.y;
+  //   else
+  //     temp.score = 2000000 + temp.x * 100 + temp.y;
+  //   return temp;
+  // }
   coordinate steps[BOARD_SIZE * BOARD_SIZE];
   int length = inspireSearch(steps, player, game); // 搜索可落子点
   if (length > 2)
@@ -623,7 +635,7 @@ coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate comm
   for (int i = 0; i < length; i++)
   {
     place(steps[i], player, game);                                               // 模拟落子
-    temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 取负值并交换alpha和beta
+    temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], game); // 取负值并交换alpha和beta
     temp.score *= -1;
     place(steps[i], 0, game); // 还原落子
     if (temp.score >= beta)
@@ -638,7 +650,7 @@ coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate comm
   return temp;
 }
 // 搜索入口
-coordinate entrance(int depth, int alpha, int beta, int player, coordinate command, coordinate current, Game &game)
+coordinate entrance(int depth, int alpha, int beta, int player, Game &game)
 {
   coordinate steps[BOARD_SIZE * BOARD_SIZE]{};
   coordinate temp;
@@ -647,7 +659,7 @@ coordinate entrance(int depth, int alpha, int beta, int player, coordinate comma
   for (int i = 0; i < length; i++)
   {
     place(steps[i], player, game);                                               // 模拟落子
-    temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], command, game); // 递归
+    temp = alphaBeta(depth, -beta, -alpha, 3 - player, steps[i], game); // 递归
     temp.score *= -1;
     place(steps[i], 0, game); // 还原落子
     if (temp.score > alpha)
@@ -673,7 +685,7 @@ coordinate calculateNextMove(const std::string &boardStr, int playerFlag, int di
       iss >> game.MAP.board[i][j];
 
   int depth = difficulty + 1;
-  coordinate best = entrance(depth, _INF, INF, game.myFlag, coordinate(), coordinate(), game);
+  coordinate best = entrance(depth, _INF, INF, game.myFlag, game);
   return best;
 }
 

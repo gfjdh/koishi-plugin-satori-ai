@@ -207,7 +207,7 @@ class goBangSingleGame extends abstractGameSingleGame {
   }
 
   private generateChat(Score: number): string {
-    if (this.lastScore < 5000000 && Score > 5000000 && this.level > 4) {
+    if (this.lastScore < 5000000 && Score > 5000000 && this.level > 3) {
       return '我觉得你要输了哦~'
     }
     if (this.lastScore < 1000000 && Score > 1000000) {

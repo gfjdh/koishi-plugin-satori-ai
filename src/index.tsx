@@ -369,7 +369,7 @@ export class SAT extends Sat {
     // 添加人格设定
     if (this.config.no_system_prompt) {
       messages.push({ role: 'user', content: await this.buildSystemPrompt(session, prompt) })
-      messages.push({ role: 'assistant', content: '\n已明确对话要求' })
+      messages.push({ role: 'assistant', content: '<answer>已明确对话要求</answer>' })
     } else {
       messages.push({ role: 'system', content: await this.buildSystemPrompt(session, prompt) })
     }
@@ -385,12 +385,13 @@ export class SAT extends Sat {
 
   // 构建系统提示
   private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
-    let systemPrompt = this.config.prompt
     const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
     const user = await getUser(this.ctx, session.userId)
-    systemPrompt += this.getThinkingPrompt(user, prompt)
+
+    let systemPrompt = this.getThinkingPrompt(user, prompt)
+    systemPrompt += this.config.prompt
     if (user?.items?.['觉的衣柜']?.count) {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
       if (clothes) systemPrompt += `\n你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
@@ -417,22 +418,25 @@ export class SAT extends Sat {
         systemPrompt += generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
       }
     }
-    if (this.config.no_system_prompt) systemPrompt += '如果你明白以上内容，请回复“已明确对话要求”'
+    systemPrompt += `#注意：你最终的回复内容必须使用“<answer>”开头，使用“</answer>”结尾\n`
+    if (this.config.no_system_prompt) systemPrompt += '如果你明白以上内容，请回复“<answer>已明确对话要求</answer>”'
     return systemPrompt
   }
 
   // 思考提示
   private getThinkingPrompt(user: User, prompt: string): string {
     const reasonerPrompt = this.config.reasoner_prompt
-    const promptForNoReasoner = `请你在回复时先进行分析思考，并且按思维链的模式输出思考内容，所有思考内容必须使用<think>和</think>包裹输出，
-注意开头必须使用<think>，结尾必须使用</think>，而后在最后输出正式的回复内容，
-在<think>和</think>之外只能有最终回复内容，最终回复内容禁止包含任何多余注解${reasonerPrompt}\n`
-    const promptForReasoner = `你在思考时必须将所有思考内容使用<think>和</think>标签包裹并输出在思维链中，不要在最终的输出内包含任何多余注解。\n`
+    const promptForNoReasoner = `#请你在回复时先进行分析思考，并且模仿思维链的模式输出思考内容，所有思考内容必须使用<think>和</think>包裹输出，
+#注意思考开头必须使用<think>，思考结尾必须使用</think>，${reasonerPrompt};
+#完整输出思考内容后在输出正式的回复内容;
+#注意：你的回复内容必须使用“<answer>”开头，使用“</answer>”结尾\n`
+    const promptForReasoner = `#你在思考时必须以 "嗯" 开头。仔细揣摩用户意图，思考结束后返回符合要求的回复。
+    #注意：你的回复内容必须使用“<answer>”开头，使用“</answer>”结尾\n`
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength
     if (!this.config.enable_reasoner_like && useNoReasoner) return ''
-    const reasonerText = `\n以下是你的【思考要求】：{\n${useNoReasoner ? promptForNoReasoner : promptForReasoner}\n}\n`
+    const reasonerText = `\n${useNoReasoner ? promptForNoReasoner : promptForReasoner}\n}\n`
     return reasonerText
   }
 
