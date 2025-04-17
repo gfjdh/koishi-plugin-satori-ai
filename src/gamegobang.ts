@@ -6,7 +6,7 @@ import { execSync } from 'child_process'
 import * as path from 'path'
 
 const logger = new Logger('satori-game-gobang')
-const BOARD_SIZE = 12;    // 棋盘大小
+const BOARD_SIZE = 14;    // 棋盘大小
 const inspireSearchLength = 10 // 启发式搜索长度
 
 // 胜负标志枚举
@@ -75,12 +75,12 @@ class goBangSingleGame extends abstractGameSingleGame {
     if (this.playerFlag === 1) {
       this.board[randomX][randomY] = 1
       this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY + (Math.round(Math.random()) ? -1 : 1)] = 2
-      return wrapInHTML('游戏开始，你随机到了先手(黑)\n输入两个数字以下棋，先行后列，例如：“5 6”\n' + this.printBoard())
+      return wrapInHTML('游戏开始，你随机到了先手(黑)\n输入两个数字以下棋，先行后列，例如：“0 13”\n' + this.printBoard())
     } else {
       this.board[randomX][randomY] = 1
       this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY + (Math.round(Math.random()) ? -1 : 1)] = 2
       this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY] = 1
-      return wrapInHTML('游戏开始，你随机到了后手(白)\n输入两个数字以下棋，先行后列，例如：“5 6”\n' + this.printBoard())
+      return wrapInHTML('游戏开始，你随机到了后手(白)\n输入两个数字以下棋，先行后列，例如：“0 13”\n' + this.printBoard())
     }
   }
 
@@ -115,8 +115,8 @@ class goBangSingleGame extends abstractGameSingleGame {
       this.winningFlag = winFlag.draw
       return '计算失败，视为平局，发送结束游戏退出'
     }
-    // 当回合数超过35次时，判定为平局
-    if (this.turnsCount > 35) {
+    // 当回合数超过时，判定为平局
+    if (this.turnsCount > 50) {
       this.winningFlag = winFlag.draw
       return '平局，发送结束游戏退出'
     }
@@ -192,15 +192,17 @@ class goBangSingleGame extends abstractGameSingleGame {
 
   // 生成带表情符号的棋盘字符串
   private printBoard(): string {
-    const numberEmojis = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢']
-    let res = '🟨' + numberEmojis.slice(0, BOARD_SIZE).join('') + '\n'
+    const numberEmojis = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢', '🔢', '🔢', '🔢']
+    let res = '🟨' + numberEmojis.slice(0, BOARD_SIZE).join('') + '🟨\n'
     for (let i = 0; i < BOARD_SIZE; i++) {
       res += numberEmojis[i]
       for (let j = 0; j < BOARD_SIZE; j++) {
         res += this.board[i][j] === 0 ? '🟨' : (this.board[i][j] === 1 ? '⚫' : '⚪')
       }
+      res += numberEmojis[i]
       res += '\n'
     }
+    res += '🟨' + numberEmojis.slice(0, BOARD_SIZE).join('') + '🟨\n'
     return res
   }
 

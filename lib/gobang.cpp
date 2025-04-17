@@ -6,7 +6,7 @@
 #include <string>
 #include <iostream>
 #include <sstream>
-#define BOARD_SIZE 12    // 棋盘大小
+#define BOARD_SIZE 14    // 棋盘大小
 #define EMPTY 0          // 空位
 #define BLACK 1          // 黑棋
 #define WHITE 2          // 白棋
@@ -46,9 +46,8 @@ public:
   int myFlag;
   int enemyFlag;
   int inspireSearchLength;
-  bool draw;
   Nude MAP;
-  Game() : myFlag(0), enemyFlag(0), draw(0) {}
+  Game() : myFlag(0), enemyFlag(0) {}
 };
 
 // 判断坐标是否在棋盘范围内
@@ -588,8 +587,6 @@ int inspireSearch(coordinate *scoreBoard, int player, Game &game)
   quickSort(scoreBoard, length - 1);
   // 找到最高分数
   int maxScore = scoreBoard[0].score;
-  if (maxScore < 5 || length == 0)
-    game.draw = 1;
   const int threshold = maxScore / 3;
   // 找到分界线
   int boundary = 1;
@@ -612,6 +609,11 @@ coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate comm
   if (depth == 0)
   {
     temp.score = wholeScore(player, game);
+    return temp;
+  }
+  if (singleScore(current, player, game) >= (1 << 20)) // 如果当前落子能赢
+  {
+    temp.score = (5 << 20);
     return temp;
   }
   coordinate steps[BOARD_SIZE * BOARD_SIZE];
@@ -641,10 +643,7 @@ coordinate entrance(int depth, int alpha, int beta, int player, coordinate comma
   coordinate steps[BOARD_SIZE * BOARD_SIZE]{};
   coordinate temp;
   coordinate best;
-  int length;
-  length = inspireSearch(steps, player, game); // 搜索可落子点
-  if (length == 1 || game.draw)
-    return steps[0];
+  int length = inspireSearch(steps, player, game); // 搜索可落子点
   for (int i = 0; i < length; i++)
   {
     place(steps[i], player, game);                                               // 模拟落子
@@ -675,12 +674,6 @@ coordinate calculateNextMove(const std::string &boardStr, int playerFlag, int di
 
   int depth = difficulty + 1;
   coordinate best = entrance(depth, _INF, INF, game.myFlag, coordinate(), coordinate(), game);
-  if (game.draw)
-  {
-    best.x = -1;
-    best.y = -1;
-    best.score = -1;
-  }
   return best;
 }
 
