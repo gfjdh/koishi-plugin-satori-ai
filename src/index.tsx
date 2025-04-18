@@ -391,16 +391,17 @@ export class SAT extends Sat {
     const user = await getUser(this.ctx, session.userId)
 
     let systemPrompt = this.getThinkingPrompt(user, prompt)
+    systemPrompt += '#以下要求仅对最终的回复内容生效，不限制思考过程\n'
     systemPrompt += this.config.prompt
     if (user?.items?.['觉的衣柜']?.count) {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
-      if (clothes) systemPrompt += `\n你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
+      if (clothes) systemPrompt += `\n##你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
     }
-    systemPrompt += commonSense
-    systemPrompt += channelDialogue
-    systemPrompt += userMemory
-    systemPrompt += this.portraitManager.getUserPortrait(session)
-    systemPrompt += `用户的名字是：${session.username}, id是：${session.userId}`
+    systemPrompt += '##' + commonSense
+    systemPrompt += '##' + channelDialogue
+    systemPrompt += '##' + userMemory
+    systemPrompt += '##' + this.portraitManager.getUserPortrait(session)
+    systemPrompt += `##用户的名字是：${session.username}, id是：${session.userId}`
 
     // 添加用户名
     const nickName = user.items['情侣合照']?.metadata?.userNickName
@@ -411,25 +412,24 @@ export class SAT extends Sat {
       if (this.config.enable_mood) {
         const moodLevel = this.moodManager.getMoodLevel(user.userid)
         if (moodLevel == 'normal' || favorabilityLevel == '厌恶')
-          systemPrompt += generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
+          systemPrompt += '##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
         const moodPrompt = this.moodManager.generateMoodPrompt(user.userid)
-        systemPrompt += `\n${moodPrompt}\n` // 添加心情提示
+        systemPrompt += `\n##${moodPrompt}\n` // 添加心情提示
       } else {
-        systemPrompt += generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
+        systemPrompt += '##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
       }
     }
     systemPrompt += `#注意：你最终的回复内容必须使用“<answer>”开头，使用“</answer>”结尾\n`
-    if (this.config.no_system_prompt) systemPrompt += '如果你明白以上内容，请回复“<answer>已明确对话要求</answer>”'
+    if (this.config.no_system_prompt) systemPrompt += '#如果你明白以上内容，请回复“<answer>已明确对话要求</answer>”'
     return systemPrompt
   }
 
   // 思考提示
   private getThinkingPrompt(user: User, prompt: string): string {
     const reasonerPrompt = this.config.reasoner_prompt
-    const promptForNoReasoner = `#请你在回复时先进行分析思考，并且模仿思维链的模式输出思考内容，所有思考内容必须使用<think>和</think>包裹输出，
-#注意思考开头必须使用<think>，思考结尾必须使用</think>，${reasonerPrompt};
-#完整输出思考内容后在输出正式的回复内容;
-#注意：你的回复内容必须使用“<answer>”开头，使用“</answer>”结尾\n`
+    const promptForNoReasoner = `#请你在回复时先进行分析思考，并且模仿思维链的模式输出思考内容，${reasonerPrompt};
+#你在思考时必须以 "嗯" 开头。仔细揣摩用户意图，完整输出思考内容后在输出正式的回复内容;
+#注意：你的正式回复内容必须使用“<answer>”开头，使用“</answer>”结尾\n`
     const promptForReasoner = `#你在思考时必须以 "嗯" 开头。仔细揣摩用户意图，思考结束后返回符合要求的回复。
     #注意：你的回复内容必须使用“<answer>”开头，使用“</answer>”结尾\n`
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
