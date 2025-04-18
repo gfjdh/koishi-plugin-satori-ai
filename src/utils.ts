@@ -149,9 +149,7 @@ export function processPrompt(prompt: string): string {
  * @returns 处理后的字符串，删除含有关键词的部分
  */
 export function filterResponse(prompt: string, words: string[]): {content: string, error: boolean} {
-  // 匹配中文括号及其内容，使用非贪婪模式
   const parts = prompt.split(/([（\[【《(][^）)]*[）\]】》)])/g);
-  // 删除含有关键词的部分
   const filtered = parts.map(part => {
     if (part.startsWith('（') && part.endsWith('）') || part.startsWith('(') && part.endsWith(')') ||
         part.startsWith('[') && part.endsWith(']') || part.startsWith('【') && part.endsWith('】') || part.startsWith('《') && part.endsWith('》')) {
@@ -159,22 +157,21 @@ export function filterResponse(prompt: string, words: string[]): {content: strin
     }
     return part;
   }).join('');
-  // 删除空格和换行
   const cleaned = filtered.replace(/\s+/g, '');
-  // 获取<answer>和</answer>标签中的内容
-  const answerRegex = /<answer>[\s\S]*?<\/answer>/g;
-  const answerRegex2 = /<doubaothinking>[\s\S]*?<\/answer>/g;
+  // 修改正则表达式，防止匹配嵌套标签并获取最后一组
+  const answerRegex = /<br>((?!<\/?br>)[\s\S])*?<\/br/g;
+  const answerRegex2 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/br/g;
   const answerMatches = cleaned.match(answerRegex);
   const answerMatches2 = cleaned.match(answerRegex2);
-  if (!answerMatches && !answerMatches2) {
+  const lastAnswer = answerMatches ? answerMatches[answerMatches.length - 1] : null;
+  const lastDoubao = answerMatches2 ? answerMatches2[answerMatches2.length - 1] : null;
+  const answerContent = lastAnswer || lastDoubao;
+  if (!answerContent) {
     return {content: '有点问题，稍后再来吧', error: true};
   }
-  const answerContent = answerMatches ? answerMatches[answerMatches.length - 1] : answerMatches2[answerMatches2.length - 1];
-  // 删除<answer>和</answer>标签
-  const regex = /<answer>|<\/answer>|<doubaothinking>|<\/doubaothinking>/g;
+  const regex = /<br>|<\/br>|<doubaothinking>|<\/doubaothinking>|<\/br/g;
   const cleanedContent = answerContent.replace(regex, '');
-  // 如果<answer>和</answer>标签中有内容，返回内容
-  return cleanedContent === '' ? {content: '有点问题，稍后再来吧', error: true} : {content: cleanedContent, error: false};
+  return cleanedContent ? {content: cleanedContent, error: false} : {content: '有点问题，稍后再来吧', error: true};
 }
 
 // 添加输出屏蔽词

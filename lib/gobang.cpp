@@ -657,6 +657,12 @@ coordinate entrance(int depth, int alpha, int beta, int player, Game &game)
   coordinate temp;
   coordinate best;
   int length = inspireSearch(steps, player, game); // 搜索可落子点
+  if (length == 1)
+  {
+    best = steps[0];
+    best.score = singleScore(best, player, game);
+    return best;
+  }
   for (int i = 0; i < length; i++)
   {
     place(steps[i], player, game);                                               // 模拟落子

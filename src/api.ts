@@ -150,7 +150,9 @@ export class APIClient {
         if (this.config.reasoning_content) logger.info(`思维链: ${reasoning_content}`)
         if (!content && reasoning_content) {
           logger.warn('返回内容为空,但存在推理内容')
-          content = response.choices[0].message.reasoning_content
+        }
+        if (reasoning_content != '无' && content && content.length > reasoning_content.length) {
+          logger.warn('返回内容疑似包含推理内容')
         }
         const responseMsg:Sat.Msg = { role: 'assistant', content: content }
         if (payload.messages.some(msg => msg === responseMsg) && content.length > 5) {
