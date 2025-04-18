@@ -540,7 +540,8 @@ inline int singleScore(coordinate p, int player, const Game &game)
   score += chesstype.win5 << 20;
   score += ((chesstype.conti4 << 9) + (chesstype.alive3 << 8) + (chesstype.conti3 << 7) + (chesstype.alive4 << 10) +
             (chesstype.jump3 << 6) + (chesstype.alive2 << 5) + (chesstype.jump2 << 3) + chesstype.conti2 + chesstype.alive1);
-  if (chesstype.alive3 > 1 || (chesstype.conti4 && chesstype.alive3) || chesstype.alive4 || chesstype.conti4 > 1) // 必胜?
+  if (chesstype.alive3 > 1 || (chesstype.conti4 && chesstype.alive3) || chesstype.alive4 || chesstype.conti4 > 1 ||
+  (chesstype.jump3 && chesstype.alive3) || chesstype.jump3 > 1 || (chesstype.conti4 && chesstype.jump3)) // 必胜?
     score += (1 << 12);
   return score;
 }

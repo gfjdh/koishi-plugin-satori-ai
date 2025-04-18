@@ -403,6 +403,6 @@ export namespace Sat {
       enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏'),
       channel_id_for_gobang: Schema.array(String).description('启用五子棋的游戏频道id（不建议太多，第一个会被公示）'),
       enable_fencing: Schema.boolean().default(false).description('是否开启击剑游戏'),
-    }).description('拓展模块-游戏设置(无效，开发中)'),
+    }).description('拓展模块-游戏设置(仅五子棋有效，其他无效，开发中)'),
   ])
 }
