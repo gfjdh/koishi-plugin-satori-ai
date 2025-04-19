@@ -5,6 +5,7 @@ import { abstractGame } from './abstractGame'
 import { Sat } from './types'
 import { SAT } from './index'
 import { getUser, updateFavorability, updateUserP } from './database'
+import { refreshPuppeteer } from '.'
 
 const logger = new Logger('satori-game')
 
@@ -62,7 +63,10 @@ export class Game {
   private registerCommands(ctx: Context) {
     ctx.command('sat.game <gameName> [...args]', '开始游戏')
       .alias('开始游戏')
-      .action(async ({ session }, gameName, ...args) => this.startGame(session, gameName, args))
+      .action(async ({ session }, gameName, ...args) => {
+        refreshPuppeteer(ctx)
+        this.startGame(session, gameName, args)
+      })
     ctx.command('sat.endgame', '结束游戏')
       .alias('结束游戏')
       .action(async ({ session }) => this.endGame(session))
