@@ -389,18 +389,19 @@ export class SAT extends Sat {
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
     const user = await getUser(this.ctx, session.userId)
+    const moodLevel = this.moodManager.getMoodLevel(user.userid)
 
     let systemPrompt = this.getThinkingPrompt(user, prompt)
     systemPrompt += '#以下要求仅对最终的回复内容生效，不限制思考过程\n'
     systemPrompt += this.config.prompt
-    if (user?.items?.['觉的衣柜']?.count) {
+    if (user?.items?.['觉的衣柜']?.count && (moodLevel == 'normal' || moodLevel == 'happy')) {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
       if (clothes) systemPrompt += `\n##你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
     }
     systemPrompt += '##' + commonSense
     systemPrompt += '##' + channelDialogue
     systemPrompt += '##' + userMemory
-    systemPrompt += '##' + this.portraitManager.getUserPortrait(session)
+    if (moodLevel == 'normal' || moodLevel == 'happy') systemPrompt += '##' + this.portraitManager.getUserPortrait(session)
     systemPrompt += `##用户的名字是：${session.username}, id是：${session.userId}`
 
     // 添加用户名
@@ -410,8 +411,7 @@ export class SAT extends Sat {
     if (this.config.enable_favorability) {
       const favorabilityLevel = getFavorabilityLevel(user, this.getFavorabilityConfig())
       if (this.config.enable_mood) {
-        const moodLevel = this.moodManager.getMoodLevel(user.userid)
-        if (moodLevel == 'normal' || favorabilityLevel == '厌恶')
+        if ((moodLevel == 'normal' || moodLevel == 'happy') || favorabilityLevel == '厌恶')
           systemPrompt += '##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
         const moodPrompt = this.moodManager.generateMoodPrompt(user.userid)
         systemPrompt += `\n##${moodPrompt}\n` // 添加心情提示

@@ -140,7 +140,7 @@ export async function outputContentCheck(
     const moodLevel = moodManager.getMoodLevel(user.userid)
     if (hasCensor) {
       const mood = moodManager.getMoodValue(user.userid)
-      moodManager.handleOutputMoodChange(user) // 处理心情变化
+      moodManager.handleOutputMoodChange(user, this.getFavorabilityLevel(user, config))
       if (mood <= 0) {
         await updateFavorability(ctx, user, -1 * config.value_of_output_favorability)
         return -config.value_of_output_favorability

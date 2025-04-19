@@ -8,7 +8,7 @@ export declare class MoodManager {
     private initUser;
     private checkDailyReset;
     handleInputMoodChange(user: User): Promise<void>;
-    handleOutputMoodChange(user: User): Promise<void>;
+    handleOutputMoodChange(user: User, favorabilityLevel: string): Promise<void>;
     applyMoodChange(user: User, delta: number): void;
     getMoodLevel(userId: string): string;
     getMoodValue(userId: string): number;

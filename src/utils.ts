@@ -161,15 +161,24 @@ export function filterResponse(prompt: string, words: string[]): {content: strin
   // 修改正则表达式，防止匹配嵌套标签并获取最后一组
   const answerRegex = /<br>((?!<\/?br>)[\s\S])*?<\/br/g;
   const answerRegex2 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/br/g;
+  const answerRegex3 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/doubaothinking>/g;
+  const answerRegex4 = /<answer>((?!<\/?answer>)[\s\S])*?<\/answer>/g;
+  const answerRegex5 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/answer>/g;
   const answerMatches = cleaned.match(answerRegex);
   const answerMatches2 = cleaned.match(answerRegex2);
+  const answerMatches3 = cleaned.match(answerRegex3);
+  const answerMatches4 = cleaned.match(answerRegex4);
+  const answerMatches5 = cleaned.match(answerRegex5);
   const lastAnswer = answerMatches ? answerMatches[answerMatches.length - 1] : null;
   const lastDoubao = answerMatches2 ? answerMatches2[answerMatches2.length - 1] : null;
-  const answerContent = lastAnswer || lastDoubao;
+  const lastAnswer3 = answerMatches3 ? answerMatches3[answerMatches3.length - 1] : null;
+  const lastAnswer4 = answerMatches4 ? answerMatches4[answerMatches4.length - 1] : null;
+  const lastAnswer5 = answerMatches5 ? answerMatches5[answerMatches5.length - 1] : null;
+  const answerContent = lastAnswer || lastDoubao || lastAnswer3 || lastAnswer4 || lastAnswer5;
   if (!answerContent) {
     return {content: '有点问题，稍后再来吧', error: true};
   }
-  const regex = /<br>|<\/br>|<doubaothinking>|<\/doubaothinking>|<\/br/g;
+  const regex = /<br>|<\/br>|<doubaothinking>|<\/doubaothinking>|<\/br|<answer>|<\/answer>/g;
   const cleanedContent = answerContent.replace(regex, '');
   return cleanedContent ? {content: cleanedContent, error: false} : {content: '有点问题，稍后再来吧', error: true};
 }
