@@ -19,6 +19,14 @@ const logger = new Logger('satori-ai')
 
 export let puppeteer : Puppeteer | null = null
 
+export function refreshPuppeteer(ctx: Context) {
+  if (ctx.puppeteer) {
+    puppeteer = ctx.puppeteer
+  } else {
+    logger.warn('puppeteer未就绪')
+  }
+}
+
 export class SAT extends Sat {
   private apiClient: APIClient
   private memoryManager: MemoryManager
