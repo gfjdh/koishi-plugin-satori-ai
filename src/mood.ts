@@ -38,12 +38,23 @@ export class MoodManager {
   }
 
   // 处理输入内容心情变化
-  public async handleInputMoodChange(user: User): Promise<void> {
+  public async handleInputMoodChange(user: User, favorabilityLevel: string ): Promise<void> {
     if (!this.config.enable_mood) return
     const userId = user.userid
     if (!this.moodMap.has(userId)) this.initUser(userId)
     this.checkDailyReset(userId)
-    this.applyMoodChange(user, -this.config.value_of_input_mood)
+    let effect = this.config.value_of_input_mood
+    switch (favorabilityLevel) {
+      case '厌恶': effect = effect * 1.5; break
+      case '陌生': effect = effect * 1; break
+      case '朋友': effect = effect * 0.9; break
+      case '暧昧': effect = effect * 0.8; break
+      case '恋人': effect = effect * 0.6; break
+      case '夫妻': effect = effect * 0.4; break
+      default: effect = 0; break
+    }
+    effect = Math.round(effect) + 1
+    this.applyMoodChange(user, -effect)
     return
   }
 

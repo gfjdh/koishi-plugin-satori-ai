@@ -7,7 +7,7 @@ export declare class MoodManager {
     constructor(ctx: Context, config: Sat.Config);
     private initUser;
     private checkDailyReset;
-    handleInputMoodChange(user: User): Promise<void>;
+    handleInputMoodChange(user: User, favorabilityLevel: string): Promise<void>;
     handleOutputMoodChange(user: User, favorabilityLevel: string): Promise<void>;
     applyMoodChange(user: User, delta: number): void;
     getMoodLevel(userId: string): string;

@@ -103,7 +103,7 @@ export async function inputContentCheck(
   const hasCensor = regex.test(content)
 
   if (hasCensor && config.input_censor_favorability) {
-    moodManager.handleInputMoodChange(user) // 处理心情变化
+    moodManager.handleInputMoodChange(user, getFavorabilityLevel(user, config))
     await applyFavorabilityEffect(ctx, user, -1 * config.value_of_input_favorability, session) // 应用好感度效果
     return -1 * config.value_of_input_favorability
   }
@@ -112,7 +112,8 @@ export async function inputContentCheck(
   // 如果开启辅助LLM或者当天好感度已达上限则不增加好感度
   if (config.enable_auxiliary_LLM || user.usage > config.max_favorability_perday) return 0
   // 正常情况增加1点好感度
-  await applyFavorabilityEffect(ctx, user, 1, session)
+  const mood = moodManager.getMoodValue(user.userid)
+  if (mood >= 0) await applyFavorabilityEffect(ctx, user, 1, session)
   return 1
 }
 
@@ -140,7 +141,7 @@ export async function outputContentCheck(
     const moodLevel = moodManager.getMoodLevel(user.userid)
     if (hasCensor) {
       const mood = moodManager.getMoodValue(user.userid)
-      moodManager.handleOutputMoodChange(user, this.getFavorabilityLevel(user, config))
+      moodManager.handleOutputMoodChange(user, getFavorabilityLevel(user, config))
       if (mood <= 0) {
         await updateFavorability(ctx, user, -1 * config.value_of_output_favorability)
         return -config.value_of_output_favorability

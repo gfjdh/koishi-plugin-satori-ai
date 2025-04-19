@@ -144,7 +144,7 @@ class goBangSingleGame extends abstractGameSingleGame {
       // 执行命令并获取输出
       const stdout = execSync(
         `"${exePath}" "${boardStr}" ${this.playerFlag} ${level} ${inspireSearchLength}`,
-        { timeout: 120000 } // 设置120秒超时
+        { timeout: 180000 } // 设置180秒超时
       ).toString().trim()
 
       // 解析输出

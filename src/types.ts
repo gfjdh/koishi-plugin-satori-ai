@@ -147,8 +147,8 @@ export interface FixedDialogue {
 
 export class Sat extends Service {
   static inject = {
-    required: ['console', 'database','puppeteer'],
-    optional: ['censor']
+    required: ['console', 'database'],
+    optional: ['censor','puppeteer']
   }
   constructor(ctx: Context, config: Sat.Config) {
     super(ctx, 'sat', true)
@@ -385,7 +385,7 @@ export namespace Sat {
       enable_mood: Schema.boolean().default(false).description('是否开启心情系统（通过屏蔽词降低心情，正常聊天心情+1，每天重置为mood_div_1 + value_of_output_mood）'),
       max_mood: Schema.number().default(10).description('心情上限'),
       value_of_input_mood: Schema.number().default(10).description('输入触发屏蔽词每次扣除的心情'),
-      value_of_output_mood: Schema.number().default(5).description('输出触发屏蔽词每次扣除的心情,若当时心情大于0,此次不扣好感度'),
+      value_of_output_mood: Schema.number().default(5).description('输出触发屏蔽词每次扣除的心情,若当时心情大于0,此次不扣好感度,会根据好感度等级调整数值'),
       visible_mood: Schema.boolean().default(false).description('是否开启心情状态显示'),
       mood_prompt_2: Schema.string().role('textarea').default('你现在的心情十分愉悦').description('心情达到最高补充设定'),
       mood_div_1: Schema.number().default(-1).description('心情正常-烦躁分界线'),
@@ -400,7 +400,7 @@ export namespace Sat {
 
     Schema.object({
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),
-      enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏'),
+      enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏（需要puppeteer支持）'),
       channel_id_for_gobang: Schema.array(String).description('启用五子棋的游戏频道id（不建议太多，第一个会被公示）'),
       enable_fencing: Schema.boolean().default(false).description('是否开启击剑游戏'),
     }).description('拓展模块-游戏设置(仅五子棋有效，其他无效，开发中)'),
