@@ -1,9 +1,7 @@
 import { Context, Session, Logger } from 'koishi'
 import { User, Sat } from './types'
-import { ensureUserExists, updateFavorability, updateUserP } from './database'
+import { ensureUserExists, getUser, updateFavorability, updateUserItems, updateUserP } from './database'
 import { randomInt } from 'crypto'
-import { get } from 'http'
-import { getFavorabilityLevel } from './favorability'
 
 const logger = new Logger('satori-ai-mood')
 
@@ -26,10 +24,15 @@ export class MoodManager {
   }
 
   // 每日重置检查
-  private checkDailyReset(userId: string) {
+  private async checkDailyReset(userId: string) {
     const data = this.moodMap.get(userId)
     if (!data) return
-
+    const user = await getUser(this.ctx, userId)
+    if (user?.items?.['点心盒']) {
+      delete user.items['点心盒']
+      await updateUserItems(this.ctx, user)
+      this.moodMap.set(userId, { mood: 0, lastUpdate: Date.now() })
+    }
     const lastDate = new Date(data.lastUpdate)
     const now = new Date()
     if ( lastDate.getDate() !== now.getDate() || lastDate.getMonth() !== now.getMonth() || lastDate.getFullYear() !== now.getFullYear() ) {
@@ -42,7 +45,7 @@ export class MoodManager {
     if (!this.config.enable_mood) return
     const userId = user.userid
     if (!this.moodMap.has(userId)) this.initUser(userId)
-    this.checkDailyReset(userId)
+    await this.checkDailyReset(userId)
     let effect = this.config.value_of_input_mood
     switch (favorabilityLevel) {
       case '厌恶': effect = effect * 1.5; break
@@ -63,7 +66,7 @@ export class MoodManager {
     if (!this.config.enable_mood) return
     const userId = user.userid
     if (!this.moodMap.has(userId)) this.initUser(userId)
-    this.checkDailyReset(userId)
+    await this.checkDailyReset(userId)
     let effect = this.config.value_of_output_mood
     switch (favorabilityLevel) {
       case '厌恶': effect = effect * 1.5; break
