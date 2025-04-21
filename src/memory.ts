@@ -117,9 +117,9 @@ export class MemoryManager {
     this.updateChannelDialogue(session, prompt, session.username)
 
     if (this.config.enable_self_memory && response) {
-      memory.dialogues.push({ role: 'assistant', content: '<br>' + response + '</br>' })
+      memory.dialogues.push({ role: 'assistant', content: '<p>' + response + '</p>' })
     } else{
-      memory.dialogues.push({ role: 'assistant', content: '<br>…</br>' })
+      memory.dialogues.push({ role: 'assistant', content: '<p>…</p>' })
     }
 
     // 保持记忆长度
@@ -240,16 +240,16 @@ export class MemoryManager {
   // 格式化匹配结果
   private formatMatches(matched: MemoryEntry[], type: 'user' | 'common', topN = 5): string {
     const prefixMap = {
-      'common': '\n这是你可能用到的信息：',
-      'user': '\n以下是较久之前用户说过的话和对话时间：'
+      'common': '这是你可能用到的信息：',
+      'user': '以下是较久之前用户说过的话和对话时间：'
     };
     // 添加时间信息
-    const time = `\n时段：${getTimeOfDay(new Date().getHours())}`
-    const date = `\n当前日期和时间：${new Date().toLocaleString()} ${time}`
+    const time = `时段：${getTimeOfDay(new Date().getHours())}`
+    const date = `当前日期和时间：${new Date().toLocaleString()} ${time}`
     if (matched.length > 0) {
       matched = matched.slice(0, topN < matched.length ? topN : matched.length)  // 取前 N 个结果
       if (type === 'common') {
-          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')} ${date}\n`
+          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')} ${date}\n}\n`
           return result
       } else {
           // 这里因为远古屎山代码的原因，所以要判断role是否为user，现在的role是用来存储时间的
@@ -259,7 +259,7 @@ export class MemoryManager {
       }
     } else {
       if (type === 'common') {
-        return date
+        return '这是你可能用到的信息：{\n' + date + '\n}\n'
       } else {
         return ""
       }

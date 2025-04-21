@@ -155,7 +155,7 @@ ${history}
   public getUserPortrait(session: Session): string {
     if (!this.config.enable_user_portrait) return ''
     const portrait = this.readPortrait(session.userId)
-    return portrait ? `\n以下是当前用户的补充信息：{${portrait}\n}\n` : ''
+    return portrait ? `以下是当前用户的补充信息：{${portrait}\n}\n` : ''
   }
 
   public getUserPortraitById(userId: string): string {

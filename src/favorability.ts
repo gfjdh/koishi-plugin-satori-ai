@@ -6,6 +6,7 @@ import { MoodManager } from './mood'
 import { Sat } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
+import { processPrompt } from './utils'
 
 export async function handleFavorabilitySystem(ctx: Context, session: Session, config: FavorabilityConfig): Promise<string | void> {
   const user = await ensureUserExists(ctx, session.userId, session.username);
@@ -14,8 +15,9 @@ export async function handleFavorabilitySystem(ctx: Context, session: Session, c
   if (user.favorability < config.favorability_div_1 - 20 && user.favorability > -900 && level !== '夫妻') {
     return session.text('commands.sat.messages.block1');
   }
+  const processedPrompt = processPrompt(session.content)
   // 英语内容检查
-  const englishCount = (session.content.match(/[a-zA-Z]/g) || []).length;
+  const englishCount = (processedPrompt.match(/[a-zA-Z]/g) || []).length;
   if (user.favorability < 50 && englishCount > 8 && level !== '夫妻') {
     return session.text('commands.sat.messages.tooManyEnglishLetters');
   }
@@ -55,7 +57,7 @@ export function generateLevelPrompt(
     '恋人': config.prompt_4,
     '夫妻': config.prompt_5
   }
-  return `\n${prompts[level]}\n`
+  return `${prompts[level]}\n`
 }
 
 // 生成辅助提示

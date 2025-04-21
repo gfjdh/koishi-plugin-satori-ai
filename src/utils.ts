@@ -136,7 +136,7 @@ export function processPrompt(prompt: string): string {
   if (prompt.includes(':poke')) return '戳戳';
   prompt = prompt.replace(/<[^>]*?avatar[^>]*>/g, '。回复：');
   prompt = prompt.replace(/<[^>]*?img[^>]*>/g, '[图片]');
-  prompt = prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `@${name}`);
+  prompt = prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `${name}`);
   // 处理输入的字符串，删除其中的‘**’
   prompt = prompt.replace(/\*\*/g, '');
   if (!prompt) return '**';
@@ -159,8 +159,8 @@ export function filterResponse(prompt: string, words: string[]): {content: strin
   }).join('');
   const cleaned = filtered.replace(/\s+/g, '');
   // 修改正则表达式，防止匹配嵌套标签并获取最后一组
-  const answerRegex = /<br>((?!<\/?br>)[\s\S])*?<\/br/g;
-  const answerRegex2 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/br/g;
+  const answerRegex = /<p>((?!<\/?p>)[\s\S])*?<\/p/g;
+  const answerRegex2 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/p/g;
   const answerRegex3 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/doubaothinking>/g;
   const answerRegex4 = /<answer>((?!<\/?answer>)[\s\S])*?<\/answer>/g;
   const answerRegex5 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/answer>/g;
@@ -178,7 +178,7 @@ export function filterResponse(prompt: string, words: string[]): {content: strin
   if (!answerContent) {
     return {content: '有点问题，稍后再来吧', error: true};
   }
-  const regex = /<br>|<\/br>|<doubaothinking>|<\/doubaothinking>|<\/br|<answer>|<\/answer>/g;
+  const regex = /<p>|<\/p>|<doubaothinking>|<\/doubaothinking>|<\/p|<answer>|<\/answer>/g;
   const cleanedContent = answerContent.replace(regex, '');
   return cleanedContent ? {content: cleanedContent, error: false} : {content: '有点问题，稍后再来吧', error: true};
 }
