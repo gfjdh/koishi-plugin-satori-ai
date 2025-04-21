@@ -42,8 +42,7 @@ export declare class SAT extends Sat {
     private getThinkingPrompt;
     private formatResponse;
     private addUserToWarnList;
-    getWarningList(session: Session): Promise<boolean>;
-    clearWarningList(): Promise<void>;
+    getWarningList(session: Session): Promise<void>;
     private clearSession;
     private addCommonSense;
     private handleUserLevel;

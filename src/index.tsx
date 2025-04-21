@@ -182,6 +182,10 @@ export class SAT extends Sat {
       .alias('查看画像')
       .action(async ({}, userId) => this.portraitManager.getUserPortraitById(userId))
 
+    ctx.command('sat.get_warning_list', '查看警告列表', { authority: 4 })
+    .alias('查看警告')
+    .action(async ({ session }) => this.getWarningList(session))
+
     if (this.config.enable_mood && this.config.enable_favorability && this.config.enable_pocket_money) {
       ctx.command('sat.pocket_money', '消耗心情值换取p点')
         .alias('要零花钱')
@@ -502,18 +506,13 @@ export class SAT extends Sat {
         result += `在群${channelId}中，${username}骚扰我！\n`
       }
     }
-    if (result.length == 0) {
-      return false
-    }
+    if (result.length == 0) return
     if (this.config.warning_admin_id)
       session.send(session.text('commands.sat.messages.warning',[this.config.warning_admin_id]) + result)
     else
       session.send(result)
-    return true
-  }
-
-  public async clearWarningList() {
-    return this.usersToWarn.clear()
+    this.usersToWarn.clear()
+    return
   }
 
   // 清空会话

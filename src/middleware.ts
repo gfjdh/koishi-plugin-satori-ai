@@ -14,10 +14,8 @@ export function createMiddleware(
   config: MiddlewareConfig & FavorabilityConfig,
 ) {
   return async (session: Session, next: Next) => {
-    if (config.enable_favorability && config.enable_warning && session.channelId === config.warning_group) {
-      const result = sat.getWarningList(session)
-      if (result) sat.clearWarningList()
-    }
+    if (config.enable_favorability && config.enable_warning && session.channelId === config.warning_group)
+      sat.getWarningList(session)
     if (!isSpecialMessage(session)) await sat.handleChannelMemoryManager(session)
 
     // 私信处理
