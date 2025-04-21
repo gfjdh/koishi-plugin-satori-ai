@@ -16,7 +16,12 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private buildResultMessage;
     startGame(): Promise<string>;
     processInput(input: string): Promise<string>;
-    private aiEvaluate;
+    private aiSearch;
+    private generatePossibleMoves;
+    private cloneState;
+    private simulateMove;
+    private applySimulatedEffect;
+    private evaluateState;
 }
 export declare class OneTouchGame extends abstractGame<OneTouchSingleGame> {
     constructor();

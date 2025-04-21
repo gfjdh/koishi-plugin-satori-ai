@@ -406,11 +406,11 @@ export class SAT extends Sat {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
       if (clothes) systemPrompt += `\n##你当前的穿着(根据穿着进行对应的行为)：${clothes}\n`
     }
-    systemPrompt += '##' + commonSense
-    systemPrompt += '##' + channelDialogue
-    systemPrompt += '##' + userMemory
-    if (moodLevel == 'normal' || moodLevel == 'happy') systemPrompt += '##' + this.portraitManager.getUserPortrait(session)
-    systemPrompt += `##用户的名字是：${session.username}, id是：${session.userId}`
+    systemPrompt += '\n##' + commonSense
+    systemPrompt += '\n##' + channelDialogue
+    systemPrompt += '\n##' + userMemory
+    if (moodLevel == 'normal' || moodLevel == 'happy') systemPrompt += '\n##' + this.portraitManager.getUserPortrait(session)
+    systemPrompt += `\n##用户的名字是：${session.username}, id是：${session.userId}`
 
     // 添加用户名
     const nickName = user.items['情侣合照']?.metadata?.userNickName
@@ -420,15 +420,15 @@ export class SAT extends Sat {
       const favorabilityLevel = getFavorabilityLevel(user, this.getFavorabilityConfig())
       if (this.config.enable_mood) {
         if ((moodLevel == 'normal' || moodLevel == 'happy') || favorabilityLevel == '厌恶')
-          systemPrompt += '##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
+          systemPrompt += '\n##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
         const moodPrompt = this.moodManager.generateMoodPrompt(user.userid)
         systemPrompt += `\n##${moodPrompt}\n` // 添加心情提示
       } else {
-        systemPrompt += '##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
+        systemPrompt += '\n##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
       }
     }
-    systemPrompt += `#注意：你最终的回复内容必须使用“<br>”开头，使用“</br>”结尾\n`
-    if (this.config.no_system_prompt) systemPrompt += '#如果你明白以上内容，请回复“<br>已明确对话要求</br>”'
+    systemPrompt += `\n#注意：你最终的回复内容必须使用“<br>”开头，使用“</br>”结尾\n`
+    if (this.config.no_system_prompt) systemPrompt += '\n#如果你明白以上内容，请回复“<br>已明确对话要求</br>”'
     return systemPrompt
   }
 
@@ -439,7 +439,7 @@ export class SAT extends Sat {
 #你在思考时必须以 "<think>" 开头, "<\/think>" 结尾。仔细揣摩用户意图，完整输出思考内容后在输出正式的回复内容;
 #注意：你的正式回复内容必须使用“<br>”开头，使用“</br>”结尾，并且无论如何都要把标签输出完整\n`
     const promptForReasoner = `#你在思考时必须以 "嗯" 开头。仔细揣摩用户意图，思考结束后返回符合要求的回复。
-    #注意：你的回复内容必须使用“<br>”开头，使用“</br>”结尾\n`
+#注意：你的回复内容必须使用“<br>”开头，使用“</br>”结尾\n`
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength

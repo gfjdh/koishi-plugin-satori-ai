@@ -2,6 +2,7 @@ import { Context, Session } from 'koishi';
 import { Sat, User } from './types';
 import Puppeteer from 'koishi-plugin-puppeteer';
 export declare let puppeteer: Puppeteer | null;
+export declare function refreshPuppeteer(ctx: Context): void;
 export declare class SAT extends Sat {
     config: Sat.Config;
     private apiClient;

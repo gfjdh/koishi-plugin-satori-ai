@@ -36,7 +36,6 @@ declare class goBangSingleGame extends abstractGameSingleGame {
     private getAIMove;
     private checkWin;
     private checkDirection;
-    private place;
     private printBoard;
     private generateChat;
 }

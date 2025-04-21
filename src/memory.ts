@@ -117,9 +117,9 @@ export class MemoryManager {
     this.updateChannelDialogue(session, prompt, session.username)
 
     if (this.config.enable_self_memory && response) {
-      memory.dialogues.push({ role: 'assistant', content: '<answer>' + response + '</answer>' })
+      memory.dialogues.push({ role: 'assistant', content: '<br>' + response + '</br>' })
     } else{
-      memory.dialogues.push({ role: 'assistant', content: '<answer>…</answer>' })
+      memory.dialogues.push({ role: 'assistant', content: '<br>…</br>' })
     }
 
     // 保持记忆长度

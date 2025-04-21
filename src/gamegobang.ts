@@ -70,16 +70,29 @@ class goBangSingleGame extends abstractGameSingleGame {
     this.board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0))
     this.turnsCount = 0
     this.playerFlag = Math.round(Math.random()) + 1
-    const randomX = Math.round(BOARD_SIZE / 2) - 2 + Math.round(2 * Math.random())
-    const randomY = Math.round(BOARD_SIZE / 2) - 2 + Math.round(2 * Math.random())
+    const getCornerCoordinate = (i) => {
+      const quarter = i < 0.5 ? 0.2 : 0.7;
+      const base = Math.round(BOARD_SIZE * quarter);
+      return base
+    };
+    for (let i = 0; i <= 1; i++){
+      for (let j = 0; j <= 1; j++){
+        const randomX = getCornerCoordinate(i) + 1 - 2 * i;
+        const randomY = getCornerCoordinate(j);
+        const player = Math.round(Math.random()) + 1;
+        this.board[randomX][randomY] = player
+        this.board[randomX + i * 2 - 1][randomY - j * 2 + 1] = 3 - player
+      }
+    }
+
     if (this.playerFlag === 1) {
-      this.board[randomX][randomY] = 1
-      this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY + (Math.round(Math.random()) ? -1 : 1)] = 2
+      this.board[BOARD_SIZE / 2][BOARD_SIZE / 2] = 1
+      this.board[BOARD_SIZE / 2 + (Math.round(Math.random()) ? -1 : 1)][BOARD_SIZE / 2 + (Math.round(Math.random()) ? -1 : 1)] = 2
       return wrapInHTML('游戏开始，你随机到了先手(黑)\n输入两个数字以下棋，先行后列，例如：“0 13”\n' + this.printBoard())
     } else {
-      this.board[randomX][randomY] = 1
-      this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY + (Math.round(Math.random()) ? -1 : 1)] = 2
-      this.board[randomX + (Math.round(Math.random()) ? -1 : 1)][randomY] = 1
+      this.board[BOARD_SIZE / 2][BOARD_SIZE / 2] = 1
+      this.board[BOARD_SIZE / 2 + (Math.round(Math.random()) ? -1 : 1)][BOARD_SIZE / 2 + (Math.round(Math.random()) ? -1 : 1)] = 2
+      this.board[BOARD_SIZE / 2][BOARD_SIZE / 2 + (Math.round(Math.random()) ? -1 : 1)] = 1
       return wrapInHTML('游戏开始，你随机到了后手(白)\n输入两个数字以下棋，先行后列，例如：“0 13”\n' + this.printBoard())
     }
   }
@@ -87,7 +100,14 @@ class goBangSingleGame extends abstractGameSingleGame {
   // 结束游戏，返回结果
   public override endGame = async () => {
     super.endGame()
-    return { message: `${this.level}`, win: this.winningFlag, gameName: '五子棋', playerID: this.session.userId }
+    let bonusLevel = this.level
+    if (this.winningFlag === winFlag.win && this.playerFlag === 1) {
+      bonusLevel -= 1
+    }
+    else if (this.winningFlag === winFlag.lose && this.playerFlag === 1) {
+      bonusLevel += 1
+    }
+    return { message: `${bonusLevel}`, win: this.winningFlag, gameName: '五子棋', playerID: this.session.userId }
   }
 
   /**
@@ -144,7 +164,7 @@ class goBangSingleGame extends abstractGameSingleGame {
       // 执行命令并获取输出
       const stdout = execSync(
         `"${exePath}" "${boardStr}" ${this.playerFlag} ${level} ${inspireSearchLength}`,
-        { timeout: 180000 } // 设置180秒超时
+        { timeout: 1800000 } // 设置1800秒超时
       ).toString().trim()
 
       // 解析输出
@@ -183,11 +203,6 @@ class goBangSingleGame extends abstractGameSingleGame {
   private checkDirection(x: number, y: number, dx: number, dy: number, step: number): boolean {
     const nx = x + dx * step, ny = y + dy * step
     return nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE && this.board[nx][ny] === this.board[x][y]
-  }
-
-  // 在指定位置放置棋子
-  private place(target: Coordinate, player: number, game: goBangSingleGame): void {
-    game.board[target.x][target.y] = player;
   }
 
   // 生成带表情符号的棋盘字符串

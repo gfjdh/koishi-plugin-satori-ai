@@ -8,6 +8,7 @@ export declare class Game {
     private GAMES;
     private channelGames;
     private availableGames;
+    private userUsage;
     private context;
     private config;
     private sat;
@@ -16,4 +17,6 @@ export declare class Game {
     startGame(session: Session, gameName: string, args: string[]): Promise<string>;
     endGame(session: Session): Promise<string>;
     private chat;
+    private getGameCd;
+    private getGameList;
 }

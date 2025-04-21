@@ -238,6 +238,7 @@ export declare namespace Sat {
         enable_game: boolean;
         enable_gobang: boolean;
         channel_id_for_gobang: string[];
+        cd_for_gobang: number;
         enable_fencing: boolean;
     }
     const Config: Schema<Config>;

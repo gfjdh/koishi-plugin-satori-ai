@@ -1,4 +1,4 @@
-﻿// g++ -O3 -fopenmp -static -std=c++11 gobang.cpp -o gobang_ai.exe
+﻿// g++ -O3 -static -std=c++11 gobang.cpp -o gobang_ai.exe
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,7 +6,6 @@
 #include <string>
 #include <iostream>
 #include <sstream>
-#include <omp.h>
 #define BOARD_SIZE 14    // 棋盘大小
 #define EMPTY 0          // 空位
 #define BLACK 1          // 黑棋
@@ -562,8 +561,6 @@ int wholeScore(int player, const Game &game)
             length++;
         }
     }
-    // 计算每个点的分数
-    #pragma omp parallel for reduction(+:Score) schedule(dynamic, 4)
     for (int i = 0; i < length; i++)
     {
         if (temps[i].score == player)
@@ -621,14 +618,6 @@ coordinate alphaBeta(int depth, int alpha, int beta, int player, coordinate comm
     temp.score = wholeScore(player, game);
     return temp;
   }
-  // if (singleScore(temp, player, game) >= (1 << 20)) // 如果当前落子win5
-  // {
-  //   if (player == game.myFlag)
-  //     temp.score = 6000000 + temp.x * 100 + temp.y;
-  //   else
-  //     temp.score = 2000000 + temp.x * 100 + temp.y;
-  //   return temp;
-  // }
   coordinate steps[BOARD_SIZE * BOARD_SIZE];
   int length = inspireSearch(steps, player, game); // 搜索可落子点
   if (length > 2)
@@ -657,12 +646,6 @@ coordinate entrance(int depth, int alpha, int beta, int player, Game &game)
   coordinate temp;
   coordinate best;
   int length = inspireSearch(steps, player, game); // 搜索可落子点
-  if (length == 1)
-  {
-    best = steps[0];
-    best.score = singleScore(best, player, game);
-    return best;
-  }
   for (int i = 0; i < length; i++)
   {
     place(steps[i], player, game);                                               // 模拟落子

@@ -19,6 +19,12 @@ export async function handleFavorabilitySystem(ctx: Context, session: Session, c
   if (user.favorability < 50 && englishCount > 8 && level !== '夫妻') {
     return session.text('commands.sat.messages.tooManyEnglishLetters');
   }
+  if (englishCount > 30 && level !== '夫妻') {
+    return session.text('commands.sat.messages.tooManyEnglishLetters');
+  }
+  if (englishCount > 60) {
+    return session.text('commands.sat.messages.tooManyEnglishLetters');
+  }
   return;
 }
 

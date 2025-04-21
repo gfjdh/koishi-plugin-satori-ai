@@ -1,5 +1,3 @@
-import { group } from 'console';
-import { channel } from 'diagnostics_channel';
 import { Context, Schema, Service } from 'koishi'
 export const usage = `使用说明见插件主页`;
 
@@ -273,6 +271,7 @@ export namespace Sat {
     enable_game: boolean
     enable_gobang: boolean
     channel_id_for_gobang: string[]
+    cd_for_gobang: number
     enable_fencing: boolean
   }
 
@@ -299,7 +298,7 @@ export namespace Sat {
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('辅助模型api_key'),
       prompt: Schema.string().role('textarea').description('人格设定'),
-      reasoner_prompt: Schema.string().role('textarea').description('思考提示词（对于深度思考模型和非深度思考模型模仿思维链时生效）')
+      reasoner_prompt: Schema.string().role('textarea').description('思考提示词（对于非深度思考模型模仿思维链时生效）')
       .default('你在思考时应当逐步分析以下内容：1.当前对话的禁止事项；2.是否与群聊中其他人的发言有关联；3.是否与当前用户之前说的话有关联；4.对话的具体要求；5.用户的意图如何；6.最终的发言的主要内容。'),
     }).description('基础设置'),
 
@@ -402,6 +401,7 @@ export namespace Sat {
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),
       enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏（需要puppeteer支持）'),
       channel_id_for_gobang: Schema.array(String).description('启用五子棋的游戏频道id（不建议太多，第一个会被公示）'),
+      cd_for_gobang: Schema.number().default(3600).description('每人五子棋游戏cd时间（秒）'),
       enable_fencing: Schema.boolean().default(false).description('是否开启击剑游戏'),
     }).description('拓展模块-游戏设置(仅五子棋有效，其他无效，开发中)'),
   ])
