@@ -83,6 +83,8 @@ export interface MiddlewareConfig {
     random_min_tokens: number;
     randnum: number;
     max_tokens: number;
+    enable_warning: boolean;
+    warning_group: string;
 }
 export interface APIConfig {
     baseURL: string;
@@ -233,6 +235,9 @@ export declare namespace Sat {
         favorability_div_4: number;
         prompt_4: string;
         prompt_5: string;
+        enable_warning: boolean;
+        warning_group: string;
+        warning_admin_id: string;
         maxRetryTimes: number;
         retry_delay_time: number;
         enable_game: boolean;
@@ -240,6 +245,7 @@ export declare namespace Sat {
         channel_id_for_gobang: string[];
         cd_for_gobang: number;
         enable_fencing: boolean;
+        enable_OneTouch: boolean;
     }
     const Config: Schema<Config>;
 }

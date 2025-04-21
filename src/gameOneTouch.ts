@@ -4,37 +4,43 @@ import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame
 const logger = new Logger('satori-game-onetouch')
 
 enum playerStatus {
-  Normal,
-  Stunned
+  Normal, // 正常状态
+  Stunned // 眩晕状态
 }
 
 interface PlayerState {
-  left: number
-  right: number
-  hp: number
-  shield: number
-  strength: number
-  bleed: number
-  status: playerStatus
+  left: number // 左手势
+  right: number // 右手势
+  hp: number // 生命值
+  shield: number // 护盾值
+  strength: number // 力量值
+  bleed: number // 流血层数
+  status: playerStatus // 玩家状态
 }
 
 interface SkillEffect {
-  damage?: number
-  damageTimes?: number
-  pierceDamage?: number
-  heal?: number
-  shield?: number
-  bleed?: number
-  stun?: boolean
-  strengthChange?: number
+  damage?: number // 普通伤害
+  damageTimes?: number // 伤害次数
+  pierceDamage?: number // 穿刺伤害
+  heal?: number // 治疗
+  shield?: number // 护盾
+  bleed?: number // 流血
+  stun?: boolean // 眩晕
+  weakStun?: boolean // 弱眩晕
+  selfStun?: boolean // 自身眩晕
+  strengthChange?: number // 力量变化
 }
 
 export interface OneTouchResult extends gameResult {
   win: boolean
+  message: string
+  playerId: number
 }
 
 const SKILL_MAP: { [key: string]: SkillEffect } = {
   // 基础技能
+  '1': { pierceDamage: 1, bleed: 3 },
+  '2': { pierceDamage: 1, stun: true },
   '3': { damage: 6 },
   '4': { shield: 1 },
   '5': { damage: 3, stun: true },
@@ -65,8 +71,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     super(disposeListener, session)
     this.players = [
       {
-        left: 0,
-        right: 0,
+        left: Math.round(Math.random() * 9) + 1,
+        right: Math.round(Math.random() * 9) + 1,
         hp: 40,
         shield: 0,
         strength: 0,
@@ -74,8 +80,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
         status: playerStatus.Normal
       },
       {
-        left: 0,
-        right: 0,
+        left: Math.round(Math.random() * 9) + 1,
+        right: Math.round(Math.random() * 9) + 1,
         hp: 40,
         shield: 0,
         strength: 0,

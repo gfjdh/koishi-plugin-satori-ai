@@ -98,6 +98,8 @@ export interface MiddlewareConfig {
   random_min_tokens: number
   randnum: number
   max_tokens: number
+  enable_warning: boolean
+  warning_group: string
 }
 
 // API配置
@@ -265,6 +267,9 @@ export namespace Sat {
     favorability_div_4: number
     prompt_4: string
     prompt_5: string
+    enable_warning: boolean
+    warning_group: string
+    warning_admin_id: string
 
     maxRetryTimes: number
     retry_delay_time: number
@@ -273,6 +278,7 @@ export namespace Sat {
     channel_id_for_gobang: string[]
     cd_for_gobang: number
     enable_fencing: boolean
+    enable_OneTouch: boolean
   }
 
   export const Config: Schema<Config> = Schema.intersect([
@@ -378,6 +384,9 @@ export namespace Sat {
       favorability_div_4: Schema.number().default(1000).description('思慕-恋慕分界线'),
       prompt_4: Schema.string().role('textarea').description('恋慕好感补充设定'),
       prompt_5: Schema.string().role('textarea').default('一般此配置项无效').description('夫妻好感补充设定'),
+      enable_warning: Schema.boolean().default(false).description('是否开启打小报告（当有人好感度下降时会在主群里打小报告）'),
+      warning_group: Schema.string().default('').description('打小报告的群号'),
+      warning_admin_id: Schema.string().default('').description('打小报告艾特的管理员id'),
     }).description('好感度设置'),
 
     Schema.object({
@@ -403,6 +412,7 @@ export namespace Sat {
       channel_id_for_gobang: Schema.array(String).description('启用五子棋的游戏频道id（不建议太多，第一个会被公示）'),
       cd_for_gobang: Schema.number().default(3600).description('每人五子棋游戏cd时间（秒）'),
       enable_fencing: Schema.boolean().default(false).description('是否开启击剑游戏'),
+      enable_OneTouch: Schema.boolean().default(false).description('是否开启一碰一游戏'),
     }).description('拓展模块-游戏设置(仅五子棋有效，其他无效，开发中)'),
   ])
 }

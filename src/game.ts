@@ -6,6 +6,7 @@ import { Sat } from './types'
 import { SAT } from './index'
 import { ensureUserExists, getUser, updateFavorability, updateUserP } from './database'
 import { refreshPuppeteer } from '.'
+import { OneTouchGame } from './gameOneTouch'
 
 const logger = new Logger('satori-game')
 
@@ -13,7 +14,7 @@ const logger = new Logger('satori-game')
  * 游戏总控类，管理所有可用游戏和命令
  */
 export class Game {
-  private GAMES = ['五子棋', '击剑']                             // 支持的游戏列表
+  private GAMES = ['五子棋', '击剑', '一碰一']                             // 支持的游戏列表
   private channelGames: Map<string, string> = new Map()  // 频道ID到游戏名称的映射
   private availableGames: Map<string, abstractGame<any>> = new Map() // 游戏名称到实例的映射
   private userUsage: Map<string, number> = new Map()
@@ -30,6 +31,9 @@ export class Game {
     if (this.config.enable_fencing) {
       this.availableGames.set('击剑', new fencing())
     }                          // 注册击剑
+    if (this.config.enable_OneTouch) {
+      this.availableGames.set('一碰一', new OneTouchGame())
+    }                          // 注册一碰一
     this.registerCommands(ctx)                          // 注册命令
 
     // 监听游戏结果事件（如胜负判定）

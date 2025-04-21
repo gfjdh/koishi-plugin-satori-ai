@@ -34,6 +34,7 @@ export class SAT extends Sat {
   private ChannelParallelCount: Map<string, number> = new Map()
   private onlineUsers: string[] = []
   private moodManager: MoodManager
+  private usersToWarn: Map<string, string> = new Map()
   private game: Game
 
   // 重写构造函数
@@ -123,6 +124,8 @@ export class SAT extends Sat {
         favorability_div_4: this.config.favorability_div_4,
         prompt_4: this.config.prompt_4,
         prompt_5: this.config.prompt_5,
+        enable_warning: this.config.enable_warning,
+        warning_group: this.config.warning_group,
       }
   }
   private getFavorabilityConfig(): FavorabilityConfig {
@@ -241,8 +244,8 @@ export class SAT extends Sat {
     const regex = /\*\*/g
     const inputCensor = prompt.match(regex)?.length
     const outputCensor = outputCheck < 0
-    if (inputCensor && this.config.visible_favorability) return "(好感↓↓)"
-    if (outputCensor && this.config.visible_favorability) return "(好感↓)"
+    if (inputCensor) return "(好感↓↓)"
+    if (outputCensor) return "(好感↓)"
     if (this.config.enable_auxiliary_LLM && !response.error && response.content) {
       const messages = generateAuxiliaryPrompt(prompt, response.content, user, this.getFavorabilityConfig())
       const result = await this.apiClient.auxiliaryChat(messages)
@@ -467,7 +470,10 @@ export class SAT extends Sat {
       if (moodLevel == 'angry') response += '（怒）'
       if (moodLevel == 'upset') response += '（烦躁）'
     }
-    if (auxiliaryResult && this.config.visible_favorability && !ring) response += auxiliaryResult
+    if (auxiliaryResult && this.config.visible_favorability && !ring) {
+      response += auxiliaryResult
+      this.addUserToWarnList(session, auxiliaryResult)
+    }
     if (replyPointing) { response = `@${session.username} ` + response }
 
     if (this.config.sentences_divide && response.length > 10) {
@@ -479,6 +485,35 @@ export class SAT extends Sat {
       return null
     }
     return response
+  }
+
+  private addUserToWarnList(session: Session, auxiliaryResult: string) {
+    if (!this.config.enable_warning) return
+    if (auxiliaryResult.includes('好感↓')) {
+      logger.info(`在群${session.channelId}中，${session.username}骚扰我！`)
+      this.usersToWarn.set(session.channelId, session.username)
+    }
+  }
+
+  public async getWarningList(session: Session) {
+    let result = ''
+    for (const [channelId, username] of this.usersToWarn.entries()) {
+      if (channelId) {
+        result += `在群${channelId}中，${username}骚扰我！\n`
+      }
+    }
+    if (result.length == 0) {
+      return false
+    }
+    if (this.config.warning_admin_id)
+      session.send(session.text('commands.sat.messages.warning',[this.config.warning_admin_id]) + result)
+    else
+      session.send(result)
+    return true
+  }
+
+  public async clearWarningList() {
+    return this.usersToWarn.clear()
   }
 
   // 清空会话

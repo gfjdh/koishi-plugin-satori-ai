@@ -2,6 +2,8 @@ import { Session, Context } from 'koishi';
 import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame';
 export interface OneTouchResult extends gameResult {
     win: boolean;
+    message: string;
+    playerId: number;
 }
 declare class OneTouchSingleGame extends abstractGameSingleGame {
     private players;

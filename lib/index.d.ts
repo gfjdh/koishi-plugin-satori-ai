@@ -11,6 +11,7 @@ export declare class SAT extends Sat {
     private ChannelParallelCount;
     private onlineUsers;
     private moodManager;
+    private usersToWarn;
     private game;
     constructor(ctx: Context, config: Sat.Config);
     private getAPIConfig;
@@ -40,6 +41,9 @@ export declare class SAT extends Sat {
     private buildSystemPrompt;
     private getThinkingPrompt;
     private formatResponse;
+    private addUserToWarnList;
+    getWarningList(session: Session): Promise<boolean>;
+    clearWarningList(): Promise<void>;
     private clearSession;
     private addCommonSense;
     private handleUserLevel;
