@@ -1,14 +1,22 @@
 import { Session, Logger, Context } from 'koishi'
-import { goBang, goBangGameResult, winFlag } from './gamegobang'
+import { goBang, goBangGameResult } from './gamegobang'
 import { fencing } from './gamefencing'
-import { abstractGame } from './abstractGame'
+import { abstractGame, gameResult } from './abstractGame'
 import { Sat } from './types'
 import { SAT } from './index'
 import { ensureUserExists, getUser, updateFavorability, updateUserP } from './database'
 import { refreshPuppeteer } from '.'
-import { OneTouchGame } from './gameOneTouch'
+import { OneTouchGame, OneTouchResult } from './gameOneTouch'
 
 const logger = new Logger('satori-game')
+
+// 胜负标志枚举
+export enum winFlag {
+  win = 1,
+  lose = 2,
+  draw = 3,
+  pending = 4
+}
 
 /**
  * 游戏总控类，管理所有可用游戏和命令
@@ -37,31 +45,7 @@ export class Game {
     this.registerCommands(ctx)                          // 注册命令
 
     // 监听游戏结果事件（如胜负判定）
-    ctx.on('game-result', async (session, result) => {
-      switch (result.gameName) {
-        case '五子棋':
-          const res = result as goBangGameResult
-          const user = await getUser(ctx, result.playerID)
-          const level = parseInt(res.message)
-          const bonus = Math.floor(level * level * level * (Math.random() * 2 + 2))
-          if (res.win === winFlag.win) {
-            updateUserP(ctx, user, bonus * 2)
-            updateFavorability(ctx, user, level * 2)
-            session.send('真厉害，奖励你' + bonus * 2 + 'p点,好感度+' + level * 2)
-          }
-          else if (res.win === winFlag.lose) {
-            // 根据level决定惩罚
-            updateUserP(ctx, user, -bonus)
-            session.send('真可惜，你输了' + bonus + 'p点')
-          }
-          else if (res.win === winFlag.draw) session.send('平局，稍后再战吧')
-          else {
-            updateUserP(ctx, user, -bonus)
-            session.send('游戏中断，你输了' + bonus + 'p点')
-          }
-          break
-      }
-    })
+    ctx.on('game-result', async (session, result) => { this.resultJudge(result, ctx, session) })
   }
 
   // 注册 Koishi 命令
@@ -124,6 +108,8 @@ export class Game {
     switch (gameName) {
       case '五子棋':
         return this.config.cd_for_gobang
+      case '一碰一':
+        return this.config.cd_for_OneTouch
       default:
         return 0
     }
@@ -136,5 +122,53 @@ export class Game {
     })
     logger.info(list)
     return list
+  }
+
+  private async resultJudge(result: gameResult, ctx: Context, session: Session) {
+    const user = await getUser(ctx, result.playerID)
+    switch (result.gameName) {
+      case '五子棋':
+        const goBangResult = result as goBangGameResult
+        const goBanglevel = parseInt(goBangResult.message)
+        const goBangbonus = Math.floor(goBanglevel * goBanglevel * goBanglevel * (Math.random() * 2 + 2))
+        if (goBangResult.win === winFlag.win) {
+          updateUserP(ctx, user, goBangbonus * 2)
+          updateFavorability(ctx, user, goBanglevel * 2)
+          session.send('真厉害，奖励你' + goBangbonus * 2 + 'p点,好感度+' + goBanglevel * 2)
+        }
+        else if (goBangResult.win === winFlag.lose) {
+          // 根据level决定惩罚
+          updateUserP(ctx, user, -goBangbonus)
+          session.send('真可惜，你输了' + goBangbonus + 'p点')
+        }
+        else if (goBangResult.win === winFlag.draw) session.send('平局，稍后再战吧')
+        else {
+          updateUserP(ctx, user, -goBangbonus)
+          session.send('游戏中断，你输了' + goBangbonus + 'p点')
+        }
+        return
+      case '一碰一':
+        const oneTouchResult = result as OneTouchResult
+        const oneTouchLevel = parseInt(oneTouchResult.message)
+        const oneTouchBonus = Math.floor(oneTouchLevel * oneTouchLevel * oneTouchLevel * (Math.random() * 2 + 2))
+        if (oneTouchResult.win === winFlag.win) {
+          updateUserP(ctx, user, oneTouchBonus * 2)
+          updateFavorability(ctx, user, oneTouchLevel * 2)
+          session.send('真厉害，奖励你' + oneTouchBonus * 2 + 'p点,好感度+' + oneTouchLevel * 2)
+        }
+        else if (oneTouchResult.win === winFlag.lose) {
+          // 根据level决定惩罚
+          updateUserP(ctx, user, -oneTouchBonus)
+          session.send('真可惜，你输了' + oneTouchBonus + 'p点')
+        }
+        else if (oneTouchResult.win === winFlag.draw) session.send('平局，稍后再战吧')
+        else {
+          updateUserP(ctx, user, -oneTouchBonus)
+          session.send('游戏中断，你输了' + oneTouchBonus + 'p点')
+        }
+        return
+      default:
+        return
+    }
   }
 }

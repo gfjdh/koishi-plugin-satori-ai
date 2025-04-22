@@ -246,6 +246,7 @@ export declare namespace Sat {
         cd_for_gobang: number;
         enable_fencing: boolean;
         enable_OneTouch: boolean;
+        cd_for_OneTouch: number;
     }
     const Config: Schema<Config>;
 }

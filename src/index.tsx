@@ -381,10 +381,14 @@ export class SAT extends Sat {
   // 构建消息
   private async buildMessages(session: Session, prompt: string) {
     const messages: Sat.Msg[] = []
+    const example = `<think>
+好的，我会尽量做到的
+</think>
+<p>已明确对话要求</p>`
     // 添加人格设定
     if (this.config.no_system_prompt) {
       messages.push({ role: 'user', content: await this.buildSystemPrompt(session, prompt) })
-      messages.push({ role: 'assistant', content: '<p>已明确对话要求</p>' })
+      messages.push({ role: 'assistant', content: example })
     } else {
       messages.push({ role: 'system', content: await this.buildSystemPrompt(session, prompt) })
     }

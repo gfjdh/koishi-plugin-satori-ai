@@ -4,18 +4,11 @@ import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { puppeteer } from '.'
 import { execSync } from 'child_process'
 import * as path from 'path'
+import { winFlag } from './game'
 
 const logger = new Logger('satori-game-gobang')
 const BOARD_SIZE = 14;    // 棋盘大小
 const inspireSearchLength = 10 // 启发式搜索长度
-
-// 胜负标志枚举
-export enum winFlag {
-  win = 1,
-  lose = 2,
-  draw = 3,
-  pending = 4
-}
 
 // 五子棋结果扩展接口
 export interface goBangGameResult extends gameResult {

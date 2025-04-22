@@ -1,14 +1,8 @@
 import { Session, Logger, Context } from 'koishi'
 import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame'
+import { winFlag } from './game'
 
-const logger = new Logger('satori-game-gobang')
-
-export enum winFlag {
-    win = 1,
-    lose = 2,
-    draw = 3,
-    pending = 4
-}
+const logger = new Logger('satori-game-fencing')
 
 export interface fencingGameResult extends gameResult {
     win: winFlag

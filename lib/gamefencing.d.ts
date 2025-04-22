@@ -1,11 +1,6 @@
 import { Session } from 'koishi';
 import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame';
-export declare enum winFlag {
-    win = 1,
-    lose = 2,
-    draw = 3,
-    pending = 4
-}
+import { winFlag } from './game';
 export interface fencingGameResult extends gameResult {
     win: winFlag;
 }
