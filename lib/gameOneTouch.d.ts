@@ -10,11 +10,23 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private player;
     private ai;
     level: number;
+    private winningFlag;
+    private turnCount;
+    private baseHP;
+    private levelHP;
+    private HPtoMax;
     constructor(disposeListener: () => boolean, session: Session);
-    private generateHands;
     startGame(): Promise<string>;
+    endGame: () => Promise<{
+        message: string;
+        win: winFlag;
+        gameName: string;
+        playerID: string;
+    }>;
+    private initState;
     processInput(input: string): Promise<string>;
     private buildTurnResult;
+    private judgeEnd;
     private processPlayerTurn;
     private processAiTurn;
     private applyEffectToEnemy;
