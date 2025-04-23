@@ -178,7 +178,7 @@ export function filterResponse(prompt: string, words: string[]): {content: strin
   if (!answerContent) {
     return {content: '有点问题，稍后再来吧', error: true};
   }
-  const regex = /<p>|<\/p>|<doubaothinking>|<\/doubaothinking>|<\/p|<answer>|<\/answer>|<br>|<\/br>/g;
+  const regex = /<p>|<\/p>|<doubaothinking>|<\/doubaothinking>|<\/p|<answer>|<\/answer>|<br>|<\/br>|<br\/>/g;
   const cleanedContent = answerContent.replace(regex, '');
   return cleanedContent ? {content: cleanedContent, error: false} : {content: '有点问题，稍后再来吧', error: true};
 }

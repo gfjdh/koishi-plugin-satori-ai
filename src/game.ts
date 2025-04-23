@@ -118,7 +118,7 @@ export class Game {
   }
 
   private getGameList(): string {
-    let list = '游戏列表：'
+    let list = '游戏列表：\n'
     this.GAMES.forEach((game) => {
       list += game + '\n'
     })
