@@ -13,8 +13,8 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private winningFlag;
     private turnCount;
     private baseHP;
-    private levelHP;
-    private HPtoMax;
+    private playerLevelHP;
+    private aiLevelHp;
     constructor(disposeListener: () => boolean, session: Session);
     startGame(): Promise<string>;
     endGame: () => Promise<{
@@ -39,7 +39,7 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private cloneState;
     private simulateMove;
     private evaluateState;
-    private debugState;
+    private instuction;
 }
 export declare class OneTouchGame extends abstractGame<OneTouchSingleGame> {
     constructor();

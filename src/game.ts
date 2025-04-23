@@ -154,7 +154,7 @@ export class Game {
         if (oneTouchResult.win === winFlag.win) {
           updateUserP(ctx, user, oneTouchBonus * 2)
           updateFavorability(ctx, user, oneTouchLevel * 2)
-          session.send('真厉害，奖励你' + oneTouchBonus * 2 + 'p点,好感度+' + oneTouchLevel * 2)
+          session.send('真厉害，奖励你' + oneTouchBonus * 2 + 'p点,好感度+' + Math.round(oneTouchLevel * 0.2))
         }
         else if (oneTouchResult.win === winFlag.lose) {
           // 根据level决定惩罚
