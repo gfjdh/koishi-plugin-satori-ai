@@ -60,6 +60,8 @@ export class Game {
 
   // 启动指定游戏
   public async startGame(session: Session, gameName: string, args: string[]) {
+    if (this.config.game_block_channel.includes(session.channelId))
+      return '本群不支持游戏哦' + (this.config.channel_id_for_gobang[0] ? ',想玩请加群' + this.config.channel_id_for_gobang[0] : '')
     if (this.channelGames.get(session.channelId)) return '当前频道已经有游戏在进行中'
     if (gameName == '') return this.getGameList()
     if (!this.GAMES.includes(gameName)) return '没有这个游戏哦'
@@ -118,7 +120,7 @@ export class Game {
   private getGameList(): string {
     let list = '游戏列表：'
     this.GAMES.forEach((game) => {
-      list += game + '；'
+      list += game + '\n'
     })
     logger.info(list)
     return list

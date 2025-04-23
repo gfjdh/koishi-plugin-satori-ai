@@ -241,6 +241,7 @@ export declare namespace Sat {
         maxRetryTimes: number;
         retry_delay_time: number;
         enable_game: boolean;
+        game_block_channel: string[];
         enable_gobang: boolean;
         channel_id_for_gobang: string[];
         cd_for_gobang: number;

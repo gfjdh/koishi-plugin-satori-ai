@@ -35,6 +35,7 @@ interface SkillEffect {
   selfStun?: boolean // 自身眩晕
   strengthChange?: number // 力量变化
   selfstrengthChange?: number // 自身力量变化
+  magnificentEnd?: boolean // 华丽收场
 }
 
 export interface OneTouchResult extends gameResult {
@@ -53,19 +54,20 @@ const SKILL_MAP: { [key: string]: SkillEffect } = {
   '5': { damage: 3, weakStun: true, name: '巴掌' },
   '6': { heal: 6 , selfbleed: -1, name: '酒' },
   '7': { pierceDamage: 1, destroyShield: 2, name: '钻击' },
-  '8': { damage: 16, selfStun: true, name: '枪击' },
+  '8': { damage: 12, selfStun: true, name: '枪击' },
   '9': { pierceDamage: 1, bleed: 1, strengthChange: -1, name: '钩' },
-  '0': { selfstrengthChange: 1, name: '蓄力' },
+  '0': { selfstrengthChange: 2, name: '蓄力' },
 
   // 组合技
   '1+8': { damage: 15, bleed: 3, name: '短刀与手枪' },
-  '5+5': { damage: 10, stun: true, name: '五指山' },
-  '5+0': { selfstrengthChange: 3, name: '拜师学艺' },
+  '5+5': { damage: 5, stun: true, name: '五指山' },
+  '5+0': { selfstrengthChange: 5, name: '拜师学艺' },
   '6+6': { heal: 15, selfstrengthChange: 1, selfbleed: -3, name: '狂宴' },
   '1+9': { pierceDamage: 5, bleed: 5, strengthChange: -1, name: '倒挂金钩' },
   '4+4': { shield: 3, heal: 5, name: '壁垒' },
-  '8+8': { damage: 15, damageTimes: 2, selfStun: true, name: '双持' },
+  '8+8': { damage: 12, damageTimes: 2, selfStun: true, name: '双持' },
   '1+2': { pierceDamage: 5, bleed: 3, stun: true, name: '弱点刺击' },
+  '0+0': { name: '华丽收场', bleed: 5, selfstrengthChange: -99, magnificentEnd: true }
 }
 
 class OneTouchSingleGame extends abstractGameSingleGame {
@@ -76,7 +78,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private turnCount: number // 当前回合数
   private baseHP: number = 30 // 初始血量
   private playerLevelHP: number = 5 // 每级增加的血量
-  private aiLevelHp: number = 7 // AI每级增加的血量
+  private aiLevelHp: number = 6 // AI每级增加的血量
+  private lastScore: number = 0 // 上一回合的分数
 
   constructor(disposeListener: () => boolean, session: Session) {
     super(disposeListener, session)
@@ -277,7 +280,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   // weakStun?: boolean // 弱眩晕
   // strengthChange?: number // 力量变化
   private applyEffectToEnemy(self: PlayerState, target: PlayerState, effect: SkillEffect, isCombo: boolean) {
-    if (effect.pierceDamage) target.hp -= effect.pierceDamage + (self.strength || 0)
+    if (effect.pierceDamage) target.hp -= Math.max(effect.pierceDamage + (self.strength || 0), 0)
     if (effect.destroyShield) target.shield = Math.max(0, target.shield - effect.destroyShield)
     if (effect.bleed) target.bleed += effect.bleed
     if (effect.strengthChange) target.strength = target.strength + effect.strengthChange
@@ -288,13 +291,19 @@ class OneTouchSingleGame extends abstractGameSingleGame {
         const blocked = target.shield > 0
         target.shield = Math.max(0, target.shield - (isCombo ? 2 : 1))
         if (!blocked) {
-          target.hp -= effect.damage + (self.strength || 0)
+          target.hp -= Math.max(effect.damage + (self.strength || 0), 0)
           if (effect.weakStun && target.status !== playerStatus.lastStunned) {
             target.status = playerStatus.Stunned
           }
         }
       }
     }
+
+    if (effect.magnificentEnd) {
+      target.hp -= target.bleed * (target.bleed + 1) / 2
+      target.bleed = 0
+    }
+
     if (effect.stun && target.status !== playerStatus.lastStunned)
       target.status = playerStatus.Stunned
     return target
@@ -336,12 +345,13 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (effect.destroyShield) msg.push(`破坏对方${effect.destroyShield}层护盾`)
     if (effect.strengthChange) msg.push(`对方力量${effect.strengthChange > 0 ? '增加' : '减少'}${Math.abs(effect.strengthChange)}`)
     if (effect.selfstrengthChange) msg.push(`自身力量${effect.selfstrengthChange > 0 ? '增加' : '减少'}${Math.abs(effect.selfstrengthChange)}`)
+    if (effect.magnificentEnd) msg.push(`结算对方所有流血`)
     if (enemyStatu.status !== playerStatus.lastStunned) {
       if (effect.stun) msg.push(`眩晕对方`)
       if (effect.weakStun && enemyStatu.shield === 0) msg.push(`弱眩晕对方`)
     }
     if (effect.selfStun && selfStatu.status !== playerStatus.lastStunned) msg.push(`眩晕自己`)
-    if (selfStatu.bleed > 0) msg.push(`自身受到流血伤害${selfStatu.bleed}`)
+    if (selfStatu.bleed > 0) msg.push(`自身受到流血伤害${selfStatu.bleed + 1}`)
     if (isCombo) msg.unshift('触发组合技！\n')
     return msg.join(' ')
   }
@@ -350,7 +360,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     let bestScore = -Infinity;
     let bestMove: [number, number] = [0, 0];
 
-    const possibleMoves = this.generatePossibleMoves(this.player, this.ai);
+    const possibleMoves = this.generatePossibleMoves(this.ai, this.player);
     for (const move of possibleMoves) {
       // 克隆当前状态
       const simulatedState: [PlayerState, PlayerState] = [
@@ -375,6 +385,9 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       }
     }
     logger.info(`AI选择的动作：${bestMove[0]}碰${bestMove[1]}, 分数：${bestScore}`);
+    if (this.turnCount > 5)
+      this.session.sendQueued(this.generateChat(bestScore), 1000)
+    this.lastScore = bestScore
     return bestMove;
   }
 
@@ -384,7 +397,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       return this.evaluateState(currentState);
     }
 
-    const possibleMoves = this.generatePossibleMoves(currentState[0], currentState[1]);
+    const possibleMoves = this.generatePossibleMoves(currentState[isMaximizing ? 1 : 0], currentState[isMaximizing ? 0 : 1]);
     let value = isMaximizing ? -Infinity : Infinity;
 
     for (const move of possibleMoves) {
@@ -421,14 +434,14 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   }
 
   // 生成所有合法动作（左手/右手触碰对方左右手）
-  private generatePossibleMoves(player: PlayerState, opponent: PlayerState): [number, number][] {
+  private generatePossibleMoves(attacker: PlayerState, defender: PlayerState): [number, number][] {
     let moves: [number, number][] = [];
 
     // 可触碰对方左右手（0: 左，1: 右）
     for (const targetHand of [0, 1]) {
       // 己方左右手均可选择
-      moves.push([player.left, opponent[targetHand ? 'right' : 'left']]);
-      moves.push([player.right, opponent[targetHand ? 'right' : 'left']]);
+      moves.push([attacker.left, defender[targetHand ? 'right' : 'left']]);
+      moves.push([attacker.right, defender[targetHand ? 'right' : 'left']]);
     }
     return moves
   }
@@ -502,6 +515,12 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     return score;
   }
 
+  private generateChat(Score: number): string {
+    if (this.lastScore < 100000 && Score > 100000) {
+      return '我觉得你要输了哦~'
+    }
+  }
+
   private instuction = `游戏说明：
   这个游戏的基本玩法是：
   两个人玩，两只手分别可以做出"一到十"的手势，每一种手势代表一个招式。
@@ -531,8 +550,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   一+九：${SKILL_MAP['1+9'].name}：对对方造成${SKILL_MAP['1+9'].pierceDamage}穿刺伤害，${SKILL_MAP['1+9'].bleed}流血，对方${SKILL_MAP['1+9'].strengthChange}力量
   四+四：${SKILL_MAP['4+4'].name}：获得${SKILL_MAP['4+4'].shield}层护盾，恢复${SKILL_MAP['4+4'].heal}生命
   八+八：${SKILL_MAP['8+8'].name}：造成${SKILL_MAP['8+8'].damage}伤害${SKILL_MAP['8+8'].damageTimes}次，眩晕自己
-  一+八：${SKILL_MAP['1+8'].name}：造成${SKILL_MAP['1+8'].damage}穿刺伤害，眩晕自己
   一+二：${SKILL_MAP['1+2'].name}：造成${SKILL_MAP['1+2'].pierceDamage}穿刺伤害，${SKILL_MAP['1+2'].bleed}流血，眩晕对方
+  十+十：${SKILL_MAP['0+0'].name}：对对方造成${SKILL_MAP['0+0'].bleed}流血，自身${SKILL_MAP['0+0'].selfstrengthChange}力量，然后立即结算对方全部流血
   }
   注：
   流血效果：每次到自己回合结束时，收到流血层数点伤害，不可被护盾阻挡，然后流血层数减1;
