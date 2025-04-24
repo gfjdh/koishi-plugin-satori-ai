@@ -137,7 +137,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       left: this.player.left,
       right: this.player.right,
       hp: this.baseHP + level * this.playerLevelHP,
-      shield: Math.round(level / 3),
+      shield: Math.round(level / 5),
       strength: Math.round(level / 5),
       bleed: 0,
       counterAttack: 0,
@@ -172,7 +172,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     // AI的回合
     const bestMove = this.ai.status === playerStatus.Stunned ? [0,0] : this.aiSearchEntrance()
     const aiResult = this.processAiTurn(bestMove[0], bestMove[1]);
-    if (this.player.status === playerStatus.Stunned)
+    if (this.player.status === playerStatus.Stunned && this.player.hp > 0 && this.ai.hp > 0)
       setTimeout(async () => { this.session.send(await this.processInput(input)) }, 1000)
     return await this.buildTurnResult(result, aiResult)
   }
@@ -544,21 +544,47 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private evaluateState(state: [PlayerState, PlayerState]): number {
     const ai = state[1]; // AI始终是玩家1
     const player = state[0];
+    const aiBaseHP = this.baseHP + this.level * this.aiLevelHp
+    const playerBaseHP = this.baseHP + this.level * this.playerLevelHP
 
     // 基础分差
     let score = (ai.hp - player.hp);
 
+    // 低血量惩罚
+    if (ai.hp < aiBaseHP / 2) score -= Math.round((aiBaseHP) / 4);
+    if (player.hp < playerBaseHP / 2) score += Math.round((playerBaseHP) / 4);
+    if (ai.hp < aiBaseHP / 4) score -= Math.round((aiBaseHP) / 4);
+    if (player.hp < playerBaseHP / 4) score += Math.round((playerBaseHP) / 4);
+    if (ai.hp < aiBaseHP / 8) score -= Math.round((aiBaseHP) / 4);
+    if (player.hp < playerBaseHP / 8) score += Math.round((playerBaseHP) / 4);
+
     // 战斗属性加成
-    score += Math.min(ai.strength * 5, 50);
-    score -= Math.min(player.strength * 5, 50);
+    score += Math.min(ai.strength * 5, 100);
+    score -= Math.min(player.strength * 5);
+
+    // 低力量惩罚
+    if (ai.strength < 0) score += Math.round((ai.strength) * 5);
+    if (player.strength < 0) score -= Math.round((player.strength) * 5);
 
     // 防御属性
     score += ai.shield * 8;
     score -= player.shield * 8;
 
     // 异常状态
-    score -= Math.min(Math.round(ai.bleed * ai.bleed / 2.5), 900);
-    score += Math.min(Math.round(player.bleed * player.bleed / 2.5), 900);
+    score -= Math.min(Math.round(ai.bleed * ai.bleed / 2.5));
+    score += Math.min(Math.round(player.bleed * player.bleed / 2.5));
+
+    // 眩晕状态
+    if (ai.status === playerStatus.Stunned) score -= 10;
+    if (player.status === playerStatus.Stunned) score += 10;
+
+    // 反击状态
+    if (ai.counterAttack > 0) score += Math.max(ai.counterAttack + (ai.strength || 0), 0);
+    if (player.counterAttack > 0) score -= Math.max(player.counterAttack + (player.strength || 0), 0);
+
+    // 易伤状态
+    if (ai.vulnerablility > 0) score -= Math.round(ai.vulnerablility * 4);
+    if (player.vulnerablility > 0) score += Math.round(player.vulnerablility * 4);
 
     // 终局奖励
     if (player.hp <= 0) score += 100000;
@@ -571,11 +597,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (this.lastScore < 100000 && Score > 100000) {
       return '我觉得你要输了哦~'
     }
-    if (this.lastScore < 0 && Score > 0) {
+    if (this.lastScore < 0 && Score > 0 || this.lastScore > 0 && Score < 0) {
       return '局势发生变化了呢~'
-    }
-    if (this.lastScore > -100000 && Score < -100000) {
-      return '感觉我要输了呢~'
     }
   }
 
@@ -588,7 +611,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   每次开局两人初始手势随机，由玩家先手，双方轮流行动。
   玩家初始有"${this.baseHP} + ${this.playerLevelHP} * 难度"血量。
   ai初始有"${this.baseHP} + ${this.aiLevelHp} * 难度"血量。
-  玩家初始有"难度 / 3"护盾，"难度 / 5"力量，四舍五入取整。
+  玩家初始有"难度 / 5"护盾，"难度 / 5"力量，四舍五入取整。
   血量没有上限，率先将对方血量减到零的人获胜：
   具体的技能设计如下：{
   一：${SKILL_MAP['1'].name}：造成${SKILL_MAP['1'].pierceDamage}穿刺伤害，${SKILL_MAP['1'].bleed}流血;
