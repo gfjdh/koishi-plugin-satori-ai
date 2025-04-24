@@ -55,16 +55,16 @@ export interface OneTouchResult extends gameResult {
 const SKILL_MAP: { [key: string]: SkillEffect } = {
   // 基础技能
   '-1': { damage: 0, name: '无效' },
-  '1': { pierceDamage: 1, bleed: 3, name: '锥刺' },
-  '2': { pierceDamage: 1, stun: true, name: '点穴' },
-  '3': { damage: 6, counterAttack: 3,name: '爪击' },
-  '4': { shield: 1, name: '护盾' },
-  '5': { damage: 4, weakStun: true, name: '巴掌' },
-  '6': { heal: 6 , selfbleed: -2, name: '酒' },
-  '7': { pierceDamage: 1, destroyShield: 2, name: '钻击' },
-  '8': { damage: 13, selfStun: true, name: '枪击' },
-  '9': { pierceDamage: 1, bleed: 2, strengthChange: -1, name: '钩' },
-  '0': { selfstrengthChange: 2, name: '蓄力' },
+  '1': { pierceDamage: 1, bleed: 3, name: '锥刺' }, //特性：流血
+  '2': { pierceDamage: 1, stun: true, name: '点穴' }, //特性：眩晕
+  '3': { damage: 6, counterAttack: 3,name: '爪击' }, //特性：反击
+  '4': { shield: 1, name: '护盾' }, //特性：护盾
+  '5': { damage: 4, weakStun: true, name: '巴掌' }, //特性：普通伤害+弱眩晕
+  '6': { heal: 6 , selfbleed: -2, name: '酒' }, //特性：回血
+  '7': { pierceDamage: 1, destroyShield: 2, name: '钻击' }, //特性：破盾
+  '8': { damage: 13, selfStun: true, name: '枪击' }, //特性：高伤+自眩晕
+  '9': { pierceDamage: 1, bleed: 2, strengthChange: -1, name: '钩' }, //特性：削弱
+  '0': { selfstrengthChange: 2, name: '蓄力' }, //特性：蓄力
 
   // 组合技
   '1+8': { damage: 15, bleed: 3, selfStun: true, name: '空尖弹' },
@@ -77,6 +77,7 @@ const SKILL_MAP: { [key: string]: SkillEffect } = {
   '4+6': { shield: 2, heal: 5, selfbleed: -3, name: '固守' },
   '8+8': { damage: 13, damageTimes: 2, selfStun: true, name: '双持' },
   '1+2': { pierceDamage: 3, vulnerablility: 3, stun: true, name: '弱点刺击' },
+  '2+8': { damage: 8, stun: true, selfStun: true, addLeft: 1, addRight: 9, name: '点射' },
   '3+4': { name: '防御反击', shield: 1, counterAttack: 15 },
   '7+7': { pierceDamage: 7, destroyShield: 5, name: '穿龙枪' },
   '7+8': { pierceDamage: 13, destroyShield: 3, selfStun: true, name: '穿甲弹' },
@@ -91,9 +92,9 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   public level: number
   private winningFlag: winFlag = winFlag.pending // 当前胜负状态
   private turnCount: number // 当前回合数
-  private baseHP: number = 10 // 初始血量
-  private playerLevelHP: number = 17 // 每级增加的血量
-  private aiLevelHp: number = 15 // AI每级增加的血量
+  private baseHP: number = 40 // 初始血量
+  private playerLevelHP: number = 10 // 每级增加的血量
+  private aiLevelHp: number = 10 // AI每级增加的血量
   private lastScore: number = 0 // 上一回合的分数
 
   constructor(disposeListener: () => boolean, session: Session) {
@@ -136,7 +137,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       left: this.player.left,
       right: this.player.right,
       hp: this.baseHP + level * this.playerLevelHP,
-      shield: Math.round(level / 2),
+      shield: Math.round(level / 3),
       strength: Math.round(level / 5),
       bleed: 0,
       counterAttack: 0,
@@ -265,6 +266,9 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   }
 
   private processAiTurn(handA: number, handB: number): string {
+    if (this.ai.hp <= 0) {
+      return `已经结束游戏`
+    }
     if (this.ai.status === playerStatus.lastStunned) {
       this.ai.status = playerStatus.Normal
     }
@@ -351,7 +355,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     // 处理反击
     if (self.counterAttack) self.counterAttack = 0
     if (effect.counterAttack) self.counterAttack = effect.counterAttack
-    if (enemy.counterAttack > 0 && effect.damage > 0)
+    if (enemy.counterAttack > 0 && (effect.damage > 0 || effect.pierceDamage > 0))
       self.hp -= Math.max(enemy.counterAttack + (enemy.strength || 0), 0)
 
     // 处理眩晕
@@ -398,7 +402,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       if (effect.weakStun && enemy.shield === 0) msg.push(`弱眩晕对方`)
     }
     if (effect.selfStun) msg.push(`眩晕自己`)
-    if (enemy.counterAttack > 0 && effect.damage > 0) msg.push(`被反击${enemy.counterAttack + (enemy.strength || 0)}穿刺伤害`)
+    if (enemy.counterAttack > 0 && (effect.damage > 0 || effect.pierceDamage > 0)) msg.push(`被反击${enemy.counterAttack + (enemy.strength || 0)}穿刺伤害`)
     if (self.bleed > 0) msg.push(`自身受到流血伤害${self.bleed + 1}`)
     if (isCombo) msg.unshift('触发组合技！\n')
     return msg.join(' ')
@@ -584,7 +588,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   每次开局两人初始手势随机，由玩家先手，双方轮流行动。
   玩家初始有"${this.baseHP} + ${this.playerLevelHP} * 难度"血量。
   ai初始有"${this.baseHP} + ${this.aiLevelHp} * 难度"血量。
-  玩家初始有"难度 / 2"护盾，"难度 / 5"力量，四舍五入取整。
+  玩家初始有"难度 / 3"护盾，"难度 / 5"力量，四舍五入取整。
   血量没有上限，率先将对方血量减到零的人获胜：
   具体的技能设计如下：{
   一：${SKILL_MAP['1'].name}：造成${SKILL_MAP['1'].pierceDamage}穿刺伤害，${SKILL_MAP['1'].bleed}流血;
@@ -608,19 +612,20 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   四+六：${SKILL_MAP['4+6'].name}：获得${SKILL_MAP['4+6'].shield}层护盾，自身${SKILL_MAP['4+6'].selfbleed}流血，恢复${SKILL_MAP['4+6'].heal}生命
   八+八：${SKILL_MAP['8+8'].name}：造成${SKILL_MAP['8+8'].damage}伤害${SKILL_MAP['8+8'].damageTimes}次，眩晕自己
   一+二：${SKILL_MAP['1+2'].name}：给于对方${SKILL_MAP['1+2'].vulnerablility}易伤，造成${SKILL_MAP['1+2'].pierceDamage}穿刺伤害，眩晕对方
+  二+八：${SKILL_MAP['2+8'].name}：造成${SKILL_MAP['2+8'].damage}伤害，对方左手数值增加${SKILL_MAP['2+8'].addLeft}，右手数值增加${SKILL_MAP['2+8'].addRight}，眩晕对方，眩晕自己
   三+四：${SKILL_MAP['3+4'].name}：获得${SKILL_MAP['3+4'].shield}层护盾，获得${SKILL_MAP['3+4'].counterAttack}层反击。
   七+七：${SKILL_MAP['7+7'].name}：造成${SKILL_MAP['7+7'].pierceDamage}穿刺伤害，破坏对方${SKILL_MAP['7+7'].destroyShield}层护盾
   七+八：${SKILL_MAP['7+8'].name}：造成${SKILL_MAP['7+8'].pierceDamage}穿刺伤害，破坏对方${SKILL_MAP['7+8'].destroyShield}层护盾，眩晕自己
-  六+二：${SKILL_MAP['2+6'].name}：造成${SKILL_MAP['2+6'].pierceDamage}穿刺伤害，恢复${SKILL_MAP['2+6'].heal}生命，自身${SKILL_MAP['2+6'].selfbleed}流血，自身增加${SKILL_MAP['2+6'].selfstrengthChange}力量，眩晕对方
+  六+二：${SKILL_MAP['2+6'].name}：造成${SKILL_MAP['2+6'].damage}伤害，恢复${SKILL_MAP['2+6'].heal}生命，自身${SKILL_MAP['2+6'].selfbleed}流血，自身增加${SKILL_MAP['2+6'].selfstrengthChange}力量，眩晕对方
   三+七：${SKILL_MAP['3+7'].name}：获得${SKILL_MAP['3+7'].counterAttack}层反击，破坏对方${SKILL_MAP['3+7'].destroyShield}层护盾，对方左手数值增加${SKILL_MAP['3+7'].addLeft}，右手数值增加${SKILL_MAP['3+7'].addRight}
   十+十：${SKILL_MAP['0+0'].name}：对对方造成${SKILL_MAP['0+0'].bleed}流血，自身${SKILL_MAP['0+0'].selfstrengthChange}力量，然后立即结算对方全部流血
   }
   注：
   流血效果：每次到自己回合结束时，收到流血层数点伤害，不可被护盾阻挡，然后流血层数减1;
-  护盾效果：每一层护盾可阻挡下一次受到的伤害，如果伤害来源是组合技则消耗两层护盾。护盾上限为五层。
+  护盾效果：每一层护盾可阻挡下一次受到的普通伤害，如果伤害来源是组合技则消耗两层护盾(若仅有一层则消耗一层)。护盾上限为五层。
   眩晕效果：跳过自己的下一个回合，若上回合已经被眩晕，则本回合不受眩晕影响（即不可被连续眩晕）
   弱眩晕效果：若对方没有护盾，则眩晕对方一回合
-  反击：下一回合若对方行动中有普通伤害，则对方受到反击层数点穿刺伤害，此效果受力量加成，且仅持续一回合
+  反击：下一回合若对方行动中有攻击，则对方受到反击层数点穿刺伤害，此效果受力量加成，且仅持续一回合
   穿刺伤害：不被护盾影响的伤害（不会消耗护盾）
   力量效果：每有一点力量，每次造成的伤害+1，若为负数则减一
   易伤效果：受到的普通伤害+50%，自己的回合结束时减少一层
