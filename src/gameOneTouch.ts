@@ -54,7 +54,7 @@ export interface OneTouchResult extends gameResult {
 
 const SKILL_MAP: { [key: string]: SkillEffect } = {
   // 基础技能
-  '-1': { damage: 0, name: '无效' },
+  '-1': { name: '无效' },
   '1': { pierceDamage: 1, bleed: 3, name: '锥刺' }, //特性：流血
   '2': { pierceDamage: 1, stun: true, name: '点穴' }, //特性：眩晕
   '3': { damage: 6, counterAttack: 3,name: '爪击' }, //特性：反击
@@ -136,11 +136,12 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   public override endGame = async () => {
     super.endGame()
     if (this.winningFlag === winFlag.pending || this.winningFlag === winFlag.lose) {
+      this.bonus = Math.floor(this.level * 0.2 * this.bonus)
       this.bonus -= Math.floor(this.level * this.level * (Math.random() * 1 + 1))
       this.bonus = Math.min(this.bonus, 0)
     }
     if (this.winningFlag === winFlag.win) {
-      this.bonus += Math.floor(this.level * this.level * (Math.random() * 1 + 1))
+      this.bonus = Math.floor(this.level * this.bonus * 0.5)
     }
     return { message: `${this.bonus}`, win: this.winningFlag, gameName: '一碰一', playerID: this.session.userId  }
   }
@@ -340,16 +341,14 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   }
 
   private processAiTurn(handA: number, handB: number): string {
-    if (this.ai.hp <= 0) {
-      return `已经结束游戏`
-    }
+    if (this.ai.hp <= 0) return `已经结束游戏\n\n` + this.buildAiTurnBonusMessage(SKILL_MAP['-1'])
     if (this.ai.status === playerStatus.lastStunned) {
       this.ai.status = playerStatus.Normal
     }
     if (this.ai.status === playerStatus.Stunned) {
       this.ai.status = playerStatus.lastStunned
       this.ai = this.applyEffectToSelf(this.player, this.ai, SKILL_MAP['-1'])
-      return "被眩晕，跳过回合"
+      return "被眩晕，跳过回合，本回合分数奖励继承到下一回合"
     }
     const sum = (handA + handB) % 10
     this.ai[handA === this.ai.left ? 'left' : 'right'] = sum
@@ -751,7 +750,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   力量效果：每有一点力量，每次造成的伤害+1，若为负数则减一
   易伤效果：受到的普通伤害+50%，自己的回合结束时减少一层
   组合技：两只手势符合组合技条件时触发组合技，组合技的效果会覆盖普通技能的效果，组合无序
-  bonus: 当行动导致关键效果时，获得额外奖励
+  bonus: 当行动导致关键效果时，获得额外奖励，在ai回合结束时结算，若ai被眩晕则奖励继承到下一回合
   `
 }
 
