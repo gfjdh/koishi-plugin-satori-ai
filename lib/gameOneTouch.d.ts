@@ -16,6 +16,10 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private playerLevelHP;
     private aiLevelHp;
     private lastScore;
+    private bonus;
+    private singleBonus;
+    private singleBonusMultiplier;
+    private comboCombos;
     constructor(disposeListener: () => boolean, session: Session);
     startGame(): Promise<string>;
     endGame: () => Promise<{
@@ -29,7 +33,9 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private buildTurnResult;
     private judgeEnd;
     private processPlayerTurn;
+    private buildMyTurnBonusMessage;
     private processAiTurn;
+    private buildAiTurnBonusMessage;
     private applyEffectToEnemy;
     private applyEffectToSelf;
     private checkCombo;

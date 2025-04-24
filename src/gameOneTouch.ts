@@ -94,8 +94,12 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private turnCount: number // 当前回合数
   private baseHP: number = 40 // 初始血量
   private playerLevelHP: number = 10 // 每级增加的血量
-  private aiLevelHp: number = 10 // AI每级增加的血量
+  private aiLevelHp: number = 8 // AI每级增加的血量
   private lastScore: number = 0 // 上一回合的分数
+  private bonus: number = 0 // 奖励分数
+  private singleBonus: number = 0 // 单回合的分数
+  private singleBonusMultiplier: number = 1 // 单回合的分数倍率
+  private comboCombos: number = 0 // 组合技连击次数
 
   constructor(disposeListener: () => boolean, session: Session) {
     super(disposeListener, session)
@@ -104,6 +108,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   public override async startGame() {
     super.startGame()
     this.turnCount = 0
+    this.bonus = 0
+    this.comboCombos = 0
     this.player = {
       left: Math.round(Math.random() * 8) + 1,
       right: Math.round(Math.random() * 8) + 1,
@@ -129,7 +135,14 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   // 结束游戏，返回结果
   public override endGame = async () => {
     super.endGame()
-    return { message: `${this.level}`, win: this.winningFlag, gameName: '一碰一', playerID: this.session.userId }
+    if (this.winningFlag === winFlag.pending || this.winningFlag === winFlag.lose) {
+      this.bonus -= Math.floor(this.level * this.level * (Math.random() * 1 + 1))
+      this.bonus = Math.min(this.bonus, 0)
+    }
+    if (this.winningFlag === winFlag.win) {
+      this.bonus += Math.floor(this.level * this.level * (Math.random() * 1 + 1))
+    }
+    return { message: `${this.bonus}`, win: this.winningFlag, gameName: '一碰一', playerID: this.session.userId  }
   }
 
   private initState(level: number) {
@@ -177,7 +190,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     return await this.buildTurnResult(result, aiResult)
   }
 
-  private async buildTurnResult(result: string, aiResult:string): Promise<string> {
+  private async buildTurnResult(result: string, aiResult: string): Promise<string> {
     // 创建状态条生成函数
     const createStatusBar = (value: number, max: number, width: number) =>
       `[${'■'.repeat(Math.max(Math.ceil(value / max * width), 0))}${'□'.repeat(width - Math.max(Math.ceil(value / max * width)))}]`;
@@ -207,7 +220,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.player.status === playerStatus.Stunned ? "💫 眩晕" : ""
     ].filter(Boolean).join(" | ");
 
-    return wrapInHTML(`你的行动：${result}\n\n我的行动：${aiResult}
+    return wrapInHTML(`▶️你的行动：${result}\n\n▶️我的行动：${aiResult}
 
   我的当前手势：左${this.ai.left} 右${this.ai.right}
   你的当前手势：左${this.player.left} 右${this.player.right}
@@ -256,13 +269,74 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     const combo = this.checkCombo(this.player['left'], this.player['right'])
     if (combo) {
       isCombo = true
+      this.comboCombos++
       effect = { ...combo }
+    } else {
+      this.comboCombos = 0
     }
-
+    const bonusMessage = this.buildMyTurnBonusMessage(effect, isCombo)
     this.ai = this.applyEffectToEnemy(playerState, aiState, effect, !!combo)
     this.player = this.applyEffectToSelf(aiState, playerState, effect)
 
-    return this.buildResultMessage(effect, isCombo, this.player, this.ai)
+    return this.buildResultMessage(effect, isCombo, this.player, this.ai) + (bonusMessage ? `\n\n${bonusMessage}` : '')
+  }
+
+  // 生成玩家回合奖励信息
+  private buildMyTurnBonusMessage(effect: SkillEffect, isCombo: boolean): string {
+    let bonusMessage = ''
+    this.singleBonus = 0
+    this.singleBonusMultiplier = 1
+    if (isCombo) {
+      this.singleBonus += 10
+      bonusMessage += `触发组合技，获得10点分数!\n`
+    }
+    if ((effect.damage || 0) * (effect.damageTimes || 1) >= 20 && this.ai.shield === 0) {
+      const effectBonus = Math.round((effect.damage || 0) * (effect.damageTimes || 1) * 0.8)
+      this.singleBonus += effectBonus
+      bonusMessage += `沉重一击！获得${effectBonus}点分数!\n`
+    }
+    if ((effect.pierceDamage || 0) >= 15) {
+      const effectBonus = Math.round(effect.pierceDamage * 0.5)
+      this.singleBonus += effectBonus
+      bonusMessage += `穿刺一击！获得${effectBonus}点分数!\n`
+    }
+    if ((effect.destroyShield || 0) >= this.ai.shield && this.ai.shield > 1) {
+      const effectBonus = Math.round(this.ai.shield * 5)
+      this.singleBonus += effectBonus
+      bonusMessage += `快速破盾！获得${effectBonus}点分数!\n`
+    }
+    if ((effect.selfbleed || 0) < -2 && this.player.bleed > -effect.selfbleed) {
+      const effectBonus = Math.round(this.player.bleed * 2)
+      this.singleBonus += effectBonus
+      bonusMessage += `关键治疗！获得${effectBonus}点分数!\n`
+    }
+    if ((effect.stun || effect.weakStun && this.ai.shield === 0) && this.ai.status === playerStatus.Normal && this.ai.bleed > 5) {
+      const effectBonus = Math.round(this.ai.bleed * 2)
+      this.singleBonus += effectBonus
+      bonusMessage += `流血眩晕！获得${effectBonus}点分数!\n`
+    }
+    if ((effect.strengthChange || 0) < -1 && this.ai.strength < 0) {
+      const effectBonus = Math.round(effect.strengthChange * -5)
+      this.singleBonus += effectBonus
+      bonusMessage += `强效削弱！获得${effectBonus}点分数!\n`
+    }
+    if ((effect.damage || 0) + (effect.pierceDamage || 0) >= 10 && this.ai.vulnerablility > 0) {
+      const effectBonus = Math.round(this.ai.vulnerablility * 0.1 + 1)
+      this.singleBonusMultiplier *= effectBonus
+      bonusMessage += `易伤打击！本回合分数*${effectBonus}!\n`
+    }
+    if (effect.magnificentEnd && this.ai.bleed > 4) {
+      const effectBonus = Math.round(this.ai.bleed * 1.5)
+      this.singleBonusMultiplier *= effectBonus
+      this.bonus *= 2
+      bonusMessage += `华丽收场！当前总分数*2，本回合分数*${effectBonus}!\n`
+    }
+
+    if (this.comboCombos > 1) {
+      this.singleBonusMultiplier *= (1 + this.comboCombos / 10)
+      bonusMessage += `组合技连击${this.comboCombos}次！本回合分数+${10 * this.comboCombos}%！`
+    }
+    return bonusMessage
   }
 
   private processAiTurn(handA: number, handB: number): string {
@@ -287,11 +361,35 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       isCombo = true
       effect = { ...combo }
     }
-
+    const bonusMessage = this.buildAiTurnBonusMessage(effect)
     this.player = this.applyEffectToEnemy(this.ai, this.player, effect, !!combo)
     this.ai = this.applyEffectToSelf(this.player, this.ai, effect)
 
-    return handA + '碰' + handB + '，' + this.buildResultMessage(effect, isCombo, this.ai, this.player)
+    return handA + '碰' + handB + '，' + this.buildResultMessage(effect, isCombo, this.ai, this.player) + (bonusMessage ? `\n\n${bonusMessage}` : '')
+  }
+
+  private buildAiTurnBonusMessage(effect: SkillEffect): string {
+    let bonusMessage = ''
+    if ((effect.damage || effect.pierceDamage) && this.player.counterAttack > 0) {
+      const effectBonus = Math.round(this.player.counterAttack)
+      this.singleBonus += effectBonus
+      bonusMessage += `反击！获得${effectBonus}点分数!\n`
+    }
+    if ((effect.damage || 0) > 12 && this.player.shield > 0) {
+      const effectBonus = Math.round(effect.damage)
+      this.singleBonus += effectBonus
+      bonusMessage += `关键格挡！获得${effectBonus}点分数!\n`
+    }
+    if (effect.damage && this.player.vulnerablility > 0 && this.player.shield > 0) {
+      const effectBonus = Math.round(effect.damage * this.player.vulnerablility)
+      this.singleBonusMultiplier += effectBonus
+      bonusMessage += `易伤保护！获得${effectBonus}点分数!\n`
+    }
+    this.bonus += this.singleBonus * this.singleBonusMultiplier
+    bonusMessage += `本回合总计获得${this.singleBonus}*${this.singleBonusMultiplier}=${this.singleBonus * this.singleBonusMultiplier}点分数\n当前总分数：${this.bonus}`
+    this.singleBonus = 0
+    this.singleBonusMultiplier = 1
+    return bonusMessage
   }
 
   // damage?: number // 普通伤害
@@ -653,6 +751,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   力量效果：每有一点力量，每次造成的伤害+1，若为负数则减一
   易伤效果：受到的普通伤害+50%，自己的回合结束时减少一层
   组合技：两只手势符合组合技条件时触发组合技，组合技的效果会覆盖普通技能的效果，组合无序
+  bonus: 当行动导致关键效果时，获得额外奖励
   `
 }
 
@@ -667,10 +766,9 @@ export class OneTouchGame extends abstractGame<OneTouchSingleGame> {
       level = parseInt(args[0])
     else {
       setTimeout(() => {
-        session.send('未输入难度等级(2-10)，默认设为5')
+        session.send('未输入难度等级(2-10)，默认设为3')
       }, 500);
-
-      level = 5
+      level = 3
     }
     if (level < 2 || level > 10) {
       level = level < 2 ? 2 : 10

@@ -151,22 +151,20 @@ export class Game {
         return
       case '一碰一':
         const oneTouchResult = result as OneTouchResult
-        const oneTouchLevel = parseInt(oneTouchResult.message)
-        const oneTouchBonus = Math.floor(oneTouchLevel * (Math.random() * 2 + 9))
+        const oneTouchBonus = parseInt(oneTouchResult.message)
         if (oneTouchResult.win === winFlag.win) {
-          updateUserP(ctx, user, oneTouchBonus * 2)
-          updateFavorability(ctx, user, oneTouchLevel * 2)
-          session.send('真厉害，奖励你' + oneTouchBonus * 2 + 'p点,好感度+' + Math.round(oneTouchLevel * 0.2))
+          updateUserP(ctx, user, oneTouchBonus)
+          updateFavorability(ctx, user, Math.round(oneTouchBonus * 0.02))
+          session.send('真厉害，奖励你' + oneTouchBonus + 'p点,好感度+' + Math.round(oneTouchBonus * 0.02))
         }
         else if (oneTouchResult.win === winFlag.lose) {
           // 根据level决定惩罚
-          updateUserP(ctx, user, -oneTouchBonus)
-          session.send('真可惜，你输了' + oneTouchBonus + 'p点')
+          updateUserP(ctx, user, oneTouchBonus)
+          session.send('真可惜，你输了' + -oneTouchBonus + 'p点')
         }
-        else if (oneTouchResult.win === winFlag.draw) session.send('平局，稍后再战吧')
         else {
-          updateUserP(ctx, user, -oneTouchBonus)
-          session.send('游戏中断，你输了' + oneTouchBonus + 'p点')
+          updateUserP(ctx, user, oneTouchBonus)
+          session.send('游戏中断，你输了' + -oneTouchBonus + 'p点')
         }
         return
       default:
