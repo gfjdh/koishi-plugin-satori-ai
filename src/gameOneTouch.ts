@@ -48,8 +48,7 @@ interface SkillEffect {
 
 export interface OneTouchResult extends gameResult {
   win: winFlag
-  message: string
-  playerId: number
+  bonus: number
 }
 
 const SKILL_MAP: { [key: string]: SkillEffect } = {
@@ -94,7 +93,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private turnCount: number // 当前回合数
   private baseHP: number = 40 // 初始血量
   private playerLevelHP: number = 10 // 每级增加的血量
-  private aiLevelHp: number = 9 // AI每级增加的血量
+  private aiLevelHp: number = 10 // AI每级增加的血量
   private lastScore: number = 0 // 上一回合的分数
   private bonus: number = 0 // 奖励分数
   private singleBonus: number = 0 // 单回合的分数
@@ -133,7 +132,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   }
 
   // 结束游戏，返回结果
-  public override endGame = async () => {
+  public override endGame = async (): Promise<OneTouchResult> => {
     if (this.winningFlag === winFlag.pending || this.winningFlag === winFlag.lose) {
       this.bonus = Math.abs(Math.floor(this.level * 0.2 * this.bonus))
       this.bonus -= Math.floor(this.level * this.level * (Math.random() * 2 + 4))
@@ -144,7 +143,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     }
     const finalBonus = this.bonus
     super.endGame()
-    return { message: `${finalBonus}`, win: this.winningFlag, gameName: '一碰一', playerID: this.session.userId  }
+    return { win: this.winningFlag, gameName: '一碰一', playerID: this.session.userId, bonus: finalBonus, message: this.level.toString() }
   }
 
   private initState(level: number) {
@@ -241,12 +240,10 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private judgeEnd(): string {
     if (this.ai.hp <= 0) {
       this.winningFlag = winFlag.win
-      this.endGame()
       return `你赢了！发送结束游戏退出`
     }
     if (this.player.hp <= 0) {
       this.winningFlag = winFlag.lose
-      this.endGame()
       return `你输了！发送结束游戏退出`
     }
   }

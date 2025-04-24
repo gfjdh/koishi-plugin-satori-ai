@@ -151,7 +151,7 @@ export class Game {
         return
       case '一碰一':
         const oneTouchResult = result as OneTouchResult
-        const oneTouchBonus = parseInt(oneTouchResult.message)
+        const oneTouchBonus = oneTouchResult.bonus
         if (oneTouchResult.win === winFlag.win) {
           updateUserP(ctx, user, oneTouchBonus)
           updateFavorability(ctx, user, Math.round(oneTouchBonus * 0.02))

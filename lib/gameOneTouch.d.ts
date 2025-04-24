@@ -3,8 +3,7 @@ import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame
 import { winFlag } from './game';
 export interface OneTouchResult extends gameResult {
     win: winFlag;
-    message: string;
-    playerId: number;
+    bonus: number;
 }
 declare class OneTouchSingleGame extends abstractGameSingleGame {
     private player;
@@ -22,12 +21,7 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private comboCombos;
     constructor(disposeListener: () => boolean, session: Session);
     startGame(): Promise<string>;
-    endGame: () => Promise<{
-        message: string;
-        win: winFlag;
-        gameName: string;
-        playerID: string;
-    }>;
+    endGame: () => Promise<OneTouchResult>;
     private initState;
     processInput(input: string): Promise<string>;
     private buildTurnResult;
