@@ -158,7 +158,6 @@ export class Game {
           session.send('真厉害，奖励你' + oneTouchBonus + 'p点,好感度+' + Math.round(oneTouchBonus * 0.02))
         }
         else if (oneTouchResult.win === winFlag.lose) {
-          // 根据level决定惩罚
           updateUserP(ctx, user, oneTouchBonus)
           session.send('真可惜，你输了' + -oneTouchBonus + 'p点')
         }

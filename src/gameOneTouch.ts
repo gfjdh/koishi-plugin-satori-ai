@@ -94,7 +94,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private turnCount: number // 当前回合数
   private baseHP: number = 40 // 初始血量
   private playerLevelHP: number = 10 // 每级增加的血量
-  private aiLevelHp: number = 8 // AI每级增加的血量
+  private aiLevelHp: number = 9 // AI每级增加的血量
   private lastScore: number = 0 // 上一回合的分数
   private bonus: number = 0 // 奖励分数
   private singleBonus: number = 0 // 单回合的分数
@@ -134,16 +134,17 @@ class OneTouchSingleGame extends abstractGameSingleGame {
 
   // 结束游戏，返回结果
   public override endGame = async () => {
-    super.endGame()
     if (this.winningFlag === winFlag.pending || this.winningFlag === winFlag.lose) {
-      this.bonus = Math.floor(this.level * 0.2 * this.bonus)
-      this.bonus -= Math.floor(this.level * this.level * (Math.random() * 1 + 1))
+      this.bonus = Math.abs(Math.floor(this.level * 0.2 * this.bonus))
+      this.bonus -= Math.floor(this.level * this.level * (Math.random() * 2 + 4))
       this.bonus = Math.min(this.bonus, 0)
     }
     if (this.winningFlag === winFlag.win) {
       this.bonus = Math.floor(this.level * this.bonus * 0.5)
     }
-    return { message: `${this.bonus}`, win: this.winningFlag, gameName: '一碰一', playerID: this.session.userId  }
+    const finalBonus = this.bonus
+    super.endGame()
+    return { message: `${finalBonus}`, win: this.winningFlag, gameName: '一碰一', playerID: this.session.userId  }
   }
 
   private initState(level: number) {
@@ -151,8 +152,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       left: this.player.left,
       right: this.player.right,
       hp: this.baseHP + level * this.playerLevelHP,
-      shield: Math.round(level / 5),
-      strength: Math.round(level / 5),
+      shield: Math.round(level / 2),
+      strength: 0,
       bleed: 0,
       counterAttack: 0,
       vulnerablility: 0,
@@ -381,7 +382,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     }
     if (effect.damage && this.player.vulnerablility > 0 && this.player.shield > 0) {
       const effectBonus = Math.round(effect.damage * this.player.vulnerablility)
-      this.singleBonusMultiplier += effectBonus
+      this.singleBonus += effectBonus
       bonusMessage += `易伤保护！获得${effectBonus}点分数!\n`
     }
     this.bonus += this.singleBonus * this.singleBonusMultiplier
@@ -708,7 +709,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   每次开局两人初始手势随机，由玩家先手，双方轮流行动。
   玩家初始有"${this.baseHP} + ${this.playerLevelHP} * 难度"血量。
   ai初始有"${this.baseHP} + ${this.aiLevelHp} * 难度"血量。
-  玩家初始有"难度 / 5"护盾，"难度 / 5"力量，四舍五入取整。
+  玩家初始有"难度 / 2"护盾，四舍五入取整。
   血量没有上限，率先将对方血量减到零的人获胜：
   具体的技能设计如下：{
   一：${SKILL_MAP['1'].name}：造成${SKILL_MAP['1'].pierceDamage}穿刺伤害，${SKILL_MAP['1'].bleed}流血;
