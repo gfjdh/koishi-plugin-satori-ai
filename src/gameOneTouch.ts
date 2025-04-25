@@ -44,6 +44,7 @@ interface SkillEffect {
   counterAttack?: number // 反击伤害
   vulnerablility?: number // 易伤层数
   magnificentEnd?: boolean // 华丽收场
+  revwersalOfStrength?: boolean // 力量反转
 }
 
 export interface OneTouchResult extends gameResult {
@@ -82,6 +83,7 @@ const SKILL_MAP: { [key: string]: SkillEffect } = {
   '7+8': { pierceDamage: 13, destroyShield: 3, selfStun: true, name: '穿甲弹' },
   '2+6': { damage: 5, heal: 6, selfbleed: -1, selfstrengthChange: 1, stun: true, name: '点辰' },
   '3+7': { name: '混沌', counterAttack: 7, destroyShield: 2, addLeft: 9, addRight: 1 },
+  '0+9': { name: '将大局逆转吧', revwersalOfStrength: true },
   '0+0': { name: '华丽收场', bleed: 5, selfstrengthChange: -99, magnificentEnd: true }
 }
 
@@ -257,11 +259,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.player = this.applyEffectToSelf(this.ai, this.player, SKILL_MAP['-1'])
       return "你被眩晕，跳过回合"
     }
-    const playerState = this.player
-    const aiState = this.ai
-
     const sum = (handA + handB) % 10
-    this.player[handA === playerState.left ? 'left' : 'right'] = sum
+    this.player[handA === this.player.left ? 'left' : 'right'] = sum
     let effect = SKILL_MAP[sum.toString()] || {}
     let isCombo = false
     // 检查组合技
@@ -274,6 +273,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.comboCombos = 0
     }
     const bonusMessage = this.buildMyTurnBonusMessage(effect, isCombo)
+    const playerState = this.player
+    const aiState = this.ai
     this.ai = this.applyEffectToEnemy(playerState, aiState, effect, !!combo)
     this.player = this.applyEffectToSelf(aiState, playerState, effect)
 
@@ -339,6 +340,11 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.singleBonus += effectBonus
       bonusMessage += `濒死反击！获得${effectBonus}点分数!\n`
     }
+    if (effect.revwersalOfStrength && this.player.strength <= this.ai.strength - 5) {
+      const effectBonus = Math.round((this.ai.strength - this.player.strength) * 3)
+      this.singleBonus += effectBonus
+      bonusMessage += `逆转大局！获得${effectBonus}点分数!\n`
+    }
     if ((effect.damage || 0) + (effect.pierceDamage || 0) >= 10 && this.ai.vulnerablility > 0) {
       const effectBonus = this.ai.vulnerablility * 0.1
       this.singleBonusMultiplier += effectBonus
@@ -385,9 +391,11 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       isCombo = true
       effect = { ...combo }
     }
+    const playerState = this.player
+    const aiState = this.ai
     const bonusMessage = this.buildAiTurnBonusMessage(effect)
-    this.player = this.applyEffectToEnemy(this.ai, this.player, effect, !!combo)
-    this.ai = this.applyEffectToSelf(this.player, this.ai, effect)
+    this.player = this.applyEffectToEnemy(aiState, playerState, effect, !!combo)
+    this.ai = this.applyEffectToSelf(playerState, aiState, effect)
 
     return handA + '碰' + handB + '，' + this.buildResultMessage(effect, isCombo, this.ai, this.player) + (bonusMessage ? `\n\n${bonusMessage}` : '')
   }
@@ -400,9 +408,14 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       bonusMessage += `反击！获得${effectBonus}点分数!\n`
     }
     if ((effect.damage || 0) > 12 && this.player.shield > 0) {
-      const effectBonus = Math.round(effect.damage)  
+      const effectBonus = Math.round(effect.damage)
       this.singleBonus += effectBonus
       bonusMessage += `关键格挡！获得${effectBonus}点分数!\n`
+    }
+    if (this.player.shield > 0 && effect.damage && this.player.counterAttack > 0) {
+      const effectBonus = Math.round(this.player.shield * 2 + this.player.counterAttack)
+      this.singleBonus += effectBonus
+      bonusMessage += `盾反！获得${effectBonus}点分数!\n`
     }
     if (effect.damage && this.player.vulnerablility > 0 && this.player.shield > 0) {
       const effectBonus = 0.5
@@ -455,6 +468,9 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       }
     }
 
+    // 处理力量反转
+    if (effect.revwersalOfStrength) target.strength = self.strength
+
     // 处理华丽收场
     if (effect.magnificentEnd) {
       target.hp -= target.bleed * (target.bleed + 1) / 2
@@ -485,6 +501,9 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (effect.counterAttack) self.counterAttack = effect.counterAttack
     if (enemy.counterAttack > 0 && (effect.damage > 0 || effect.pierceDamage > 0))
       self.hp -= Math.max(enemy.counterAttack + (enemy.strength || 0), 0)
+
+    // 处理力量反转
+    if (effect.revwersalOfStrength) self.strength = enemy.strength
 
     // 处理眩晕
     if (effect.selfStun && self.status !== playerStatus.lastStunned)
@@ -654,9 +673,10 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       attacker[handA === attacker.left ? 'left' : 'right'] = sum
       const combo = this.checkCombo(attacker.left, attacker.right)
       const effect = combo ? combo : SKILL_MAP[sum.toString()] || {};
-
-      defender = this.applyEffectToEnemy(attacker, defender, effect, !!combo)
-      attacker = this.applyEffectToSelf(defender, attacker, effect)
+      const defenderState = defender
+      const attackerState = attacker
+      defender = this.applyEffectToEnemy(attackerState, defenderState, effect, !!combo)
+      attacker = this.applyEffectToSelf(defenderState, attackerState, effect)
     }
 
     if (attackerIndex === 1) {
@@ -772,6 +792,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   七+八：${SKILL_MAP['7+8'].name}：造成${SKILL_MAP['7+8'].pierceDamage}穿刺伤害，破坏对方${SKILL_MAP['7+8'].destroyShield}层护盾，眩晕自己
   六+二：${SKILL_MAP['2+6'].name}：造成${SKILL_MAP['2+6'].damage}伤害，恢复${SKILL_MAP['2+6'].heal}生命，自身${SKILL_MAP['2+6'].selfbleed}流血，自身增加${SKILL_MAP['2+6'].selfstrengthChange}力量，眩晕对方
   三+七：${SKILL_MAP['3+7'].name}：获得${SKILL_MAP['3+7'].counterAttack}层反击，破坏对方${SKILL_MAP['3+7'].destroyShield}层护盾，对方左手数值增加${SKILL_MAP['3+7'].addLeft}，右手数值增加${SKILL_MAP['3+7'].addRight}
+  九+十：${SKILL_MAP['0+9'].name}：逆转双方力量。
   十+十：${SKILL_MAP['0+0'].name}：对对方造成${SKILL_MAP['0+0'].bleed}流血，自身${SKILL_MAP['0+0'].selfstrengthChange}力量，然后立即结算对方全部流血
   }
   注：
@@ -779,7 +800,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   护盾效果：每一层护盾可阻挡下一次受到的普通伤害，如果伤害来源是组合技则消耗两层护盾(若仅有一层则消耗一层)。护盾上限为五层。
   眩晕效果：跳过自己的下一个回合，若上回合已经被眩晕，则本回合不受眩晕影响（即不可被连续眩晕）
   弱眩晕效果：若对方没有护盾，则眩晕对方一回合
-  反击：下一回合若对方行动中有攻击，则对方受到反击层数点穿刺伤害，此效果受力量加成，且仅持续一回合
+  反击：下一回合若对方行动中有攻击，则对方攻击前受到反击层数点穿刺伤害，此效果受力量加成，且仅持续一回合
   穿刺伤害：不被护盾影响的伤害（不会消耗护盾）
   力量效果：每有一点力量，每次造成的伤害+1，若为负数则减一
   易伤效果：受到的普通伤害+50%，自己的回合结束时减少一层
