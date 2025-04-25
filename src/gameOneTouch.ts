@@ -139,7 +139,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.bonus = Math.min(this.bonus, 0)
     }
     if (this.winningFlag === winFlag.win) {
-      this.bonus = Math.floor(this.level * this.bonus * 0.3 * (Math.random() * 1 + 1))
+      this.bonus = Math.floor(this.level * this.bonus * 0.2 * (Math.random() * 1 + 1))
     }
     const finalBonus = this.bonus
     super.endGame()
@@ -212,7 +212,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     ].filter(Boolean).join(" | ");
 
     const playerStatusDisplay = [
-      `❤️${createStatusBar(this.player.hp, Math.max(this.baseHP + this.level * this.playerLevelHP, this.player.hp), Math.round(this.baseHP / 10 + this.level))} ${this.player.hp}HP`,
+      `❤️${createStatusBar(this.player.hp, Math.max(this.baseHP + this.level * this.playerLevelHP, this.player.hp), Math.round(this.baseHP / 8 + this.level))} ${this.player.hp}HP`,
       `🛡️${this.player.shield}`,
       statusIcon(this.player.bleed, "🩸"),
       statusIcon(this.player.strength, "💪"),
@@ -340,9 +340,16 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       bonusMessage += `濒死反击！获得${effectBonus}点分数!\n`
     }
     if ((effect.damage || 0) + (effect.pierceDamage || 0) >= 10 && this.ai.vulnerablility > 0) {
-      const effectBonus = Math.round(this.ai.vulnerablility * 0.1)
-      this.singleBonusMultiplier = effectBonus
+      const effectBonus = this.ai.vulnerablility * 0.1
+      this.singleBonusMultiplier += effectBonus
       bonusMessage += `易伤打击！本回合分数增加${100 * effectBonus}%!\n`
+    }
+    if (this.turnCount === 4 + Math.round(this.level / 3) && this.player.hp > this.ai.hp * 1.2 &&
+        this.player.shield > this.ai.shield && this.player.strength > this.ai.strength && this.player.bleed < this.ai.bleed) {
+      const effectBonus = Math.round(this.player.hp * 0.1 + this.player.shield + this.player.strength * 0.5)
+      this.singleBonus += effectBonus
+      this.singleBonusMultiplier *= 2
+      bonusMessage += `压倒性的优势！获得${effectBonus}点分数！本回合分数*2！\n`
     }
     if (effect.magnificentEnd && this.ai.bleed > 4) {
       const effectBonus = Math.round(this.ai.bleed * 1.5)
@@ -393,7 +400,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       bonusMessage += `反击！获得${effectBonus}点分数!\n`
     }
     if ((effect.damage || 0) > 12 && this.player.shield > 0) {
-      const effectBonus = Math.round(effect.damage)
+      const effectBonus = Math.round(effect.damage)  
       this.singleBonus += effectBonus
       bonusMessage += `关键格挡！获得${effectBonus}点分数!\n`
     }
@@ -407,8 +414,9 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.singleBonusMultiplier += effectBonus
       bonusMessage += `眩晕格挡！本回合分数增加${100 * (effectBonus)}%!\n`
     }
-    this.bonus += this.singleBonus * this.singleBonusMultiplier
-    bonusMessage += `本回合总计获得${this.singleBonus}*${this.singleBonusMultiplier}=${this.singleBonus * this.singleBonusMultiplier}点分数\n当前总分数：${this.bonus}`
+    const turnBonus = Math.round(this.singleBonus * this.singleBonusMultiplier)
+    this.bonus += turnBonus
+    bonusMessage += `本回合总计获得${this.singleBonus}*${this.singleBonusMultiplier}=${turnBonus}点分数\n当前总分数：${this.bonus}`
     this.singleBonus = 0
     this.singleBonusMultiplier = 1
     return bonusMessage
@@ -717,11 +725,11 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (this.lastScore < 90000 && Score > 90000) {
       return '我觉得你要输了哦~'
     }
-    if (Score - this.lastScore > 10)
-      return '看招！'
     if (this.lastScore < 0 && Score > 0) {
       return '局势发生变化了呢~'
     }
+    if (Score - this.lastScore > 10)
+      return '看招！'
   }
 
   private instuction = `游戏说明：
