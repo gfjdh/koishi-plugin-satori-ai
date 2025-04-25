@@ -172,7 +172,7 @@ export class APIClient {
         continue
       }
     }
-    return { content: '模型发生复读行为，建议重置对话', error: true }
+    return { content: 'unreachable', error: true }
   }
 
   // 生成请求头

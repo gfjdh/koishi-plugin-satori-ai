@@ -56,10 +56,10 @@ const SKILL_MAP: { [key: string]: SkillEffect } = {
   '-1': { name: '无效' },
   '1': { pierceDamage: 1, bleed: 3, name: '锥刺' }, //特性：流血
   '2': { pierceDamage: 1, stun: true, name: '点穴' }, //特性：眩晕
-  '3': { damage: 6, counterAttack: 3,name: '爪击' }, //特性：反击
+  '3': { damage: 6, counterAttack: 3, name: '爪击' }, //特性：反击
   '4': { shield: 1, name: '护盾' }, //特性：护盾
   '5': { damage: 4, weakStun: true, name: '巴掌' }, //特性：普通伤害+弱眩晕
-  '6': { heal: 6 , selfbleed: -2, name: '酒' }, //特性：回血
+  '6': { heal: 6, selfbleed: -2, name: '酒' }, //特性：回血
   '7': { pierceDamage: 1, destroyShield: 2, name: '钻击' }, //特性：破盾
   '8': { damage: 13, selfStun: true, name: '枪击' }, //特性：高伤+自眩晕
   '9': { pierceDamage: 1, bleed: 2, strengthChange: -1, name: '钩' }, //特性：削弱
@@ -135,11 +135,11 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   public override endGame = async (): Promise<OneTouchResult> => {
     if (this.winningFlag === winFlag.pending || this.winningFlag === winFlag.lose) {
       this.bonus = Math.abs(Math.floor(this.level * 0.2 * this.bonus))
-      this.bonus -= Math.floor(this.level * this.level * (Math.random() * 2 + 4))
+      this.bonus -= Math.floor(this.level * this.level * (Math.random() * 2 + 2) + 200)
       this.bonus = Math.min(this.bonus, 0)
     }
     if (this.winningFlag === winFlag.win) {
-      this.bonus = Math.floor(this.level * this.bonus * 0.5)
+      this.bonus = Math.floor(this.level * this.bonus * 0.3 * (Math.random() * 1 + 1))
     }
     const finalBonus = this.bonus
     super.endGame()
@@ -175,16 +175,16 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (input === '游戏规则') return await wrapInHTML(this.instuction)
     if (this.turnCount === 0) this.initState(this.level)
     this.turnCount++
-    if (this.winningFlag !== winFlag.pending) return '游戏已结束'
     // 处理输入
     const [handA, handB] = input.split(' ')
     if (handA !== '左' && handA !== '右' || handB !== '左' && handB !== '右') return
+    if (this.winningFlag !== winFlag.pending) return '游戏已结束'
     const numberA = this.player[handA === '左' ? 'left' : 'right']
     const numberB = this.ai[handB === '左' ? 'left' : 'right']
     // 玩家回合
     const result = this.processPlayerTurn(numberA, numberB)
     // AI的回合
-    const bestMove = this.ai.status === playerStatus.Stunned ? [0,0] : this.aiSearchEntrance()
+    const bestMove = this.ai.status === playerStatus.Stunned ? [0, 0] : this.aiSearchEntrance()
     const aiResult = this.processAiTurn(bestMove[0], bestMove[1]);
     if (this.player.status === playerStatus.Stunned && this.player.hp > 0 && this.ai.hp > 0)
       setTimeout(async () => { this.session.send(await this.processInput(input)) }, 1000)
@@ -202,7 +202,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
 
     // 生成双方状态
     const aiStatusDisplay = [
-      `❤️${createStatusBar(this.ai.hp, Math.max(this.baseHP + this.level * this.aiLevelHp, this.ai.hp), Math.round(this.baseHP / 10 + this.level * this.aiLevelHp / this.playerLevelHP))} ${this.ai.hp}HP`,
+      `❤️${createStatusBar(this.ai.hp, Math.max(this.baseHP + this.level * this.aiLevelHp, this.ai.hp), Math.round(this.baseHP / 8 + this.level * this.aiLevelHp / this.playerLevelHP))} ${this.ai.hp}HP`,
       `🛡️${this.ai.shield}`,
       statusIcon(this.ai.bleed, "🩸"),
       statusIcon(this.ai.strength, "💪"),
@@ -212,7 +212,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     ].filter(Boolean).join(" | ");
 
     const playerStatusDisplay = [
-      `❤️${createStatusBar(this.player.hp, Math.max(this.baseHP + this.level * this.playerLevelHP, this.player.hp), Math.round(this.baseHP / 10  + this.level))} ${this.player.hp}HP`,
+      `❤️${createStatusBar(this.player.hp, Math.max(this.baseHP + this.level * this.playerLevelHP, this.player.hp), Math.round(this.baseHP / 10 + this.level))} ${this.player.hp}HP`,
       `🛡️${this.player.shield}`,
       statusIcon(this.player.bleed, "🩸"),
       statusIcon(this.player.strength, "💪"),
@@ -299,10 +299,20 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.singleBonus += effectBonus
       bonusMessage += `穿刺一击！获得${effectBonus}点分数!\n`
     }
-    if ((effect.destroyShield || 0) >= this.ai.shield && this.ai.shield > 1) {
+    if ((effect.destroyShield || 0) >= Math.min(this.ai.shield, 3) && this.ai.shield > 1) {
       const effectBonus = Math.round(this.ai.shield * 5)
       this.singleBonus += effectBonus
       bonusMessage += `快速破盾！获得${effectBonus}点分数!\n`
+    }
+    if ((effect.bleed || 0) + this.ai.bleed > 9) {
+      const effectBonus = Math.round(this.ai.bleed)
+      this.singleBonus += effectBonus
+      bonusMessage += `流血打击！获得${effectBonus}点分数!\n`
+    }
+    if ((effect.shield || 0) + this.player.shield >= 5) {
+      const effectBonus = Math.round(effect.shield * 2)
+      this.singleBonus += effectBonus
+      bonusMessage += `强效护盾！获得${effectBonus}点分数!\n`
     }
     if ((effect.selfbleed || 0) < -2 && this.player.bleed > -effect.selfbleed) {
       const effectBonus = Math.round(this.player.bleed * 2)
@@ -319,10 +329,20 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.singleBonus += effectBonus
       bonusMessage += `强效削弱！获得${effectBonus}点分数!\n`
     }
+    if (this.ai.counterAttack > 0 && !effect.damage && !effect.pierceDamage) {
+      const effectBonus = Math.round(this.ai.counterAttack)
+      this.singleBonus += effectBonus
+      bonusMessage += `反击规避！获得${effectBonus}点分数!\n`
+    }
+    if (this.player.hp < 10 && !this.player.shield && (effect.damage || effect.pierceDamage)) {
+      const effectBonus = (10 - this.player.hp) * 2
+      this.singleBonus += effectBonus
+      bonusMessage += `濒死反击！获得${effectBonus}点分数!\n`
+    }
     if ((effect.damage || 0) + (effect.pierceDamage || 0) >= 10 && this.ai.vulnerablility > 0) {
-      const effectBonus = Math.round(this.ai.vulnerablility * 0.1 + 1)
-      this.singleBonusMultiplier *= effectBonus
-      bonusMessage += `易伤打击！本回合分数*${effectBonus}!\n`
+      const effectBonus = Math.round(this.ai.vulnerablility * 0.1)
+      this.singleBonusMultiplier = effectBonus
+      bonusMessage += `易伤打击！本回合分数增加${100 * effectBonus}%!\n`
     }
     if (effect.magnificentEnd && this.ai.bleed > 4) {
       const effectBonus = Math.round(this.ai.bleed * 1.5)
@@ -331,9 +351,9 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       bonusMessage += `华丽收场！当前总分数*2，本回合分数*${effectBonus}!\n`
     }
 
-    if (this.comboCombos > 1) {
-      this.singleBonusMultiplier *= (1 + this.comboCombos / 10)
-      bonusMessage += `组合技连击${this.comboCombos}次！本回合分数+${10 * this.comboCombos}%！`
+    if (this.comboCombos >= 1) {
+      this.singleBonusMultiplier += (this.comboCombos / 5)
+      bonusMessage += `组合技连击${this.comboCombos}次！本回合分数+${20 * this.comboCombos}%！`
     }
     return bonusMessage
   }
@@ -368,7 +388,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private buildAiTurnBonusMessage(effect: SkillEffect): string {
     let bonusMessage = ''
     if ((effect.damage || effect.pierceDamage) && this.player.counterAttack > 0) {
-      const effectBonus = Math.round(this.player.counterAttack)
+      const effectBonus = Math.max(this.player.counterAttack + this.player.strength, 0)
       this.singleBonus += effectBonus
       bonusMessage += `反击！获得${effectBonus}点分数!\n`
     }
@@ -378,9 +398,14 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       bonusMessage += `关键格挡！获得${effectBonus}点分数!\n`
     }
     if (effect.damage && this.player.vulnerablility > 0 && this.player.shield > 0) {
-      const effectBonus = Math.round(effect.damage * this.player.vulnerablility)
-      this.singleBonus += effectBonus
-      bonusMessage += `易伤保护！获得${effectBonus}点分数!\n`
+      const effectBonus = 0.5
+      this.singleBonusMultiplier += effectBonus
+      bonusMessage += `易伤保护！本回合分数增加${100 * (effectBonus)}%!\n`
+    }
+    if (effect.weakStun && this.player.shield > 0) {
+      const effectBonus = 0.3
+      this.singleBonusMultiplier += effectBonus
+      bonusMessage += `眩晕格挡！本回合分数增加${100 * (effectBonus)}%!\n`
     }
     this.bonus += this.singleBonus * this.singleBonusMultiplier
     bonusMessage += `本回合总计获得${this.singleBonus}*${this.singleBonusMultiplier}=${this.singleBonus * this.singleBonusMultiplier}点分数\n当前总分数：${this.bonus}`
@@ -689,10 +714,12 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   }
 
   private generateChat(Score: number): string {
-    if (this.lastScore < 100000 && Score > 100000) {
+    if (this.lastScore < 90000 && Score > 90000) {
       return '我觉得你要输了哦~'
     }
-    if (this.lastScore < 0 && Score > 0 || this.lastScore > 0 && Score < 0) {
+    if (Score - this.lastScore > 10)
+      return '看招！'
+    if (this.lastScore < 0 && Score > 0) {
       return '局势发生变化了呢~'
     }
   }
@@ -702,8 +729,9 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   两个人玩，两只手分别可以做出"一到十"的手势，每一种手势代表一个招式。
   例如"三"是${SKILL_MAP['3'].name}，"四"是${SKILL_MAP['4'].name}等；当两只手符合特定组合时还可以触发组合技；
   每个人在自己的回合可以选择用自己的一只手碰对方的另一只手，两者数值相加，如果超过十仅保留个位。
-  例如自己的"一"碰对方的"二"变成"三"可以触发技能"${SKILL_MAP['3'].name}"对对方造成伤害。
+  例如自己的"一"碰对方的"二"变成"三"同时触发技能"${SKILL_MAP['3'].name}"对对方造成伤害。
   每次开局两人初始手势随机，由玩家先手，双方轮流行动。
+  当自身两手手势相同时，无论选择左手还是右手最终发生变化的都是左手。
   玩家初始有"${this.baseHP} + ${this.playerLevelHP} * 难度"血量。
   ai初始有"${this.baseHP} + ${this.aiLevelHp} * 难度"血量。
   玩家初始有"难度 / 2"护盾，四舍五入取整。

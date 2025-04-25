@@ -374,7 +374,8 @@ export class SAT extends Sat {
       else
         logger.info(`Satori AI：${response.content}`)
     }
-    if (this.config.reasoner_filter) response = filterResponse(response.content, this.config.reasoner_filter_word.split('-'))
+    if (this.config.reasoner_filter && !response.error)
+      response = filterResponse(response.content, this.config.reasoner_filter_word.split('-'))
     return response
   }
 
