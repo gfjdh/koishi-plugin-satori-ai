@@ -311,7 +311,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       bonusMessage += `流血打击！获得${effectBonus}点分数!\n`
     }
     if ((effect.shield || 0) + this.player.shield >= 5) {
-      const effectBonus = Math.round(effect.shield * 2)
+      const effectBonus = Math.round(((effect.shield || 0) + this.player.shield) * 2)
       this.singleBonus += effectBonus
       bonusMessage += `强效护盾！获得${effectBonus}点分数!\n`
     }
