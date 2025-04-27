@@ -140,7 +140,7 @@ export function processPrompt(prompt: string): string {
   // 处理输入的字符串，删除其中的‘**’
   prompt = prompt.replace(/\*\*/g, '');
   if (!prompt) return '**';
-  return prompt;
+  return prompt.trim();
 }
 
 /**

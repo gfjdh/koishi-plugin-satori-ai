@@ -77,13 +77,13 @@ const SKILL_MAP: { [key: string]: SkillEffect } = {
   '4+6': { shield: 2, heal: 5, selfbleed: -3, name: '固守' },
   '8+8': { damage: 13, damageTimes: 2, selfStun: true, name: '双持' },
   '1+2': { pierceDamage: 3, vulnerablility: 3, stun: true, name: '弱点刺击' },
-  '2+8': { damage: 8, stun: true, selfStun: true, addLeft: 1, addRight: 9, name: '点射' },
+  '2+8': { damage: 12, stun: true, selfStun: true, addLeft: 1, addRight: 9, name: '点射' },
   '3+4': { name: '防御反击', shield: 1, counterAttack: 15 },
   '7+7': { pierceDamage: 7, destroyShield: 5, name: '穿龙枪' },
   '7+8': { pierceDamage: 13, destroyShield: 3, selfStun: true, name: '穿甲弹' },
   '2+6': { damage: 5, heal: 6, selfbleed: -1, selfstrengthChange: 1, stun: true, name: '点辰' },
   '3+7': { name: '混沌', counterAttack: 7, destroyShield: 2, addLeft: 9, addRight: 1 },
-  '0+9': { name: '将大局逆转吧', revwersalOfStrength: true },
+  '0+9': { name: '将大局逆转吧', revwersalOfStrength: true, selfstrengthChange: 2, strengthChange: -1 },
   '0+0': { name: '华丽收场', bleed: 5, selfstrengthChange: -99, magnificentEnd: true }
 }
 
@@ -256,7 +256,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     }
     if (this.player.status === playerStatus.Stunned) {
       this.player.status = playerStatus.lastStunned
-      this.player = this.applyEffectToSelf(this.ai, this.player, SKILL_MAP['-1'])
+      this.applyEffect(this.player, this.ai, SKILL_MAP['-1'], false)
       return "你被眩晕，跳过回合"
     }
     const sum = (handA + handB) % 10
@@ -273,10 +273,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.comboCombos = 0
     }
     const bonusMessage = this.buildMyTurnBonusMessage(effect, isCombo)
-    const playerState = this.player
-    const aiState = this.ai
-    this.ai = this.applyEffectToEnemy(playerState, aiState, effect, !!combo)
-    this.player = this.applyEffectToSelf(aiState, playerState, effect)
+    this.applyEffect(this.player, this.ai, effect, !!combo)
 
     return this.buildResultMessage(effect, isCombo, this.player, this.ai) + (bonusMessage ? `\n\n${bonusMessage}` : '')
   }
@@ -310,7 +307,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.singleBonus += effectBonus
       bonusMessage += `流血打击！获得${effectBonus}点分数!\n`
     }
-    if ((effect.shield || 0) + this.player.shield >= 5) {
+    if (effect.shield && (effect.shield || 0) + this.player.shield >= 5) {
       const effectBonus = Math.round(((effect.shield || 0) + this.player.shield) * 2)
       this.singleBonus += effectBonus
       bonusMessage += `强效护盾！获得${effectBonus}点分数!\n`
@@ -378,7 +375,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     }
     if (this.ai.status === playerStatus.Stunned) {
       this.ai.status = playerStatus.lastStunned
-      this.ai = this.applyEffectToSelf(this.player, this.ai, SKILL_MAP['-1'])
+      this.applyEffect(this.ai, this.player, SKILL_MAP['-1'], false)
       return "被眩晕，跳过回合，本回合分数奖励继承到下一回合"
     }
     const sum = (handA + handB) % 10
@@ -391,11 +388,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       isCombo = true
       effect = { ...combo }
     }
-    const playerState = this.player
-    const aiState = this.ai
     const bonusMessage = this.buildAiTurnBonusMessage(effect)
-    this.player = this.applyEffectToEnemy(aiState, playerState, effect, !!combo)
-    this.ai = this.applyEffectToSelf(playerState, aiState, effect)
+    this.applyEffect(this.ai, this.player, effect, !!combo)
 
     return handA + '碰' + handB + '，' + this.buildResultMessage(effect, isCombo, this.ai, this.player) + (bonusMessage ? `\n\n${bonusMessage}` : '')
   }
@@ -443,58 +437,48 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   // destroyShield?: number // 破坏护盾
   // weakStun?: boolean // 弱眩晕
   // strengthChange?: number // 力量变化
-  private applyEffectToEnemy(self: PlayerState, target: PlayerState, effect: SkillEffect, isCombo: boolean) {
-    // 处理基础属性
-    if (effect.pierceDamage) target.hp -= Math.max(effect.pierceDamage + (self.strength || 0), 0)
-    if (effect.destroyShield) target.shield = Math.max(0, target.shield - effect.destroyShield)
-    if (effect.bleed) target.bleed += effect.bleed
-    if (effect.strengthChange) target.strength = target.strength + effect.strengthChange
-    if (effect.addLeft) target.left = (target.left + effect.addLeft) % 10
-    if (effect.addRight) target.right = (target.right + effect.addRight) % 10
-    if (effect.vulnerablility) target.vulnerablility = (target.vulnerablility || 0) + effect.vulnerablility
-
-    // 处理伤害
-    if (effect.damage) {
-      effect.damageTimes = effect.damageTimes || 1
-      for (let i = 0; i < effect.damageTimes; i++) {
-        const blocked = target.shield > 0
-        target.shield = Math.max(0, target.shield - (isCombo ? 2 : 1))
-        if (!blocked) {
-          target.hp -= Math.round(Math.max(0, effect.damage + (self.strength || 0)) * (target.vulnerablility ? 1.5 : 1))
-          if (effect.weakStun && target.status !== playerStatus.lastStunned) {
-            target.status = playerStatus.Stunned
-          }
-        }
-      }
-    }
-
-    // 处理力量反转
-    if (effect.revwersalOfStrength) target.strength = self.strength
-
-    // 处理华丽收场
-    if (effect.magnificentEnd) {
-      target.hp -= target.bleed * (target.bleed + 1) / 2
-      target.bleed = 0
-    }
-
-    // 处理眩晕
-    if (effect.stun && target.status !== playerStatus.lastStunned)
-      target.status = playerStatus.Stunned
-    return target
-  }
-
   // heal?: number // 治疗
   // shield?: number // 护盾
   // selfbleed?: number // 自身流血
   // selfStun?: boolean // 自身眩晕
   // selfstrengthChange?: number // 自身力量变化
-  private applyEffectToSelf(enemy: PlayerState, self: PlayerState, effect: SkillEffect) {
+  private applyEffect(self: PlayerState, enemy: PlayerState, effect: SkillEffect, isCombo: boolean) {
+    // 处理力量反转
+    if (effect.revwersalOfStrength) {
+      const temp = self.strength
+      self.strength = enemy.strength
+      enemy.strength = temp
+    }
+
     // 处理基础属性
+    if (effect.pierceDamage) enemy.hp -= Math.max(effect.pierceDamage + (self.strength || 0), 0)
+    if (effect.destroyShield) enemy.shield = Math.max(0, enemy.shield - effect.destroyShield)
+    if (effect.bleed) enemy.bleed += effect.bleed
+    if (effect.strengthChange) enemy.strength = enemy.strength + effect.strengthChange
+    if (effect.addLeft) enemy.left = (enemy.left + effect.addLeft) % 10
+    if (effect.addRight) enemy.right = (enemy.right + effect.addRight) % 10
+    if (effect.vulnerablility) enemy.vulnerablility = (enemy.vulnerablility || 0) + effect.vulnerablility
+
     if (effect.heal) self.hp += effect.heal
     if (effect.shield) self.shield = Math.min(self.shield + effect.shield, 5)
     if (effect.selfstrengthChange) self.strength = self.strength + effect.selfstrengthChange
     if (effect.addSelfLeft) self.left = (self.left + effect.addSelfLeft) % 10
     if (effect.addSelfRight) self.right = (self.right + effect.addSelfRight) % 10
+
+    // 处理伤害
+    if (effect.damage) {
+      effect.damageTimes = effect.damageTimes || 1
+      for (let i = 0; i < effect.damageTimes; i++) {
+        const blocked = enemy.shield > 0
+        enemy.shield = Math.max(0, enemy.shield - (isCombo ? 2 : 1))
+        if (!blocked) {
+          enemy.hp -= Math.round(Math.max(0, effect.damage + (self.strength || 0)) * (enemy.vulnerablility ? 1.5 : 1))
+          if (effect.weakStun && enemy.status !== playerStatus.lastStunned) {
+            enemy.status = playerStatus.Stunned
+          }
+        }
+      }
+    }
 
     // 处理反击
     if (self.counterAttack) self.counterAttack = 0
@@ -502,21 +486,27 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (enemy.counterAttack > 0 && (effect.damage > 0 || effect.pierceDamage > 0))
       self.hp -= Math.max(enemy.counterAttack + (enemy.strength || 0), 0)
 
-    // 处理力量反转
-    if (effect.revwersalOfStrength) self.strength = enemy.strength
-
-    // 处理眩晕
-    if (effect.selfStun && self.status !== playerStatus.lastStunned)
-      self.status = playerStatus.Stunned
-
     // 处理流血
-    if (effect.selfbleed) self.bleed = self.bleed + effect.selfbleed
+    if (effect.selfbleed) self.bleed += effect.selfbleed
     if (self.bleed > 0) self.hp -= self.bleed
     self.bleed = Math.max(0, self.bleed - 1)
 
+    // 处理华丽收场
+    if (effect.magnificentEnd) {
+      enemy.hp -= enemy.bleed * (enemy.bleed + 1) / 2
+      enemy.bleed = 0
+    }
+
     // 处理易伤
     if (self.vulnerablility) self.vulnerablility = Math.max(0, self.vulnerablility - 1)
-    return self
+
+    // 处理眩晕
+    if (effect.stun && enemy.status !== playerStatus.lastStunned)
+      enemy.status = playerStatus.Stunned
+    if (effect.selfStun && self.status !== playerStatus.lastStunned)
+      self.status = playerStatus.Stunned
+
+    return
   }
 
   private checkCombo(a: number, b: number): SkillEffect | null {
@@ -527,6 +517,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private buildResultMessage(effect: SkillEffect, isCombo: boolean, self: PlayerState, enemy: PlayerState): string {
     let msg = []
     if (effect.name) msg.push(`${effect.name}!`)
+    if (effect.revwersalOfStrength) msg.push(`双方力量反转！`)
     if (effect.pierceDamage) msg.push(`对对方造成穿刺伤害${Math.max(0, effect.pierceDamage + (self.strength || 0))}`)
     if (effect.damage) msg.push(`对对方造成${Math.round(Math.max(0, effect.damage + (self.strength || 0)) * (enemy.vulnerablility ? 1.5 : 1))}伤害`)
     if (effect.damageTimes) msg.push(`${effect.damageTimes}次`)
@@ -645,7 +636,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     return moves
   }
 
-  // 深度克隆玩家状态
+  // 克隆玩家状态
   private cloneState(state: PlayerState): PlayerState {
     return {
       left: state.left,
@@ -654,6 +645,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       shield: state.shield,
       strength: state.strength,
       bleed: state.bleed,
+      counterAttack: state.counterAttack,
+      vulnerablility: state.vulnerablility,
       status: state.status
     };
   }
@@ -667,16 +660,13 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (attacker.status === playerStatus.lastStunned) attacker.status = playerStatus.Normal
     if (attacker.status === playerStatus.Stunned) {
       attacker.status = playerStatus.lastStunned
-      attacker = this.applyEffectToSelf(defender, attacker, SKILL_MAP['-1'])
+      this.applyEffect(attacker, defender, SKILL_MAP['-1'], false)
     } else {
       const sum = (handA + handB) % 10
       attacker[handA === attacker.left ? 'left' : 'right'] = sum
       const combo = this.checkCombo(attacker.left, attacker.right)
       const effect = combo ? combo : SKILL_MAP[sum.toString()] || {};
-      const defenderState = defender
-      const attackerState = attacker
-      defender = this.applyEffectToEnemy(attackerState, defenderState, effect, !!combo)
-      attacker = this.applyEffectToSelf(defenderState, attackerState, effect)
+      this.applyEffect(attacker, defender, effect, !!combo)
     }
 
     if (attackerIndex === 1) {
@@ -708,11 +698,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
 
     // 战斗属性加成
     score += Math.min(ai.strength * 5, 100);
-    score -= Math.min(player.strength * 5);
-
-    // 低力量惩罚
-    if (ai.strength < 0) score += Math.round((ai.strength) * 5);
-    if (player.strength < 0) score -= Math.round((player.strength) * 5);
+    score -= Math.max(player.strength * 5, -100);
 
     // 防御属性
     score += ai.shield * 8;
@@ -748,7 +734,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (this.lastScore < 0 && Score > 0) {
       return '局势发生变化了呢~'
     }
-    if (Score - this.lastScore > 10)
+    if (Score - this.lastScore > 10 && Math.random() > 0.5)
       return '看招！'
   }
 
@@ -792,7 +778,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   七+八：${SKILL_MAP['7+8'].name}：造成${SKILL_MAP['7+8'].pierceDamage}穿刺伤害，破坏对方${SKILL_MAP['7+8'].destroyShield}层护盾，眩晕自己
   六+二：${SKILL_MAP['2+6'].name}：造成${SKILL_MAP['2+6'].damage}伤害，恢复${SKILL_MAP['2+6'].heal}生命，自身${SKILL_MAP['2+6'].selfbleed}流血，自身增加${SKILL_MAP['2+6'].selfstrengthChange}力量，眩晕对方
   三+七：${SKILL_MAP['3+7'].name}：获得${SKILL_MAP['3+7'].counterAttack}层反击，破坏对方${SKILL_MAP['3+7'].destroyShield}层护盾，对方左手数值增加${SKILL_MAP['3+7'].addLeft}，右手数值增加${SKILL_MAP['3+7'].addRight}
-  九+十：${SKILL_MAP['0+9'].name}：逆转双方力量。
+  九+十：${SKILL_MAP['0+9'].name}：逆转双方力量，然后增加自身${SKILL_MAP['0+9'].selfstrengthChange}力量，对方${SKILL_MAP['0+9'].strengthChange}力量
   十+十：${SKILL_MAP['0+0'].name}：对对方造成${SKILL_MAP['0+0'].bleed}流血，自身${SKILL_MAP['0+0'].selfstrengthChange}力量，然后立即结算对方全部流血
   }
   注：

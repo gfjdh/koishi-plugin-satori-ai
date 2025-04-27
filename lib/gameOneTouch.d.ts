@@ -30,8 +30,7 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private buildMyTurnBonusMessage;
     private processAiTurn;
     private buildAiTurnBonusMessage;
-    private applyEffectToEnemy;
-    private applyEffectToSelf;
+    private applyEffect;
     private checkCombo;
     private buildResultMessage;
     private aiSearchEntrance;
