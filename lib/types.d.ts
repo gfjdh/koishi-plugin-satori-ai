@@ -240,6 +240,8 @@ export declare namespace Sat {
         warning_admin_id: string;
         maxRetryTimes: number;
         retry_delay_time: number;
+        Broadcast_block_channel: string[];
+        waiting_time: number;
         enable_game: boolean;
         game_block_channel: string[];
         enable_gobang: boolean;

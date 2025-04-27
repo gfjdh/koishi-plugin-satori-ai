@@ -16,6 +16,7 @@ export function createMiddleware(
   return async (session: Session, next: Next) => {
     if (config.enable_favorability && config.enable_warning && session.channelId === config.warning_group)
       sat.getWarningList(session)
+    sat.broadcastManager.seedBroadcast(session)
     if (!isSpecialMessage(session)) await sat.handleChannelMemoryManager(session)
 
     // 私信处理

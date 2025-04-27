@@ -14,6 +14,7 @@ import { UserPortraitManager } from './userportrait'
 import { MoodManager } from './mood'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
+import { BroadcastManager } from './broadcast'
 
 const logger = new Logger('satori-ai')
 
@@ -34,6 +35,7 @@ export class SAT extends Sat {
   private ChannelParallelCount: Map<string, number> = new Map()
   private onlineUsers: string[] = []
   private moodManager: MoodManager
+  public broadcastManager: BroadcastManager
   private usersToWarn: Map<string, string> = new Map()
   private game: Game
 
@@ -52,6 +54,7 @@ export class SAT extends Sat {
     this.memoryManager = new MemoryManager(ctx, this.getMemoryConfig())
     this.portraitManager = new UserPortraitManager(ctx, config)
     this.moodManager = new MoodManager(ctx, config)
+    this.broadcastManager = new BroadcastManager(ctx, config)
     ensureCensorFileExists(this.config.dataDir)
     // 注册中间件
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
@@ -183,8 +186,8 @@ export class SAT extends Sat {
       .action(async ({}, userId) => this.portraitManager.getUserPortraitById(userId))
 
     ctx.command('sat.get_warning_list', '查看警告列表', { authority: 4 })
-    .alias('查看警告')
-    .action(async ({ session }) => this.getWarningList(session))
+      .alias('查看警告')
+      .action(async ({ session }) => this.getWarningList(session))
 
     if (this.config.enable_mood && this.config.enable_favorability && this.config.enable_pocket_money) {
       ctx.command('sat.pocket_money', '消耗心情值换取p点')

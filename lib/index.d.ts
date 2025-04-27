@@ -1,6 +1,7 @@
 import { Context, Session } from 'koishi';
 import { Sat, User } from './types';
 import Puppeteer from 'koishi-plugin-puppeteer';
+import { BroadcastManager } from './broadcast';
 export declare let puppeteer: Puppeteer | null;
 export declare function refreshPuppeteer(ctx: Context): void;
 export declare class SAT extends Sat {
@@ -11,6 +12,7 @@ export declare class SAT extends Sat {
     private ChannelParallelCount;
     private onlineUsers;
     private moodManager;
+    broadcastManager: BroadcastManager;
     private usersToWarn;
     private game;
     constructor(ctx: Context, config: Sat.Config);

@@ -274,6 +274,9 @@ export namespace Sat {
     maxRetryTimes: number
     retry_delay_time: number
 
+    Broadcast_block_channel: string[]
+    waiting_time: number
+
     enable_game: boolean
     game_block_channel: string[]
     enable_gobang: boolean
@@ -408,6 +411,11 @@ export namespace Sat {
       max_pocket_money: Schema.number().default(400).description('随机p点最大值'),
       pocket_money_cost: Schema.number().default(2).description('消耗心情换p点的心情值'),
     }).description('好感度拓展：心情设置（需要开启好感度模块才能生效）'),
+
+    Schema.object({
+      Broadcast_block_channel: Schema.array(String).description('不提供广播的频道id'),
+      waiting_time: Schema.number().default(1440).description('广播在缓存中等待的最大时间（分钟）（超过时间后没有触发会不再推送）'),
+    }).description('广播设置（发出后在每个生效群收到首条消息时会推送）'),
 
     Schema.object({
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),

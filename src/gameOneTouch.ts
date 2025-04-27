@@ -94,7 +94,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private winningFlag: winFlag = winFlag.pending // 当前胜负状态
   private turnCount: number // 当前回合数
   private baseHP: number = 40 // 初始血量
-  private playerLevelHP: number = 10 // 每级增加的血量
+  private playerLevelHP: number = 8 // 每级增加的血量
   private aiLevelHp: number = 10 // AI每级增加的血量
   private lastScore: number = 0 // 上一回合的分数
   private bonus: number = 0 // 奖励分数
@@ -137,11 +137,11 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   public override endGame = async (): Promise<OneTouchResult> => {
     if (this.winningFlag === winFlag.pending || this.winningFlag === winFlag.lose) {
       this.bonus = Math.abs(Math.floor(this.level * 0.2 * this.bonus))
-      this.bonus -= Math.floor(this.level * this.level * (Math.random() * 2 + 2) + 200)
+      this.bonus -= Math.floor(this.level * this.level * (Math.random() * 2 + 2) + 50)
       this.bonus = Math.min(this.bonus, 0)
     }
     if (this.winningFlag === winFlag.win) {
-      this.bonus = Math.floor(this.level * this.bonus * 0.2 * (Math.random() * 1 + 1))
+      this.bonus = Math.floor(this.level * this.bonus * 0.1 * (Math.random() * 1 + 1))
     }
     const finalBonus = this.bonus
     super.endGame()
@@ -153,7 +153,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       left: this.player.left,
       right: this.player.right,
       hp: this.baseHP + level * this.playerLevelHP,
-      shield: Math.round(level / 2),
+      shield: Math.round(5 - level / 2),
       strength: 0,
       bleed: 0,
       counterAttack: 0,
@@ -338,7 +338,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       bonusMessage += `濒死反击！获得${effectBonus}点分数!\n`
     }
     if (effect.revwersalOfStrength && this.player.strength <= this.ai.strength - 5) {
-      const effectBonus = Math.round((this.ai.strength - this.player.strength) * 3)
+      const effectBonus = Math.min((this.ai.strength - this.player.strength) * 3, 100)
       this.singleBonus += effectBonus
       bonusMessage += `逆转大局！获得${effectBonus}点分数!\n`
     }
@@ -354,7 +354,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       this.singleBonusMultiplier *= 2
       bonusMessage += `压倒性的优势！获得${effectBonus}点分数！本回合分数*2！\n`
     }
-    if (effect.magnificentEnd && this.ai.bleed > 4) {
+    if (effect.magnificentEnd && this.ai.bleed > 1) {
       const effectBonus = Math.round(this.ai.bleed * 1.5)
       this.singleBonusMultiplier *= effectBonus
       this.bonus *= 2
@@ -562,7 +562,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
 
       // 根据难度设置搜索深度
       const score = this.aiSearch(
-        this.level,
+        Math.round(this.level / 2),
         false,
         newState,
         -Infinity,
@@ -748,7 +748,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   当自身两手手势相同时，无论选择左手还是右手最终发生变化的都是左手。
   玩家初始有"${this.baseHP} + ${this.playerLevelHP} * 难度"血量。
   ai初始有"${this.baseHP} + ${this.aiLevelHp} * 难度"血量。
-  玩家初始有"难度 / 2"护盾，四舍五入取整。
+  玩家初始有"5 - 难度 / 2"护盾，四舍五入取整。
   血量没有上限，率先将对方血量减到零的人获胜：
   具体的技能设计如下：{
   一：${SKILL_MAP['1'].name}：造成${SKILL_MAP['1'].pierceDamage}穿刺伤害，${SKILL_MAP['1'].bleed}流血;

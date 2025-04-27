@@ -30,3 +30,9 @@ commands:
     messages:
       no-prompt: 你想让我知道什么？
       succeed: 我知道了，{0}
+  sat.broadcast:
+    description: 广播一条消息，在每个生效群收到首条消息时会推送
+    options:
+      delete: 删除一条广播，参数为广播的ID
+      list: 查看当前所有广播
+      img: 使用puppeteer图片化广播消息
