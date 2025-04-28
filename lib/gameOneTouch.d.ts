@@ -41,6 +41,7 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private evaluateState;
     private generateChat;
     private instuction;
+    private skillList;
 }
 export declare class OneTouchGame extends abstractGame<OneTouchSingleGame> {
     constructor();

@@ -108,13 +108,13 @@ export class broadcastMessage {
     const channelId = session.channelId
     if (this.alreadySentChannels.has(channelId)) return
     try {
+      this.alreadySentChannels.add(channelId)
       if (this.img) {
         session.send(await wrapInHTML(this.message))
       } else {
         session.send(this.message)
       }
       logger.info(`向群 ${channelId} 广播: ${this.message}`)
-      this.alreadySentChannels.add(channelId)
     } catch (error) {
       logger.error(`广播失败 ${channelId}: ${error}`)
     }

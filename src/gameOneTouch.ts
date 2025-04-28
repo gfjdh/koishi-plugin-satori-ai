@@ -54,7 +54,7 @@ export interface OneTouchResult extends gameResult {
 
 const SKILL_MAP: { [key: string]: SkillEffect } = {
   // 基础技能
-  '-1': { name: '无效' },
+  '-1': {},
   '1': { pierceDamage: 1, bleed: 3, name: '锥刺' }, //特性：流血
   '2': { pierceDamage: 1, stun: true, name: '点穴' }, //特性：眩晕
   '3': { damage: 6, counterAttack: 3, name: '爪击' }, //特性：反击
@@ -94,7 +94,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private winningFlag: winFlag = winFlag.pending // 当前胜负状态
   private turnCount: number // 当前回合数
   private baseHP: number = 40 // 初始血量
-  private playerLevelHP: number = 8 // 每级增加的血量
+  private playerLevelHP: number = 10 // 每级增加的血量
   private aiLevelHp: number = 10 // AI每级增加的血量
   private lastScore: number = 0 // 上一回合的分数
   private bonus: number = 0 // 奖励分数
@@ -130,6 +130,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
 例如"左 右"表示用你的左手触碰对方的右手
 注：
 发送"游戏规则"查看游戏规则
+发送"技能列表"查看技能列表
 发送"结束游戏"退出游戏`)
   }
 
@@ -153,7 +154,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
       left: this.player.left,
       right: this.player.right,
       hp: this.baseHP + level * this.playerLevelHP,
-      shield: Math.round(5 - level / 2),
+      shield: Math.round(6 - level / 2),
       strength: 0,
       bleed: 0,
       counterAttack: 0,
@@ -175,6 +176,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
 
   public override async processInput(input: string) {
     if (input === '游戏规则') return await wrapInHTML(this.instuction)
+    if (input === '技能列表') return await wrapInHTML(this.skillList)
     if (this.turnCount === 0) this.initState(this.level)
     this.turnCount++
     // 处理输入
@@ -242,11 +244,11 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private judgeEnd(): string {
     if (this.ai.hp <= 0) {
       this.winningFlag = winFlag.win
-      return `你赢了！发送结束游戏退出`
+      return `你赢了！发送"结束游戏"退出`
     }
     if (this.player.hp <= 0) {
       this.winningFlag = winFlag.lose
-      return `你输了！发送结束游戏退出`
+      return `你输了！发送"结束游戏"退出`
     }
   }
 
@@ -257,7 +259,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (this.player.status === playerStatus.Stunned) {
       this.player.status = playerStatus.lastStunned
       this.applyEffect(this.player, this.ai, SKILL_MAP['-1'], false)
-      return "你被眩晕，跳过回合"
+      return "你被眩晕，跳过回合" + this.buildResultMessage(SKILL_MAP['-1'], false, this.player, this.ai)
     }
     const sum = (handA + handB) % 10
     this.player[handA === this.player.left ? 'left' : 'right'] = sum
@@ -376,7 +378,7 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (this.ai.status === playerStatus.Stunned) {
       this.ai.status = playerStatus.lastStunned
       this.applyEffect(this.ai, this.player, SKILL_MAP['-1'], false)
-      return "被眩晕，跳过回合，本回合分数奖励继承到下一回合"
+      return "被眩晕，跳过回合，本回合分数奖励继承到下一回合" + this.buildResultMessage(SKILL_MAP['-1'], false, this.ai, this.player)
     }
     const sum = (handA + handB) % 10
     this.ai[handA === this.ai.left ? 'left' : 'right'] = sum
@@ -731,10 +733,10 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     if (this.lastScore < 90000 && Score > 90000) {
       return '我觉得你要输了哦~'
     }
-    if (this.lastScore < 0 && Score > 0) {
+    if (this.lastScore < 0 && Score > 0 && Math.random() > 0.5) {
       return '局势发生变化了呢~'
     }
-    if (Score - this.lastScore > 10 && Math.random() > 0.5)
+    if (Score - this.lastScore > 10 && Math.random() > 0.8)
       return '看招！'
   }
 
@@ -748,9 +750,24 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   当自身两手手势相同时，无论选择左手还是右手最终发生变化的都是左手。
   玩家初始有"${this.baseHP} + ${this.playerLevelHP} * 难度"血量。
   ai初始有"${this.baseHP} + ${this.aiLevelHp} * 难度"血量。
-  玩家初始有"5 - 难度 / 2"护盾，四舍五入取整。
+  玩家初始有"6 - 难度 / 2"护盾，四舍五入取整。
   血量没有上限，率先将对方血量减到零的人获胜：
-  具体的技能设计如下：{
+
+  游戏名称说明：
+  流血效果：每次到自己回合结束时，收到流血层数点伤害，不可被护盾阻挡，然后流血层数减1;
+  护盾效果：每一层护盾可阻挡下一次受到的普通伤害，如果伤害来源是组合技则消耗两层护盾(若仅有一层则消耗一层)。护盾上限为五层。
+  眩晕效果：跳过自己的下一个回合，若上回合已经被眩晕，则本回合不受眩晕影响（即不可被连续眩晕）
+  弱眩晕效果：若对方没有护盾，则眩晕对方一回合
+  反击：下一回合若对方行动中有攻击，则对方攻击前受到反击层数点穿刺伤害，此效果受力量加成，且仅持续一回合
+  穿刺伤害：不被护盾影响的伤害（不会消耗护盾）
+  力量效果：每有一点力量，每次造成的伤害+1，若为负数则减一
+  易伤效果：受到的普通伤害+50%，自己的回合结束时减少一层
+  组合技：在触碰完成后，若你的两只手手势符合组合技条件，则触发组合技，组合技的效果会覆盖普通技能的效果，组合无序
+  bonus: 当行动导致关键效果时，获得额外奖励，在ai回合结束时结算，若ai被眩晕则奖励继承到下一回合
+  `
+
+  private skillList = `
+  具体的技能设计如下：
   一：${SKILL_MAP['1'].name}：造成${SKILL_MAP['1'].pierceDamage}穿刺伤害，${SKILL_MAP['1'].bleed}流血;
   二：${SKILL_MAP['2'].name}：造成${SKILL_MAP['2'].pierceDamage}穿刺伤害，眩晕对方；
   三：${SKILL_MAP['3'].name}：造成${SKILL_MAP['3'].damage}伤害，获得${SKILL_MAP['3'].counterAttack}层反击；
@@ -780,18 +797,6 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   三+七：${SKILL_MAP['3+7'].name}：获得${SKILL_MAP['3+7'].counterAttack}层反击，破坏对方${SKILL_MAP['3+7'].destroyShield}层护盾，对方左手数值增加${SKILL_MAP['3+7'].addLeft}，右手数值增加${SKILL_MAP['3+7'].addRight}
   九+十：${SKILL_MAP['0+9'].name}：逆转双方力量，然后增加自身${SKILL_MAP['0+9'].selfstrengthChange}力量，对方${SKILL_MAP['0+9'].strengthChange}力量
   十+十：${SKILL_MAP['0+0'].name}：对对方造成${SKILL_MAP['0+0'].bleed}流血，自身${SKILL_MAP['0+0'].selfstrengthChange}力量，然后立即结算对方全部流血
-  }
-  注：
-  流血效果：每次到自己回合结束时，收到流血层数点伤害，不可被护盾阻挡，然后流血层数减1;
-  护盾效果：每一层护盾可阻挡下一次受到的普通伤害，如果伤害来源是组合技则消耗两层护盾(若仅有一层则消耗一层)。护盾上限为五层。
-  眩晕效果：跳过自己的下一个回合，若上回合已经被眩晕，则本回合不受眩晕影响（即不可被连续眩晕）
-  弱眩晕效果：若对方没有护盾，则眩晕对方一回合
-  反击：下一回合若对方行动中有攻击，则对方攻击前受到反击层数点穿刺伤害，此效果受力量加成，且仅持续一回合
-  穿刺伤害：不被护盾影响的伤害（不会消耗护盾）
-  力量效果：每有一点力量，每次造成的伤害+1，若为负数则减一
-  易伤效果：受到的普通伤害+50%，自己的回合结束时减少一层
-  组合技：两只手势符合组合技条件时触发组合技，组合技的效果会覆盖普通技能的效果，组合无序
-  bonus: 当行动导致关键效果时，获得额外奖励，在ai回合结束时结算，若ai被眩晕则奖励继承到下一回合
   `
 }
 
