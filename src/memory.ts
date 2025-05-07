@@ -88,7 +88,7 @@ export class MemoryManager {
 
     // 处理标点残留和空内容情况
     const result = filtered
-      .replace(/([，、])\1+/g, '$1') // 去除重复标点
+      .replace(/([，、…])\1+/g, '$1') // 去除重复标点
       .replace(/^[，。！？;,.!?]+/, '') // 去除开头标点
       .trim()
 

@@ -45,7 +45,6 @@ export class MoodManager {
     if (!this.config.enable_mood) return
     const userId = user.userid
     if (!this.moodMap.has(userId)) this.initUser(userId)
-    await this.checkDailyReset(userId)
     let effect = this.config.value_of_input_mood
     switch (favorabilityLevel) {
       case '厌恶': effect = effect * 1.5; break
@@ -66,7 +65,6 @@ export class MoodManager {
     if (!this.config.enable_mood) return
     const userId = user.userid
     if (!this.moodMap.has(userId)) this.initUser(userId)
-    await this.checkDailyReset(userId)
     let effect = this.config.value_of_output_mood
     switch (favorabilityLevel) {
       case '厌恶': effect = effect * 1.5; break
@@ -83,7 +81,7 @@ export class MoodManager {
   }
 
   // 应用心情变化
-  public applyMoodChange(user: User, delta: number): void {
+  public async applyMoodChange(user: User, delta: number): Promise<void> {
     if (!this.config.enable_mood) return
     const userId = user.userid
     let data = this.moodMap.get(userId)
@@ -100,6 +98,7 @@ export class MoodManager {
       lastUpdate: Date.now()
     })
 
+    await this.checkDailyReset(userId)
     return
   }
 
