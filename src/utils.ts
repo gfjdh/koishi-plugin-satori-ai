@@ -176,11 +176,11 @@ export function filterResponse(prompt: string, words: string[]): {content: strin
   const lastAnswer5 = answerMatches5 ? answerMatches5[answerMatches5.length - 1] : null;
   const answerContent = lastAnswer || lastDoubao || lastAnswer3 || lastAnswer4 || lastAnswer5;
   if (!answerContent) {
-    return {content: '有点问题，稍后再来吧', error: true};
+    return {content: '有点问题，请重置对话', error: true};
   }
   const regex = /<p>|<\/p>|<doubaothinking>|<\/doubaothinking>|<\/p|<answer>|<\/answer>|<br>|<\/br>|<br\/>/g;
   const cleanedContent = answerContent.replace(regex, '');
-  return cleanedContent ? {content: cleanedContent, error: false} : {content: '有点问题，稍后再来吧', error: true};
+  return cleanedContent ? {content: cleanedContent, error: false} : {content: '有点问题，请重置对话', error: true};
 }
 
 // 添加输出屏蔽词
