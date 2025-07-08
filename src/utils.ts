@@ -203,3 +203,53 @@ export async function updateUserPWithTicket(ctx: Context, user: User, adjustment
     await updateUserP(ctx, user, adjustment)
   }
 }
+
+// 寻找最长公共子串
+export function findLongestCommonSubstring(str1: string, str2: string): number {
+  if (!str1 || !str2) return 0;
+
+  const m = str1.length;
+  const n = str2.length;
+  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  let maxLength = 0;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+        maxLength = Math.max(maxLength, dp[i][j]);
+      }
+    }
+  }
+
+  return maxLength;
+}
+
+// 计算相同字符个数（中文字符）
+export function countCommonChars(str1: string, str2: string): number {
+  const chars1 = new Map<string, number>();
+  const chars2 = new Map<string, number>();
+
+  // 统计第一个字符串中的字符
+  for (const char of str1) {
+    if (/[\u4e00-\u9fff]/.test(char)) { // 中文字符
+      chars1.set(char, (chars1.get(char) || 0) + 1);
+    }
+  }
+
+  // 统计第二个字符串中的字符
+  for (const char of str2) {
+    if (/[\u4e00-\u9fff]/.test(char)) { // 中文字符
+      chars2.set(char, (chars2.get(char) || 0) + 1);
+    }
+  }
+
+  // 计算公共字符数量
+  let commonCount = 0;
+  for (const [char, count1] of chars1) {
+    const count2 = chars2.get(char) || 0;
+    commonCount += Math.min(count1, count2);
+  }
+
+  return commonCount;
+}

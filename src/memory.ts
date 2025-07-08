@@ -3,7 +3,7 @@ import { Session, Logger, Context } from 'koishi'
 import { MemoryEntry, MemoryConfig, ChannelMemory } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
-import { escapeRegExp, getTimeOfDay } from './utils'
+import { countCommonChars, escapeRegExp, findLongestCommonSubstring, getTimeOfDay } from './utils'
 import { getUser } from './database'
 
 const logger = new Logger('satori-memory')
@@ -212,28 +212,19 @@ export class MemoryManager {
     if (keywords.length === 0) return { score: 0, count: 0 };
 
     // 转义关键词并构建正则表达式
-    const escapedKeywords = keywords.map(k => escapeRegExp(k));
-    const regex = new RegExp(escapedKeywords.join('|'), 'gi');
-    const chineseRegex = /[\u4e00-\u9fa5]/g; // 匹配中文字符的正则表达式
-    const regex2 = new RegExp(`[${this.charactersToRemove.join('')}]`, 'g');
-    content = content.replace(regex2, '');
+    const regex = new RegExp(`[${this.charactersToRemove.join('')}]`, 'g');
+    // content是来自文件的内容
+    content = content.replace(regex, '');
+    // keywords是用户输入的内容
+    const Keyword = keywords.map(k => escapeRegExp(k)).join('');
 
-    const matches = content.match(regex) || [];
-    // 计算匹配项的权重总和
-    let count = 0;
-    matches.forEach(match => {
-      const chineseCount = (match.match(chineseRegex) || []).length;
-      const englishCount = match.length - chineseCount;
-      count += chineseCount * 2 + englishCount;
-    });
+    // 计算最长公共子串长度
+    const length = findLongestCommonSubstring(content, Keyword);
+    // 计算相同中文字符个数
+    const count = countCommonChars(content, Keyword);
+    // 计算匹配率：结合最长公共子串长度和字符匹配度
+    const ratio = (length * length + count) / content.length;
 
-    // 计算总字符权重
-    const totalChinese = (content.match(chineseRegex) || []).length;
-    const totalEnglish = content.length - totalChinese;
-    const totalWeight = totalChinese * 2 + totalEnglish;
-
-    // 计算匹配比例
-    const ratio = totalWeight > 0 ? count / totalWeight : 0;
     return { score: ratio, count };
   }
 
@@ -249,7 +240,7 @@ export class MemoryManager {
     if (matched.length > 0) {
       matched = matched.slice(0, topN < matched.length ? topN : matched.length)  // 取前 N 个结果
       if (type === 'common') {
-          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')} ${date}\n}\n`
+          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')} \n${date}\n}\n`
           return result
       } else {
           // 这里因为远古屎山代码的原因，所以要判断role是否为user，现在的role是用来存储时间的

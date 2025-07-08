@@ -552,7 +552,7 @@ export class SAT extends Sat {
     const filePath = path.join(this.config.dataDir, 'common_sense.txt')
     await this.memoryManager.saveLongTermMemory(session, [{
       role: 'user',
-      content
+      content: content.replace(/\"/g, '\'').trim()
     }], filePath)
     return session.text('commands.sat.common_sense.messages.succeed', [content]);
   }
