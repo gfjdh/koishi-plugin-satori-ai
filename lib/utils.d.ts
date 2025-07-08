@@ -29,3 +29,5 @@ export declare function filterResponse(prompt: string, words: string[]): {
 };
 export declare function addOutputCensor(session: Session, word: string, baseURL: string): void;
 export declare function updateUserPWithTicket(ctx: Context, user: User, adjustment: number): Promise<void>;
+export declare function findLongestCommonSubstring(str1: string, str2: string): number;
+export declare function countCommonChars(str1: string, str2: string): number;
