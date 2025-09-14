@@ -244,9 +244,6 @@ export declare namespace Sat {
         waiting_time: number;
         enable_game: boolean;
         game_block_channel: string[];
-        enable_gobang: boolean;
-        channel_id_for_gobang: string[];
-        cd_for_gobang: number;
         enable_fencing: boolean;
         enable_OneTouch: boolean;
         cd_for_OneTouch: number;

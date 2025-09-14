@@ -9,7 +9,8 @@ export declare class UserPortraitManager {
     hasPortrait(userId: string): boolean;
     readPortrait(userId: string): string;
     private getDialogues;
-    private buildMessage;
+    private buildFirstMessage;
+    private buildSecondMessage;
     generatePortrait(session: Session, user: User, apiClient: APIClient): Promise<void>;
     private savePortrait;
     private ensurePortraitFile;

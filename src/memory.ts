@@ -10,7 +10,7 @@ const logger = new Logger('satori-memory')
 export class MemoryManager {
   private channelMemories: Map<string, ChannelMemory> = new Map()
   private channelDialogues: Map<string, string[]> = new Map()
-  private charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id=", '1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+  private charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id="];
   private MAX_MEMORY_LENGTH = 5000
   constructor(
     private ctx: Context,
@@ -53,7 +53,7 @@ export class MemoryManager {
   public async getChannelDialogue(session: Session) {
     if (!this.config.channel_dialogues) return ''
     const Dialogue = this.channelDialogues[session.channelId]?.join('\n') || ''
-    const result = '以下是群聊内群友最近的聊天记录，当用户话题涉及其中内容时你可以参考这些信息：{\n' + Dialogue + '\n}\n'
+    const result = '以下是群聊内最近的包括所有人的聊天记录，当当前对话涉及其中内容时你可以参考这些信息，但是要注意分辨发言人是谁：{\n' + Dialogue + '\n}\n'
     return result
   }
 
@@ -202,7 +202,6 @@ export class MemoryManager {
   private findBestMatches(entries: MemoryEntry[], keywords: string[]): MemoryEntry[] {
     return entries
       .map(entry => ({ entry, ...this.calculateMatchScore(entry.content, keywords) })) //计算匹配度
-      .filter(({ count }) => count > 1)    // 过滤低权重匹配
       .sort((a, b) => b.score - a.score)  // 按匹配率降序排列
       .map(({ entry }) => entry);         // 还原为原始条目
   }

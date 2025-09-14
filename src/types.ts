@@ -279,9 +279,6 @@ export namespace Sat {
 
     enable_game: boolean
     game_block_channel: string[]
-    enable_gobang: boolean
-    channel_id_for_gobang: string[]
-    cd_for_gobang: number
     enable_fencing: boolean
     enable_OneTouch: boolean
     cd_for_OneTouch: number
@@ -420,9 +417,6 @@ export namespace Sat {
     Schema.object({
       enable_game: Schema.boolean().default(false).description('是否开启游戏模块'),
       game_block_channel: Schema.array(String).description('不提供游戏的频道id'),
-      enable_gobang: Schema.boolean().default(false).description('是否开启五子棋游戏（需要puppeteer支持）'),
-      channel_id_for_gobang: Schema.array(String).description('启用五子棋的游戏频道id（不建议太多，第一个会被公示）'),
-      cd_for_gobang: Schema.number().default(3600).description('每人五子棋游戏cd时间（秒）'),
       enable_OneTouch: Schema.boolean().default(false).description('是否开启一碰一游戏（需要puppeteer支持）'),
       cd_for_OneTouch: Schema.number().default(600).description('每人一碰一游戏cd时间（秒）'),
       enable_fencing: Schema.boolean().default(false).description('是否开启击剑游戏(无效，开发中)'),

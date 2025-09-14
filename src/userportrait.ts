@@ -53,7 +53,7 @@ export class UserPortraitManager {
     const validEntries = replacedContent
       .filter(entry => entry.role !== 'user')
       .map(entry => {
-        const timeMatch = entry.role.match(/对话日期和时间：(\d{4}\/\d{1,2}\/\d{1,2} \d{2}:\d{2}:\d{2})/)
+        const timeMatch = entry.role.match(/对话日期和时间：(\d{1,2}\/\d{1,2}\/\d{4}), (\d{1,2}:\d{2}:\d{2} [AP]M)/)
         if (!timeMatch) return null
         return {
           ...entry,
@@ -77,10 +77,38 @@ export class UserPortraitManager {
   }
 
   // 生成提示词模板
-  private buildMessage(level: string, history: string, existingPortrait: string, user: User): Sat.Msg[] {
+  private buildFirstMessage(level: string, history: string, user: User): Sat.Msg[] {
     return [{
       role: 'user',
-      content: `你是一个角色扮演智能体工作流中的一环，请根据以下信息更新用户画像。需包括：
+      content: `你是一个角色扮演智能体工作流中的一环，请根据以下信息生成户画像。可选内容包括：
+1. 基本信息（性别、年龄、生日等）
+2. 生活习惯（作息等）
+3. 反感点（如有）
+4. 对AI的期望（从对话历史中推断）
+5. 用户希望记住的信息（如有）
+
+用户名：${user.usersname}
+你与用户的关系：${level}
+近期的用户发言记录：
+${history}
+
+注意事项：
+·没有涉及到的信息注为无
+·用户一定是人类，其他情况是角色扮演
+·尤其注意用户说“记住”的部分，可能是用户希望记录的信息
+·因为在角色扮演中，用户可能会说出不符合事实的信息，需要根据事实推断，避免盲目相信或主观臆测
+·使用尽可能简洁的表达
+·保留不确定性的表述（如"可能"、"似乎"、"用户自称"）
+·保持中立和客观，避免带有个人情感色彩的描述，不要添加评价或建议
+·仅给出画像内容，不要添加额外的描述、建议、评价、注解等任何内容
+·不使用markdown等标记语言，直接书写即可`
+    }]
+  }
+
+  private buildSecondMessage(level: string, NewPortrait: string, existingPortrait: string, user: User): Sat.Msg[] {
+    return [{
+      role: 'user',
+      content: `你是一个角色扮演智能体工作流中的一环，请根据以下信息合并用户画像。内容包括：
 1. 基本信息（性别、年龄、生日等，不要遗漏或改动已有的信息）
 2. 生活习惯（作息等）
 3. 反感点（如有）
@@ -89,16 +117,15 @@ export class UserPortraitManager {
 
 用户名：${user.usersname}
 你与用户的关系：${level}
-历史画像：
+已有画像：
 ${existingPortrait ? '无' : existingPortrait}\n
-近期的用户发言记录：
-${history}
+新补充信息：
+${NewPortrait}
 
 注意事项：
 ·用户一定是人类，其他情况是角色扮演
-·根据发言修正历史画像内容，但是历史画像中与发言无关的部分必须保留
-·尤其注意用户说“记住”的部分，可能是用户希望记录的信息
-·因为在角色扮演中，用户可能会说出不符合事实的信息，需要根据事实推断，避免盲目相信或主观臆测
+·根据已有画像，补充新信息，避免重复，并且不要遗漏你认为重要信息
+·你认为不太重要的信息可以删除
 ·使用尽可能简洁的表达
 ·保留不确定性的表述（如"可能"、"似乎"、"用户自称"）
 ·保持中立和客观，避免带有个人情感色彩的描述，不要添加评价或建议
@@ -120,10 +147,12 @@ ${history}
     const dialogues = await this.getDialogues(user)
     const existing = this.readPortrait(user.userid)
     const userlevel = getFavorabilityLevel(user, this.getFavorabilityConfig())
-    const messages = this.buildMessage(userlevel, dialogues.join('\n'), existing, user)
     logger.info(`用户 ${user.userid} 画像生成中...`)
     try {
-      const response = await apiClient.generateUserPortrait(user, messages)
+      const FirstMessages = this.buildFirstMessage(userlevel, dialogues.join('\n'), user)
+      const NewPortrait = await apiClient.generateUserPortrait(user, FirstMessages)
+      const SecondMessages = this.buildSecondMessage(userlevel, NewPortrait.content, existing, user)
+      const response = await apiClient.generateUserPortrait(user, SecondMessages)
       if (response && !response.error) {
         this.savePortrait(user, response.content)
         if (user.usage > this.config.portrait_usage - 1) session.send('用户画像更新成功。')
