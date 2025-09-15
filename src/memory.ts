@@ -202,6 +202,7 @@ export class MemoryManager {
   private findBestMatches(entries: MemoryEntry[], keywords: string[]): MemoryEntry[] {
     return entries
       .map(entry => ({ entry, ...this.calculateMatchScore(entry.content, keywords) })) //计算匹配度
+      .filter(({ count }) => count > 1)    // 过滤低权重匹配
       .sort((a, b) => b.score - a.score)  // 按匹配率降序排列
       .map(({ entry }) => entry);         // 还原为原始条目
   }

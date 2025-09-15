@@ -251,5 +251,13 @@ export function countCommonChars(str1: string, str2: string): number {
     commonCount += Math.min(count1, count2);
   }
 
+  // 如果任一字符串中含有 >=3 个数字，则确保返回值至少为 2
+  const countDigits = (s: string) => (s.match(/\d/g) || []).length;
+  const digits1 = countDigits(str1);
+  const digits2 = countDigits(str2);
+  if (digits1 >= 3 || digits2 >= 3) {
+    return Math.max(commonCount, 2);
+  }
+
   return commonCount;
 }
