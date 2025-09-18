@@ -34,10 +34,12 @@ export declare class SAT extends Sat {
     generateResponse(session: Session, prompt: string): Promise<{
         content: string;
         error: boolean;
+        reasoning_content?: string;
     }>;
     getChatResponse(user: User, messages: Sat.Msg[], prompt: string): Promise<{
         content: string;
         error: boolean;
+        reasoning_content?: string;
     }>;
     private buildMessages;
     private buildSystemPrompt;

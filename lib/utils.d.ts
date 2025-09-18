@@ -34,3 +34,4 @@ export declare function addOutputCensor(session: Session, word: string, baseURL:
 export declare function updateUserPWithTicket(ctx: Context, user: User, adjustment: number): Promise<void>;
 export declare function findLongestCommonSubstring(str1: string, str2: string): number;
 export declare function countCommonChars(str1: string, str2: string): number;
+export declare function wrapInHTML(str: string): Promise<string>;

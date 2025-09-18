@@ -202,7 +202,7 @@ export function filterResponse(
   } else if (doubaoMatches.length > 0) {
     combined = doubaoMatches.map(s => s.replace(/<doubaothinking>/i, '').replace(/<\/doubaothinking>/i, '')).join('');
   } else if (answerTagMatches.length > 0) {
-    combined = answerTagMatches.map(s => s.replace(/<answer>/i, '').replace(/<\/answer>/i, '')).join(' ');
+    combined = answerTagMatches.map(s => s.replace(/<answer>/i, '').replace(/<\/answer>/i, '')).join(',');
   }
 
   if (!combined) {
@@ -292,4 +292,55 @@ export function countCommonChars(str1: string, str2: string): number {
   }
 
   return commonCount;
+}
+
+import { puppeteer } from '.'
+export async function wrapInHTML(str: string): Promise<string> {
+  if (!puppeteer) {
+    logger.warn('puppeteer未就绪')
+    return '出现错误，请联系管理员'
+  }
+  // 为了让渲染出的图片每行最多约为 20 个字符，我们使用 ch 单位限制宽度，
+  // 并启用 pre-wrap/overflow-wrap/word-break 保留换行并允许中英文自动换行。
+  // 如果你需要改成 10~20 之间的可配置值，可以将 20ch 改为变量或传入参数。
+  const html = `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        /* 让页面宽度随内容收缩，这样 puppeteer 渲染产物不会有大片空白 */
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: auto;
+          height: auto;
+          display: inline-block; /* shrink-to-fit */
+          background: transparent;
+        }
+        .satori-text {
+          padding: 10px;
+          display: inline-block;
+          box-sizing: border-box;
+          font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+          font-size: 16px;
+          line-height: 1.4;
+          /* 最大约 20 个字符宽度（可调整为 10-20ch） */
+          max-width: 20ch;
+          /* 同时允许内容根据文字宽度收缩（fit-content 在一些旧浏览器需备份） */
+          width: -moz-fit-content;
+          width: fit-content;
+          /* 保留输入中的换行符并在需要时换行 */
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+          -webkit-font-smoothing: antialiased;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="satori-text">${str.replaceAll(/\n/g, '<br/>')}</div>
+    </body>
+  </html>`;
+
+  return puppeteer.render(html);
 }

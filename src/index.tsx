@@ -15,6 +15,7 @@ import { MoodManager } from './mood'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
+import { wrapInHTML } from './utils'
 
 const logger = new Logger('satori-ai')
 const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，锐评一下群聊中的话题'
@@ -248,7 +249,7 @@ export class SAT extends Sat {
     // 更新用户画像
     if (user.usage == this.config.portrait_usage - 1)
       this.portraitManager.generatePortrait(session, user, this.apiClient)
-    return await this.formatResponse(session, response.content, auxiliaryResult)
+    return await this.formatResponse(session, response.content, auxiliaryResult, response.reasoning_content)
   }
 
   // 处理辅助判断
@@ -370,14 +371,14 @@ export class SAT extends Sat {
     const messages = await this.buildMessages(session, prompt)
     logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
     const user = await getUser(this.ctx, session.userId)
-  let response = await this.getChatResponse(user, messages, prompt)
-  if (response.error) response = await this.getChatResponse(user, messages, prompt)
+    let response = await this.getChatResponse(user, messages, prompt)
+    if (response.error) response = await this.getChatResponse(user, messages, prompt)
     if (response.error) updateUserUsage(this.ctx, user, -1)
     return response
   }
 
   // 获取聊天回复
-  public async getChatResponse(user: User, messages: Sat.Msg[], prompt: string): Promise<{ content: string; error: boolean }> {
+  public async getChatResponse(user: User, messages: Sat.Msg[], prompt: string): Promise<{ content: string; error: boolean; reasoning_content?: string }> {
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength && this.config.enable_reasoner_like
@@ -389,10 +390,10 @@ export class SAT extends Sat {
         logger.info(`Satori AI：${response.content}`)
     }
     if (!response.error) {
-      response = filterResponse(response.content, this.config.reasoner_filter_word.split('-'), {
+      response.content = filterResponse(response.content, this.config.reasoner_filter_word.split('-'), {
         applyBracketFilter: this.config.reasoner_filter,
         applyTagFilter: useNoReasoner || this.config.enhanceReasoningProtection,
-      })
+      }).content
     }
 
     return response
@@ -495,11 +496,11 @@ export class SAT extends Sat {
     const reasonerPrompt = this.config.reasoner_prompt
     const promptForNoReasoner = `\n#参考信息到此为止，接下来是思考要求\n#请你在回复时先进行分析思考，并且模仿思维链的模式输出思考内容，${reasonerPrompt};
 #你在思考时必须以 "<think>" 开头, "<\/think>" 结尾。仔细揣摩用户意图，**完整输出思考内容后**再输出正式的回复内容;
-#注意：你的正式回复内容必须使用“<p>”开头，在输出全部回复后使用“</p>”结尾（即输出且仅输出一对标签），并且无论如何都要把标签输出完整
+#注意：你的正式回复内容必须使用“<p>”开头，在输出全部回复后使用“</p>”结尾（即最终回答只允许有一组标签），并且无论如何都要把标签输出完整
 #接下来是对话要求，以下要求仅对最终的回复内容生效，不限制思考过程\n`
     const promptForReasoner = this.config.enhanceReasoningProtection ? `\n#参考信息到此为止，接下来是思考要求
 #你在思考时必须以 "嗯" 开头。仔细揣摩用户意图，思考结束后返回符合要求的回复。
-#注意：你的回复内容必须使用“<p>”开头，在输出全部回复后使用“</p>”结尾（即输出且仅输出一对标签）
+#注意：你的回复内容必须使用“<p>”开头，在输出全部回复后使用“</p>”结尾（即最终回答只允许有一组标签）
 #接下来是对话要求，以下要求仅对最终的回复内容生效，不限制思考过程\n` : ''
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
@@ -510,7 +511,7 @@ export class SAT extends Sat {
   }
 
   // 处理回复
-  private async formatResponse(session: Session, response: string, auxiliaryResult: string | void) {
+  private async formatResponse(session: Session, response: string, auxiliaryResult: string | void, reasoningContent?: string) {
     const user = await getUser(this.ctx, session.userId)
     this.updateChannelParallelCount(session, -1)
     this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
@@ -519,8 +520,43 @@ export class SAT extends Sat {
     const catEar = user?.items?.['猫耳发饰']?.description && user.items['猫耳发饰'].description == 'on'
     const fumo = user?.items?.['觉fumo']?.description && user.items['觉fumo'].description == 'on'
     const ring = user?.items?.['订婚戒指']?.description && user.items['订婚戒指'].description == '已使用'
+    const eye = user?.items?.['仿制觉之瞳']?.description && user.items['仿制觉之瞳'].description == 'on'
     const replyPointing = this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1)
+    let firstReasoning = ''
+    if (eye && reasoningContent) {
+      try {
+        // 提取第一个左括号及其对应的右括号（支持嵌套），同时支持中/英文括号
+        const extractFirstBalanced = (text: string): string | null => {
+          if (!text) return null
+          const pairs: Array<{ left: string; right: string }> = [ { left: '(', right: ')' }, { left: '（', right: '）' }]
 
+          for (const pair of pairs) {
+            const { left, right } = pair
+            const start = text.indexOf(left)
+            if (start === -1) continue
+            let depth = 0
+            for (let i = start; i < text.length; i++) {
+              const ch = text[i]
+              if (ch === left) {
+                depth++
+              } else if (ch === right) {
+                depth--
+                if (depth === 0) {
+                  return text.slice(start, i + 1)
+                }
+              }
+            }
+            // 如果找到了左括号但未匹配到对应右括号，则返回到字符串末尾（可选），这里我们跳过，继续尝试另一种括号
+          }
+          return null
+        }
+
+        const extracted = extractFirstBalanced(reasoningContent)
+        if (extracted) firstReasoning = extracted
+      } catch (e) {
+        logger.warn('解析 reasoningContent 时出错：' + e.message)
+      }
+    }
     if (catEar) response += ' 喵~'
     if (fumo) response += '\nfumofumo'
     if (this.config.enable_mood && this.config.enable_favorability && this.config.visible_mood) {
@@ -533,7 +569,7 @@ export class SAT extends Sat {
       this.addUserToWarnList(session, auxiliaryResult)
     }
     if (replyPointing) { response = `@${session.username} ` + response }
-
+    if (firstReasoning.length > 3) await session.send(await wrapInHTML(firstReasoning))
     if (this.config.sentences_divide && response.length > 10) {
       const sentences = splitSentences(response, this.config.min_sentences_length, this.config.max_sentences_length).map(text => h.text(text))
       for (const sentence of sentences) {
