@@ -18,7 +18,7 @@ import { BroadcastManager } from './broadcast'
 import { wrapInHTML } from './utils'
 
 const logger = new Logger('satori-ai')
-const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，锐评一下群聊中的话题'
+const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，你可以参与或者评价一下群聊中的话题'
 
 export let puppeteer : Puppeteer | null = null
 
@@ -39,7 +39,43 @@ export class SAT extends Sat {
   private moodManager: MoodManager
   public broadcastManager: BroadcastManager
   private usersToWarn: Map<string, string> = new Map()
+  private puppeteer: Puppeteer | null
   private game: Game
+
+  public setPuppeteer(puppeteer: Puppeteer): void {
+    this.puppeteer = puppeteer
+    // 同步导出变量，方便外部使用
+    try {
+      // 在 CommonJS 环境中，exports 是可写的
+      // @ts-ignore
+      exports.puppeteer = puppeteer
+    } catch (e) {
+      // 在某些打包环境下无法写入 exports，回退到全局赋值
+      // @ts-ignore
+      (global as any).puppeteer = puppeteer
+    }
+    logger.info('Puppeteer 已设置')
+  }
+  // 等待 ctx.puppeteer 异步就绪并设置到实例的非阻塞重试函数
+  private async waitForPuppeteer(ctx: Context, retries: number = 20, intervalMs: number = 1000) {
+    for (let i = 0; i < retries; i++) {
+      if (ctx.puppeteer) {
+        this.setPuppeteer(ctx.puppeteer)
+        refreshPuppeteer(ctx)
+        logger.info(`Puppeteer 在尝试 ${i + 1}/${retries} 中就绪`)
+        return true
+      }
+      // 如果 ctx 上没有 puppeteer，等待一段时间再重试
+      await new Promise(resolve => setTimeout(resolve, intervalMs))
+    }
+    logger.warn('等待 Puppeteer 超时，未能在指定重试次数内初始化')
+    return false
+  }
+
+  // （原先的 puppeteerReady 方法保留在文件顶部）
+  public puppeteerReady(): boolean {
+    return !!this.puppeteer
+  }
 
   // 重写构造函数
   constructor(ctx: Context, public config: Sat.Config) {
@@ -58,6 +94,9 @@ export class SAT extends Sat {
     this.moodManager = new MoodManager(ctx, config)
     this.broadcastManager = new BroadcastManager(ctx, config)
     ensureCensorFileExists(this.config.dataDir)
+    refreshPuppeteer(ctx)
+    // 如果 puppeteer 尚未在 ctx 上就绪，异步等待并注入（非阻塞）
+    void this.waitForPuppeteer(ctx, 30, 1000)
     // 注册中间件
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
@@ -569,6 +608,10 @@ export class SAT extends Sat {
       this.addUserToWarnList(session, auxiliaryResult)
     }
     if (replyPointing) { response = `@${session.username} ` + response }
+    if (this.ctx.puppeteer && !this.puppeteerReady()) {
+      logger.info('Puppeteer 未就绪，正在重新初始化 Puppeteer...')
+      this.setPuppeteer(this.ctx.puppeteer)
+    }
     if (firstReasoning.length > 3) await session.send(await wrapInHTML(firstReasoning))
     if (this.config.sentences_divide && response.length > 10) {
       const sentences = splitSentences(response, this.config.min_sentences_length, this.config.max_sentences_length).map(text => h.text(text))

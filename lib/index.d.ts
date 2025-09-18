@@ -14,7 +14,11 @@ export declare class SAT extends Sat {
     private moodManager;
     broadcastManager: BroadcastManager;
     private usersToWarn;
+    private puppeteer;
     private game;
+    setPuppeteer(puppeteer: Puppeteer): void;
+    private waitForPuppeteer;
+    puppeteerReady(): boolean;
     constructor(ctx: Context, config: Sat.Config);
     private getAPIConfig;
     private getMemoryConfig;
