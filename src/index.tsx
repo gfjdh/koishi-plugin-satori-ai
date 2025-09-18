@@ -166,10 +166,13 @@ export class SAT extends Sat {
       .action(({ session, options }) => this.clearSession(session, options.global))
 
     ctx.command('sat.common_sense <text:text>', '添加常识')
+      .alias('添加常识')
       .action(async ({ session }, prompt) => this.addCommonSense(session, prompt))
 
     ctx.command('sat.group_sense <text:text>', '添加群常识')
-      .action(async ({ session }, prompt) => this.addGroupCommonSense(session, prompt))
+      .alias('添加群常识')
+      .option('id', '-i <id:string>', { authority: 3 })
+      .action(async ({ session, options }, prompt) => this.addGroupCommonSense(session, prompt, options.id as string))
 
     ctx.command('sat.update_user_level', '更新用户等级', { authority: 2 })
       .alias('更新用户')
@@ -583,14 +586,15 @@ export class SAT extends Sat {
   }
 
   // 添加群常识
-  public async addGroupCommonSense(session: Session, content: string) {
+  public async addGroupCommonSense(session: Session, content: string, groupId: string) {
     if (!content) return session.text('commands.sat.common_sense.messages.no-prompt')
-    const filePath = path.join(this.config.dataDir, `group_sense`, `${session.channelId}.txt`)
+    const id = groupId || session.channelId
+    const filePath = path.join(this.config.dataDir, `group_sense`, `${id}.txt`)
     await this.memoryManager.saveLongTermMemory(session, [{
       role: 'user',
       content: content.replace(/\"/g, '\'').trim()
     }], filePath)
-    return session.text('commands.sat.common_sense.messages.succeed', [content]);
+    return session.text('commands.sat.common_sense.messages.succeed', [`群${id}中：` + content]);
   }
 
   // 更新用户等级
