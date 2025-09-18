@@ -23,7 +23,10 @@ export declare function processPrompt(prompt: string): string;
  * @param words 需要过滤的关键词
  * @returns 处理后的字符串，删除含有关键词的部分
  */
-export declare function filterResponse(prompt: string, words: string[]): {
+export declare function filterResponse(prompt: string, words: string[], options?: {
+    applyBracketFilter?: boolean;
+    applyTagFilter?: boolean;
+}): {
     content: string;
     error: boolean;
 };

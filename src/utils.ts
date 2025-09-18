@@ -148,27 +148,55 @@ export function processPrompt(prompt: string): string {
  * @param words 需要过滤的关键词
  * @returns 处理后的字符串，删除含有关键词的部分
  */
-export function filterResponse(prompt: string, words: string[]): {content: string, error: boolean} {
-  const parts = prompt.split(/([（\[【《(][^）)]*[）\]】》)])/g);
-  const filtered = parts.map(part => {
-    if (part.startsWith('（') && part.endsWith('）') || part.startsWith('(') && part.endsWith(')') ||
-        part.startsWith('[') && part.endsWith(']') || part.startsWith('【') && part.endsWith('】') || part.startsWith('《') && part.endsWith('》')) {
-      return words.some(word => part.includes(word)) ? '' : part;
+export function filterResponse(
+  prompt: string,
+  words: string[],
+  options?: { applyBracketFilter?: boolean; applyTagFilter?: boolean }
+): { content: string; error: boolean } {
+  const applyBracketFilter = options?.applyBracketFilter ?? true;
+  const applyTagFilter = options?.applyTagFilter ?? true;
+
+  let working = prompt;
+  // 只有在显式要求时才进行括号/方括号段落的过滤
+  if (applyBracketFilter) {
+    const parts = working.split(/([（\[【《(][^）)]*[）\]】》)])/g);
+    const filtered = parts
+      .map(part => {
+        if (
+          (part.startsWith('（') && part.endsWith('）')) ||
+          (part.startsWith('(') && part.endsWith(')')) ||
+          (part.startsWith('[') && part.endsWith(']')) ||
+          (part.startsWith('【') && part.endsWith('】')) ||
+          (part.startsWith('《') && part.endsWith('》'))
+        ) {
+          return words.some(word => part.includes(word)) ? '' : part;
+        }
+        return part;
+      })
+      .join('');
+    working = filtered.replace(/\s+/g, '');
+    if (!working) {
+      working = prompt;
     }
-    return part;
-  }).join('');
-  const cleaned = filtered.replace(/\s+/g, '');
+  }
+
+  // 如果不需要标签过滤，直接返回原始文本（或经过括号过滤后的文本）作为成功内容
+  if (!applyTagFilter) {
+    return working ? { content: working, error: false } : { content: '有点问题，请重置对话', error: true };
+  }
+
+  // 标签过滤/抽取逻辑（保留原有的标签抽取行为）
   // 修改正则表达式，防止匹配嵌套标签并获取最后一组
-  const answerRegex = /<p>((?!<\/?p>)[\s\S])*?<\/p/g;
-  const answerRegex2 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/p/g;
+  const answerRegex = /<p>((?!<\/?p>)[\s\S])*?<\/p>/g;
+  const answerRegex2 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/p>/g;
   const answerRegex3 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/doubaothinking>/g;
   const answerRegex4 = /<answer>((?!<\/?answer>)[\s\S])*?<\/answer>/g;
   const answerRegex5 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/answer>/g;
-  const answerMatches = cleaned.match(answerRegex);
-  const answerMatches2 = cleaned.match(answerRegex2);
-  const answerMatches3 = cleaned.match(answerRegex3);
-  const answerMatches4 = cleaned.match(answerRegex4);
-  const answerMatches5 = cleaned.match(answerRegex5);
+  const answerMatches = working.match(answerRegex);
+  const answerMatches2 = working.match(answerRegex2);
+  const answerMatches3 = working.match(answerRegex3);
+  const answerMatches4 = working.match(answerRegex4);
+  const answerMatches5 = working.match(answerRegex5);
   const lastAnswer = answerMatches ? answerMatches[answerMatches.length - 1] : null;
   const lastDoubao = answerMatches2 ? answerMatches2[answerMatches2.length - 1] : null;
   const lastAnswer3 = answerMatches3 ? answerMatches3[answerMatches3.length - 1] : null;
@@ -176,11 +204,11 @@ export function filterResponse(prompt: string, words: string[]): {content: strin
   const lastAnswer5 = answerMatches5 ? answerMatches5[answerMatches5.length - 1] : null;
   const answerContent = lastAnswer || lastDoubao || lastAnswer3 || lastAnswer4 || lastAnswer5;
   if (!answerContent) {
-    return {content: '有点问题，请重置对话', error: true};
+    return { content: '有点问题，请重置对话', error: true };
   }
   const regex = /<p>|<\/p>|<doubaothinking>|<\/doubaothinking>|<\/p|<answer>|<\/answer>|<br>|<\/br>|<br\/>/g;
   const cleanedContent = answerContent.replace(regex, '');
-  return cleanedContent ? {content: cleanedContent, error: false} : {content: '有点问题，请重置对话', error: true};
+  return cleanedContent ? { content: cleanedContent, error: false } : { content: '有点问题，请重置对话', error: true };
 }
 
 // 添加输出屏蔽词

@@ -35,7 +35,7 @@ export declare class SAT extends Sat {
         content: string;
         error: boolean;
     }>;
-    getChatResponse(user: User, messages: Sat.Msg[]): Promise<{
+    getChatResponse(user: User, messages: Sat.Msg[], prompt: string): Promise<{
         content: string;
         error: boolean;
     }>;

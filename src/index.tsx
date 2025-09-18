@@ -369,14 +369,17 @@ export class SAT extends Sat {
     const messages = await this.buildMessages(session, prompt)
     logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
     const user = await getUser(this.ctx, session.userId)
-    let response = await this.getChatResponse(user, messages)
-    if (response.error) response = await this.getChatResponse(user, messages)
+  let response = await this.getChatResponse(user, messages, prompt)
+  if (response.error) response = await this.getChatResponse(user, messages, prompt)
     if (response.error) updateUserUsage(this.ctx, user, -1)
     return response
   }
 
   // 获取聊天回复
-  public async getChatResponse(user: User, messages: Sat.Msg[]): Promise<{ content: string; error: boolean }> {
+  public async getChatResponse(user: User, messages: Sat.Msg[], prompt: string): Promise<{ content: string; error: boolean }> {
+    const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
+    const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
+    const useNoReasoner = prompt.length <= maxLength && this.config.enable_reasoner_like
     let response = await this.apiClient.chat(user, messages)
     if (this.config.log_ask_response){
       if (this.config.enable_favorability && this.config.enable_mood)
@@ -384,8 +387,13 @@ export class SAT extends Sat {
       else
         logger.info(`Satori AI：${response.content}`)
     }
-    if (this.config.reasoner_filter && !response.error)
-      response = filterResponse(response.content, this.config.reasoner_filter_word.split('-'))
+    if (!response.error) {
+      response = filterResponse(response.content, this.config.reasoner_filter_word.split('-'), {
+        applyBracketFilter: this.config.reasoner_filter,
+        applyTagFilter: useNoReasoner || this.config.enhanceReasoningProtection,
+      })
+    }
+
     return response
   }
 
@@ -395,7 +403,7 @@ export class SAT extends Sat {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
-    const useNoReasoner = prompt.length <= maxLength
+    const useNoReasoner = prompt.length <= maxLength && this.config.enable_reasoner_like
     const exampleWithoutReasoner = `<think>\n好的，我会尽量做到的\n</think>\n<p>已明确对话要求</p>`
     const exampleWithTag = `<p>已明确对话要求</p>`
     const exampleWithoutTag = `已明确对话要求`
