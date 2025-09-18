@@ -165,11 +165,11 @@ export class SAT extends Sat {
       .option('global', '-g')
       .action(({ session, options }) => this.clearSession(session, options.global))
 
-    ctx.command('sat.common_sense <text:text>', '添加常识')
+    ctx.command('sat.common_sense <text:text>', '添加常识', { authority: 4 })
       .alias('添加常识')
       .action(async ({ session }, prompt) => this.addCommonSense(session, prompt))
 
-    ctx.command('sat.group_sense <text:text>', '添加群常识')
+    ctx.command('sat.group_sense <text:text>', '添加群常识', { authority: 3 })
       .alias('添加群常识')
       .option('id', '-i <id:string>', { authority: 3 })
       .action(async ({ session, options }, prompt) => this.addGroupCommonSense(session, prompt, options.id as string))
