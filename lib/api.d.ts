@@ -8,6 +8,7 @@ export declare class APIClient {
     chat(user: User, messages: Sat.Msg[]): Promise<{
         content: string;
         error: boolean;
+        reasoning_content?: string;
     }>;
     auxiliaryChat(messages: Sat.Msg[]): Promise<{
         content: string;

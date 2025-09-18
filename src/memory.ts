@@ -102,7 +102,9 @@ export class MemoryManager {
       response = this.bracketFilter(response, config)
       response = this.memoryFilter(response, config)
     }
-
+    if (!response) {
+      response = '…'
+    }
     let channelId = session.channelId
     if (config.personal_memory) channelId = session.userId
     if (!this.channelMemories.has(channelId)) {
@@ -116,11 +118,20 @@ export class MemoryManager {
     memory.dialogues.push({ role: 'user', content: prompt })
     this.updateChannelDialogue(session, prompt, session.username)
 
-    if (this.config.enable_self_memory && response) {
-      memory.dialogues.push({ role: 'assistant', content: '<p>' + response + '</p>' })
-    } else{
-      memory.dialogues.push({ role: 'assistant', content: '<p>…</p>' })
+    if (this.config.enhanceReasoningProtection) {
+      if (this.config.enable_self_memory) {
+        memory.dialogues.push({ role: 'assistant', content: '<p>' + response + '</p>' })
+      } else {
+        memory.dialogues.push({ role: 'assistant', content: '<p>…</p>' })
+      }
+    } else {
+      if (this.config.enable_self_memory) {
+        memory.dialogues.push({ role: 'assistant', content: response })
+      } else {
+        memory.dialogues.push({ role: 'assistant', content: '…' })
+      }
     }
+
 
     // 保持记忆长度
     if (memory.dialogues.length > this.config.message_max_length) {

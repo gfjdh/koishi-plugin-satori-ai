@@ -87,6 +87,7 @@ export interface MemoryConfig {
   remember_min_length: number
   common_topN: number
   dailogues_topN: number
+  enhanceReasoningProtection: boolean
 }
 
 // 中间件配置

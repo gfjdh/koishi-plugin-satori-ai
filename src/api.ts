@@ -16,7 +16,7 @@ export class APIClient {
   }
 
   // 发送聊天请求
-  public async chat(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
+  public async chat(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean, reasoning_content?: string}> {
     if(user.userid == 'Alice') return { content: '<p>(系统)这是一个测试句子。这个句子稍长一些，包含多个标点符号！这是一个特别长的句子，需要超过最大长度限制的句子应该被保留原样，但这种情况在实际使用中应该尽量避免。最后？这是一个需要合并的短句！;</p>', error: false }
     const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
     let keys: string[]
@@ -136,7 +136,7 @@ export class APIClient {
   }
 
   // 尝试请求
-  private async tryRequest(URL: string, payload: Payload, keys: string[]): Promise<{ content: string; error: boolean }> {
+  private async tryRequest(URL: string, payload: Payload, keys: string[]): Promise<{ content: string; error: boolean; reasoning_content?: string }> {
     const url = `${trimSlash(URL)}/chat/completions`
     const headers = this.createHeaders(keys)
 
@@ -161,7 +161,7 @@ export class APIClient {
           logger.warn(`返回内容与之前内容相同，重试(第${i}次)中...`)
           continue
         }
-        return { content: content, error: false }
+        return { content: content, error: false , reasoning_content: reasoning_content}
       } catch (error) {
         if (i == this.config.maxRetryTimes) {
           return this.handleAPIError(error)

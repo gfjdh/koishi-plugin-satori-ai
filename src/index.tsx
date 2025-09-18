@@ -97,7 +97,8 @@ export class SAT extends Sat {
       channel_dialogues_max_length: this.config.channel_dialogues_max_length,
       remember_min_length: this.config.remember_min_length,
       common_topN: this.config.common_topN,
-      dailogues_topN: this.config.dailogues_topN
+      dailogues_topN: this.config.dailogues_topN,
+      enhanceReasoningProtection: this.config.enhanceReasoningProtection,
     }
   }
   private getMiddlewareConfig(): MiddlewareConfig & FavorabilityConfig {

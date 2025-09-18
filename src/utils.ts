@@ -185,29 +185,33 @@ export function filterResponse(
     return working ? { content: working, error: false } : { content: '有点问题，请重置对话', error: true };
   }
 
-  // 标签过滤/抽取逻辑（保留原有的标签抽取行为）
-  // 修改正则表达式，防止匹配嵌套标签并获取最后一组
-  const answerRegex = /<p>((?!<\/?p>)[\s\S])*?<\/p>/g;
-  const answerRegex2 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/p>/g;
-  const answerRegex3 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/doubaothinking>/g;
-  const answerRegex4 = /<answer>((?!<\/?answer>)[\s\S])*?<\/answer>/g;
-  const answerRegex5 = /<doubaothinking>((?!<\/?doubaothinking>)[\s\S])*?<\/answer>/g;
-  const answerMatches = working.match(answerRegex);
-  const answerMatches2 = working.match(answerRegex2);
-  const answerMatches3 = working.match(answerRegex3);
-  const answerMatches4 = working.match(answerRegex4);
-  const answerMatches5 = working.match(answerRegex5);
-  const lastAnswer = answerMatches ? answerMatches[answerMatches.length - 1] : null;
-  const lastDoubao = answerMatches2 ? answerMatches2[answerMatches2.length - 1] : null;
-  const lastAnswer3 = answerMatches3 ? answerMatches3[answerMatches3.length - 1] : null;
-  const lastAnswer4 = answerMatches4 ? answerMatches4[answerMatches4.length - 1] : null;
-  const lastAnswer5 = answerMatches5 ? answerMatches5[answerMatches5.length - 1] : null;
-  const answerContent = lastAnswer || lastDoubao || lastAnswer3 || lastAnswer4 || lastAnswer5;
-  if (!answerContent) {
+  // 标签过滤/抽取逻辑：优先收集所有 <p>...</p> 的内容并拼接；若没有则尝试其它标签（doubaothinking/answer）
+  const pTagRegex = /<p>[\s\S]*?<\/p>/g;
+  const doubaoRegex = /<doubaothinking>[\s\S]*?<\/doubaothinking>/g;
+  const answerTagRegex = /<answer>[\s\S]*?<\/answer>/g;
+
+  const pMatches = working.match(pTagRegex) || [];
+  const doubaoMatches = working.match(doubaoRegex) || [];
+  const answerTagMatches = working.match(answerTagRegex) || [];
+
+  let combined: string | null = null;
+
+  if (pMatches.length > 0) {
+    // 去掉每一项的 <p> 标签并拼接
+    combined = pMatches.map(s => s.replace(/^<p>/i, '').replace(/<\/p>$/i, '')).join('');
+  } else if (doubaoMatches.length > 0) {
+    combined = doubaoMatches.map(s => s.replace(/<doubaothinking>/i, '').replace(/<\/doubaothinking>/i, '')).join('');
+  } else if (answerTagMatches.length > 0) {
+    combined = answerTagMatches.map(s => s.replace(/<answer>/i, '').replace(/<\/answer>/i, '')).join(' ');
+  }
+
+  if (!combined) {
     return { content: '有点问题，请重置对话', error: true };
   }
-  const regex = /<p>|<\/p>|<doubaothinking>|<\/doubaothinking>|<\/p|<answer>|<\/answer>|<br>|<\/br>|<br\/>/g;
-  const cleanedContent = answerContent.replace(regex, '');
+
+  // 清理残留的常见标签和换行标记
+  const cleanupRegex = /<p>|<\/p>|<doubaothinking>|<\/doubaothinking>|<answer>|<\/answer>|<br>|<\/br>|<br\/>/gi;
+  const cleanedContent = combined.replace(cleanupRegex, '').trim();
   return cleanedContent ? { content: cleanedContent, error: false } : { content: '有点问题，请重置对话', error: true };
 }
 
