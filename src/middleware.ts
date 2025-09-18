@@ -31,7 +31,7 @@ export function createMiddleware(
 
     // 随机触发处理
     if (shouldRandomTrigger(session, config)) {
-      return await sat.handleRandomMiddleware(session, session.content)
+      return await sat.handleRandomMiddleware(session)
     }
 
     return next()

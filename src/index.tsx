@@ -17,6 +17,7 @@ import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
 
 const logger = new Logger('satori-ai')
+const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，锐评一下群聊中的话题'
 
 export let puppeteer : Puppeteer | null = null
 
@@ -166,6 +167,9 @@ export class SAT extends Sat {
 
     ctx.command('sat.common_sense <text:text>', '添加常识')
       .action(async ({ session }, prompt) => this.addCommonSense(session, prompt))
+
+    ctx.command('sat.group_sense <text:text>', '添加群常识')
+      .action(async ({ session }, prompt) => this.addGroupCommonSense(session, prompt))
 
     ctx.command('sat.update_user_level', '更新用户等级', { authority: 2 })
       .alias('更新用户')
@@ -401,8 +405,10 @@ export class SAT extends Sat {
       messages.push({ role: 'system', content: await this.buildSystemPrompt(session, prompt) })
     }
     // 添加上下文记忆
-    const userMemory = this.memoryManager.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
-    messages.push(...userMemory)
+    if (prompt != randomPrompt){
+      const userMemory = this.memoryManager.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
+      messages.push(...userMemory)
+    }
     // 添加当前对话
     messages.push({ role: 'user', content: prompt })
     let payload = messages.map(msg => msg.role + ':' + msg.content).join('\n')
@@ -418,6 +424,19 @@ export class SAT extends Sat {
     const user = await getUser(this.ctx, session.userId)
     const moodLevel = this.moodManager.getMoodLevel(user.userid)
     let systemPrompt = ''
+
+    if (prompt == randomPrompt){
+      systemPrompt += '#首先明确一些参考信息\n'
+      systemPrompt += '\n##' + channelDialogue
+      systemPrompt += this.getThinkingPrompt(user, prompt)
+      systemPrompt += this.config.prompt
+      if (this.config.enhanceReasoningProtection) {
+        systemPrompt += `\n#注意：你最终的回复内容必须使用“<p>”开头，使用“</p>”结尾\n`
+        if (this.config.no_system_prompt) systemPrompt += '\n#如果你明白以上内容，请回复“<p>已明确对话要求</p>”'
+      }
+      return systemPrompt
+    }
+
     systemPrompt += '#首先明确一些参考信息\n'
     systemPrompt += '\n##' + commonSense
     systemPrompt += '\n##' + channelDialogue
@@ -427,6 +446,7 @@ export class SAT extends Sat {
     systemPrompt += this.getThinkingPrompt(user, prompt)
 
     systemPrompt += this.config.prompt
+
     if (user?.items?.['觉的衣柜']?.count && (moodLevel == 'normal' || moodLevel == 'happy')) {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
       if (clothes) systemPrompt += `\n##你当前的穿着(你可以根据穿着进行对应的行为)：${clothes}\n`
@@ -562,6 +582,17 @@ export class SAT extends Sat {
     return session.text('commands.sat.common_sense.messages.succeed', [content]);
   }
 
+  // 添加群常识
+  public async addGroupCommonSense(session: Session, content: string) {
+    if (!content) return session.text('commands.sat.common_sense.messages.no-prompt')
+    const filePath = path.join(this.config.dataDir, `group_sense`, `${session.channelId}.txt`)
+    await this.memoryManager.saveLongTermMemory(session, [{
+      role: 'user',
+      content: content.replace(/\"/g, '\'').trim()
+    }], filePath)
+    return session.text('commands.sat.common_sense.messages.succeed', [content]);
+  }
+
   // 更新用户等级
   private async handleUserLevel(session: Session, options: { id?: string , level?: number }) {
     const userId = options.id || session.userId
@@ -591,17 +622,10 @@ export class SAT extends Sat {
   }
 
   // 随机中间件转接
-  public async handleRandomMiddleware(session: Session, prompt: string) {
-    const user = await getUser(this.ctx, session.userId)
-    const processedPrompt = processPrompt(session.content)
-    if (this.performPreChecks(session, processedPrompt)) return null
-    if (await this.checkUserDialogueCount(session, user, 0)) return null
-    if (await this.checkFavorabilityBlock(session)) return null
-    // 敏感词处理
-    let censored = processedPrompt
-    if (this.ctx.censor) censored = await this.ctx.censor.transform(processedPrompt, session)
-    if (censored.includes('**')) return null
-    return this.handleSatCommand(session, prompt)
+  public async handleRandomMiddleware(session: Session) {
+    await this.updateChannelParallelCount(session, 1)
+    const response = await this.generateResponse(session, randomPrompt)
+    return await this.formatResponse(session, response.content, null)
   }
 
   // 昵称中间件转接

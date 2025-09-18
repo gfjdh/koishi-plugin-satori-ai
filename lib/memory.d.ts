@@ -23,7 +23,7 @@ export declare class MemoryManager {
     clearAllMemories(): void;
     getChannelMemory(channelId: string): MemoryEntry[];
     saveLongTermMemory(session: Session, dialogues: MemoryEntry[], filePath?: string): Promise<void>;
-    searchMemories(session: Session, prompt: string, type?: 'user' | 'common'): Promise<string>;
+    searchMemories(session: Session, prompt: string, type?: 'user' | 'common' | 'group'): Promise<string>;
     private findBestMatches;
     private calculateMatchScore;
     private formatMatches;

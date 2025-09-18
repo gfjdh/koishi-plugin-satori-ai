@@ -166,14 +166,16 @@ export class MemoryManager {
   }
 
   // 记忆检索
-  public async searchMemories(session: Session, prompt: string, type: 'user' | 'common' = 'user'): Promise<string> {
+  public async searchMemories(session: Session, prompt: string, type: 'user' | 'common' | 'group' = 'user'): Promise<string> {
     const filePathMap = {
       'user': this.getUserMemoryPath(session.userId),
-      'common': path.join(this.config.dataDir, 'common_sense.txt')
+      'common': path.join(this.config.dataDir, 'common_sense.txt'),
+      'group': path.join(this.config.dataDir, 'group_sense', `${session.channelId}.txt`)
     }
     const topNMap = {
       'user': this.config.dailogues_topN,
-      'common': this.config.common_topN
+      'common': this.config.common_topN,
+      'group': this.config.common_topN // 群常识和常识使用同样的topN
     }
     const filePath = filePathMap[type]
     if (!fs.existsSync(filePath)) {
@@ -229,10 +231,11 @@ export class MemoryManager {
   }
 
   // 格式化匹配结果
-  private formatMatches(matched: MemoryEntry[], type: 'user' | 'common', topN = 5): string {
+  private formatMatches(matched: MemoryEntry[], type: 'user' | 'common' | 'group', topN = 5): string {
     const prefixMap = {
       'common': '这是你可能用到的信息：',
-      'user': '以下是较久之前用户说过的话和对话时间：'
+      'user': '以下是较久之前用户说过的话和对话时间：',
+      'group': '以下是本群聊的相关信息：'
     };
     // 添加时间信息
     const time = `时段：${getTimeOfDay(new Date().getHours())}`
@@ -242,10 +245,13 @@ export class MemoryManager {
       if (type === 'common') {
           const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')} \n${date}\n}\n`
           return result
-      } else {
+      } else if (type === 'user') {
           // 这里因为远古屎山代码的原因，所以要判断role是否为user，现在的role是用来存储时间的
           matched.forEach(entry => entry.content = entry.content + (entry.role === 'user' ? '(未记录时间)' : entry.role))
           const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}\n}\n`
+          return result
+      } else if (type === 'group') {
+          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}}\n`
           return result
       }
     } else {

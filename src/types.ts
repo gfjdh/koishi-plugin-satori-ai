@@ -341,7 +341,7 @@ export namespace Sat {
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
       memory_block_words: Schema.array(String).default(['好感']).description('记忆屏蔽词'),
       remember_min_length: Schema.number().description('触发保存到记忆的长度').default(20),
-      common_topN: Schema.number().default(5).description('常识记忆检索最大匹配数'),
+      common_topN: Schema.number().default(5).description('群常识、常识记忆检索最大匹配数'),
       dailogues_topN: Schema.number().default(5).description('对话记忆检索最大匹配数'),
       enable_fixed_dialogues: Schema.boolean().default(false).description('是否启用固定对话（在dataDir中的fixed_dialogues.json修改）'),
     }).description('记忆设置'),

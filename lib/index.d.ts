@@ -47,9 +47,10 @@ export declare class SAT extends Sat {
     getWarningList(session: Session): Promise<void>;
     private clearSession;
     private addCommonSense;
+    addGroupCommonSense(session: Session, content: string): Promise<string>;
     private handleUserLevel;
     private handleUserUsage;
-    handleRandomMiddleware(session: Session, prompt: string): Promise<string>;
+    handleRandomMiddleware(session: Session): Promise<string>;
     handleNickNameMiddleware(session: Session, prompt: string): Promise<string>;
     handleChannelMemoryManager(session: Session): Promise<void>;
 }
