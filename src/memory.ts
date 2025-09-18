@@ -235,7 +235,7 @@ export class MemoryManager {
     const prefixMap = {
       'common': '这是你可能用到的信息：',
       'user': '以下是较久之前用户说过的话和对话时间：',
-      'group': '以下是本群聊的相关信息：'
+      'group': '以下是本群聊你可能需要知道的信息：'
     };
     // 添加时间信息
     const time = `时段：${getTimeOfDay(new Date().getHours())}`
@@ -251,7 +251,7 @@ export class MemoryManager {
           const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}\n}\n`
           return result
       } else if (type === 'group') {
-          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}}\n`
+          const result = `${prefixMap[type]}{\n${matched.map(entry => entry.content).join('\n')}\n}\n`
           return result
       }
     } else {

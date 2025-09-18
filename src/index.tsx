@@ -430,6 +430,7 @@ export class SAT extends Sat {
   // 构建系统提示
   private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
     const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
+    const groupSense = await this.memoryManager.searchMemories(session, prompt, 'group')
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
     const user = await getUser(this.ctx, session.userId)
@@ -450,6 +451,7 @@ export class SAT extends Sat {
 
     systemPrompt += '#首先明确一些参考信息\n'
     systemPrompt += '\n##' + commonSense
+    systemPrompt += '\n##' + groupSense
     systemPrompt += '\n##' + channelDialogue
     systemPrompt += '\n##' + userMemory
     if (moodLevel == 'normal' || moodLevel == 'happy') systemPrompt += '\n##' + this.portraitManager.getUserPortrait(session)
