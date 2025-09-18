@@ -385,10 +385,14 @@ export class SAT extends Sat {
   // 构建消息
   private async buildMessages(session: Session, prompt: string) {
     const messages: Sat.Msg[] = []
-    const example = `<think>
-好的，我会尽量做到的
-</think>
-<p>已明确对话要求</p>`
+    const user = await ensureUserExists(this.ctx, session.userId, session.username)
+    const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
+    const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
+    const useNoReasoner = prompt.length <= maxLength
+    const exampleWithoutReasoner = `<think>\n好的，我会尽量做到的\n</think>\n<p>已明确对话要求</p>`
+    const exampleWithTag = `<p>已明确对话要求</p>`
+    const exampleWithoutTag = `已明确对话要求`
+    const example = useNoReasoner ? exampleWithoutReasoner : (this.config.enhanceReasoningProtection ? exampleWithTag : exampleWithoutTag)
     // 添加人格设定
     if (this.config.no_system_prompt) {
       messages.push({ role: 'user', content: await this.buildSystemPrompt(session, prompt) })
@@ -413,7 +417,6 @@ export class SAT extends Sat {
     const userMemory = await this.memoryManager.searchMemories(session, prompt)
     const user = await getUser(this.ctx, session.userId)
     const moodLevel = this.moodManager.getMoodLevel(user.userid)
-
     let systemPrompt = ''
     systemPrompt += '#首先明确一些参考信息\n'
     systemPrompt += '\n##' + commonSense
@@ -421,10 +424,8 @@ export class SAT extends Sat {
     systemPrompt += '\n##' + userMemory
     if (moodLevel == 'normal' || moodLevel == 'happy') systemPrompt += '\n##' + this.portraitManager.getUserPortrait(session)
 
-    systemPrompt += '\n#参考信息到此为止，接下来是思考要求\n'
     systemPrompt += this.getThinkingPrompt(user, prompt)
 
-    systemPrompt += '\n#接下来是对话要求，以下要求仅对最终的回复内容生效，不限制思考过程\n'
     systemPrompt += this.config.prompt
     if (user?.items?.['觉的衣柜']?.count && (moodLevel == 'normal' || moodLevel == 'happy')) {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
@@ -448,20 +449,24 @@ export class SAT extends Sat {
     systemPrompt += `\n##用户的名字是：${session.username}`
     const nickName = user.items['情侣合照']?.metadata?.userNickName
     if (nickName) systemPrompt += `, 昵称是：${nickName},称呼用户时请优先使用昵称\n`
-
-    systemPrompt += `\n#注意：你最终的回复内容必须使用“<p>”开头，使用“</p>”结尾\n`
-    if (this.config.no_system_prompt) systemPrompt += '\n#如果你明白以上内容，请回复“<p>已明确对话要求</p>”'
+    if (this.config.enhanceReasoningProtection) {
+      systemPrompt += `\n#注意：你最终的回复内容必须使用“<p>”开头，使用“</p>”结尾\n`
+      if (this.config.no_system_prompt) systemPrompt += '\n#如果你明白以上内容，请回复“<p>已明确对话要求</p>”'
+    }
     return systemPrompt
   }
 
   // 思考提示
   private getThinkingPrompt(user: User, prompt: string): string {
     const reasonerPrompt = this.config.reasoner_prompt
-    const promptForNoReasoner = `#请你在回复时先进行分析思考，并且模仿思维链的模式输出思考内容，${reasonerPrompt};
+    const promptForNoReasoner = `\n#参考信息到此为止，接下来是思考要求\n#请你在回复时先进行分析思考，并且模仿思维链的模式输出思考内容，${reasonerPrompt};
 #你在思考时必须以 "<think>" 开头, "<\/think>" 结尾。仔细揣摩用户意图，**完整输出思考内容后**再输出正式的回复内容;
-#注意：你的正式回复内容必须使用“<p>”开头，使用“</p>”结尾，并且无论如何都要把标签输出完整\n`
-    const promptForReasoner = `#你在思考时必须以 "嗯" 开头。仔细揣摩用户意图，思考结束后返回符合要求的回复。
-#注意：你的回复内容必须使用“<p>”开头，使用“</p>”结尾\n`
+#注意：你的正式回复内容必须使用“<p>”开头，在输出全部回复后使用“</p>”结尾（即输出且仅输出一对标签），并且无论如何都要把标签输出完整
+#接下来是对话要求，以下要求仅对最终的回复内容生效，不限制思考过程\n`
+    const promptForReasoner = this.config.enhanceReasoningProtection ? `\n#参考信息到此为止，接下来是思考要求
+#你在思考时必须以 "嗯" 开头。仔细揣摩用户意图，思考结束后返回符合要求的回复。
+#注意：你的回复内容必须使用“<p>”开头，在输出全部回复后使用“</p>”结尾（即输出且仅输出一对标签）
+#接下来是对话要求，以下要求仅对最终的回复内容生效，不限制思考过程\n` : ''
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength

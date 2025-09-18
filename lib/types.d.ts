@@ -148,6 +148,7 @@ export declare namespace Sat {
         baseURL: string;
         key: string[];
         appointModel: string;
+        enhanceReasoningProtection: boolean;
         not_reasoner_LLM_URL: string;
         not_reasoner_LLM: string;
         not_reasoner_LLM_key: string[];
@@ -191,6 +192,7 @@ export declare namespace Sat {
         duplicateDialogueCheck: boolean;
         enable_online_user_check: boolean;
         random_min_tokens: number;
+        enable_random_without_favorability: boolean;
         randnum: number;
         sentences_divide: boolean;
         min_sentences_length: number;

@@ -175,6 +175,7 @@ export namespace Sat {
     baseURL: string
     key: string[]
     appointModel: string
+    enhanceReasoningProtection: boolean
     not_reasoner_LLM_URL: string
     not_reasoner_LLM: string
     not_reasoner_LLM_key: string[]
@@ -221,6 +222,7 @@ export namespace Sat {
     duplicateDialogueCheck: boolean
     enable_online_user_check: boolean
     random_min_tokens: number
+    enable_random_without_favorability: boolean
     randnum: number
     sentences_divide: boolean
     min_sentences_length: number
@@ -292,6 +294,7 @@ export namespace Sat {
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('深度思考模型api_key'),
       appointModel: Schema.string().default('deepseek-reasoner').description('深度思考模型'),
+      enhanceReasoningProtection: Schema.boolean().default(true).description('是否增强思维链保护（开启后会强制输出内容带有限制标签，极大防止思维链溢出问题）'),
       not_reasoner_LLM_URL: Schema.string().default('https://api.deepseek.com').description('非深度思考模型请求地址'),
       not_reasoner_LLM: Schema.string().default('deepseek-chat').description('非深度思考模型(用于节省成本'),
       not_reasoner_LLM_key: Schema.union([
@@ -355,6 +358,7 @@ export namespace Sat {
       duplicateDialogueCheck: Schema.boolean().default(true).description('是否检查重复对话'),
       enable_online_user_check: Schema.boolean().default(true).description('在未回答而再次提问时是否提示用户有未完成的对话'),
       random_min_tokens: Schema.number().default(20).description('随机触发对话的最小长度'),
+      enable_random_without_favorability: Schema.boolean().default(true).description('是否启用随机触发对话无视高好感度（即使用户好感度很高也会最多视为朋友）'),
       randnum: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('在群聊中随机触发对话的概率，如需关闭可设置为 0'),
       sentences_divide: Schema.boolean().default(true).description('是否分句发送'),
       min_sentences_length: Schema.number().default(10).description('每个分句的最小长度'),

@@ -35,6 +35,7 @@ export function getFavorabilityLevel(
   user: User,
   config: FavorabilityConfig
 ): FavorabilityLevel {
+  if (user.favorability >= config.favorability_div_3 && user?.items['镇定贴']?.count > 0 && user?.items['镇定贴']?.description && user?.items['镇定贴']?.description == 'on') return '朋友'
   if (user?.items['订婚戒指']?.count > 0 && user?.items['订婚戒指']?.description && user?.items['订婚戒指']?.description == '已使用') return '夫妻'
   if (user.favorability < config.favorability_div_1) return '厌恶'
   if (user.favorability < config.favorability_div_2) return '陌生'
