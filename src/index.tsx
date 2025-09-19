@@ -18,7 +18,7 @@ import { BroadcastManager } from './broadcast'
 import { wrapInHTML } from './utils'
 
 const logger = new Logger('satori-ai')
-const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，你可以参与或者评价一下群聊中的话题'
+const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，现在请你参与一下群聊中的话题'
 
 export let puppeteer : Puppeteer | null = null
 
@@ -612,7 +612,7 @@ export class SAT extends Sat {
       logger.info('Puppeteer 未就绪，正在重新初始化 Puppeteer...')
       this.setPuppeteer(this.ctx.puppeteer)
     }
-    if (firstReasoning.length > 3) await session.send(await wrapInHTML(firstReasoning))
+    if (firstReasoning.length > 15) await session.send(await wrapInHTML(firstReasoning))
     if (this.config.sentences_divide && response.length > 10) {
       const sentences = splitSentences(response, this.config.min_sentences_length, this.config.max_sentences_length).map(text => h.text(text))
       for (const sentence of sentences) {

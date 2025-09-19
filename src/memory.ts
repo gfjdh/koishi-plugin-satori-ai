@@ -46,7 +46,7 @@ export class MemoryManager {
     if (!this.channelDialogues[session.channelId]) this.channelDialogues[session.channelId] = []
     this.channelDialogues[session.channelId].push('"' + name + '" 说: ' + prompt)
     if (this.channelDialogues[session.channelId]?.length > this.config.channel_dialogues_max_length) {
-      this.channelDialogues = this.channelDialogues[session.channelId].slice(-this.config.channel_dialogues_max_length)
+      this.channelDialogues[session.channelId] = this.channelDialogues[session.channelId].slice(-this.config.channel_dialogues_max_length)
     }
   }
 

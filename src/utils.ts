@@ -198,11 +198,11 @@ export function filterResponse(
 
   if (pMatches.length > 0) {
     // 去掉每一项的 <p> 标签并拼接
-    combined = pMatches.map(s => s.replace(/^<p>/i, '').replace(/<\/p>$/i, '')).join('');
+    combined = pMatches.map(s => s.replace(/^<p>/i, '').replace(/<\/p>$/i, '')).join('，');
   } else if (doubaoMatches.length > 0) {
-    combined = doubaoMatches.map(s => s.replace(/<doubaothinking>/i, '').replace(/<\/doubaothinking>/i, '')).join('');
+    combined = doubaoMatches.map(s => s.replace(/<doubaothinking>/i, '').replace(/<\/doubaothinking>/i, '')).join('，');
   } else if (answerTagMatches.length > 0) {
-    combined = answerTagMatches.map(s => s.replace(/<answer>/i, '').replace(/<\/answer>/i, '')).join(',');
+    combined = answerTagMatches.map(s => s.replace(/<answer>/i, '').replace(/<\/answer>/i, '')).join('，');
   }
 
   if (!combined) {

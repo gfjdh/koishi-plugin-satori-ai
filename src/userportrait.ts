@@ -40,28 +40,48 @@ export class UserPortraitManager {
     const memoryPath = path.join(this.config.dataDir, 'dialogues', `${userId}.txt`)
     if (!fs.existsSync(memoryPath)) return []
 
-    const memoryContent: MemoryEntry[] = JSON.parse(fs.readFileSync(memoryPath, 'utf-8'))
+    let memoryContent: MemoryEntry[] = []
+    try {
+      memoryContent = JSON.parse(fs.readFileSync(memoryPath, 'utf-8'))
+    } catch {
+      return []
+    }
+
+    // 把用户名替换为“我”
     const replacedContent = memoryContent.map(entry => {
       return {
         ...entry,
-        content: entry.content.replace(user.usersname, '我')
+        content: typeof entry.content === 'string'
+          ? entry.content.replace(new RegExp(user.usersname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '我')
+          : entry.content
       }
-    });
-    // 写回文件
-    fs.writeFileSync(memoryPath, JSON.stringify(replacedContent, null, 2))
-    // 解析并过滤有效对话记录
+    })
+    // 写回文件（尽量保留原始结构）
+    try {
+      fs.writeFileSync(memoryPath, JSON.stringify(replacedContent, null, 2))
+    } catch {}
+
+    // 解析并过滤出带有时间信息的条目
+    // 支持多种 role 中包含的时间格式，例如：
+    // "对话日期和时间：2025/2/13 01:16:09"
+    // " (对话日期和时间：2025/2/13 01:43:43)"
+    const timeRegex = /对话日期和时间：\s*(\d{4}\/\d{1,2}\/\d{1,2})\s*(\d{1,2}:\d{2}:\d{2})/
     const validEntries = replacedContent
-      .filter(entry => entry.role !== 'user')
-      .map(entry => {
-        const timeMatch = entry.role.match(/对话日期和时间：(\d{1,2}\/\d{1,2}\/\d{4}), (\d{1,2}:\d{2}:\d{2} [AP]M)/)
-        if (!timeMatch) return null
+      .map((entry) => {
+        const roleStr = String(entry.role || '')
+        const m = roleStr.match(timeRegex)
+        if (!m) return null
+        // m[1] = yyyy/m/d, m[2] = HH:MM:SS
+        const dateStr = `${m[1]} ${m[2]}`
+        const ts = new Date(dateStr).getTime()
+        if (isNaN(ts)) return null
         return {
           ...entry,
-          timestamp: new Date(timeMatch[1]).getTime()
-        }
+          timestamp: ts
+        } as MemoryEntry & { timestamp: number }
       })
-      .filter(entry => entry !== null)
-      .sort((a, b) => b.timestamp - a.timestamp) // 按时间倒序排列
+      .filter((entry) => entry !== null)
+      .sort((a: any, b: any) => b.timestamp - a.timestamp) // 按时间倒序排列
 
     // 计算保留条数
     const level = user.userlevel < 5 ? user.userlevel : 4
@@ -70,10 +90,10 @@ export class UserPortraitManager {
       : this.config.max_usage[level]
     const maxEntries = Math.min(usageLimit, this.config.max_portrait_dialogues)
 
-    // 截取最新对话并生成内容
-    return validEntries
+    // 返回格式化的对话内容（包含时间 ISO 标记以便 LLM 可参考）
+    return (validEntries as any[])
       .slice(0, maxEntries)
-      .map(entry => `${entry.content}${entry.role}`)
+      .map(entry => `${entry.content} （${new Date(entry.timestamp).toISOString()}）`)
   }
 
   // 生成提示词模板
