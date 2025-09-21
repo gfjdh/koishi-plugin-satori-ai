@@ -7,6 +7,7 @@ export declare class MemoryManager {
     private channelDialogues;
     private charactersToRemove;
     private MAX_MEMORY_LENGTH;
+    private userMemoryCache;
     constructor(ctx: Context, config: MemoryConfig);
     updateMemories(session: Session, prompt: string, config: MemoryConfig, response: {
         content: string;
@@ -31,4 +32,5 @@ export declare class MemoryManager {
     private ensureMemoryFile;
     private loadMemoryFile;
     getChannelContext(channelId: string): MemoryEntry[];
+    getUserCachedMemory(userId: string): MemoryEntry[];
 }

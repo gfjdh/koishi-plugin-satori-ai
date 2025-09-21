@@ -473,7 +473,7 @@ export class SAT extends Sat {
     const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
     const groupSense = await this.memoryManager.searchMemories(session, prompt, 'group')
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
-    const userMemory = await this.memoryManager.searchMemories(session, prompt)
+    const userMemory = await this.memoryManager.searchMemories(session, prompt, 'user')
     const user = await getUser(this.ctx, session.userId)
     const moodLevel = this.moodManager.getMoodLevel(user.userid)
     let systemPrompt = ''

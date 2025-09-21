@@ -174,7 +174,7 @@ export function filterResponse(
         return part;
       })
       .join('');
-    working = filtered.replace(/\s+/g, '');
+    working = filtered.replace(/\s+/g, '…');
     if (!working) {
       working = prompt;
     }
