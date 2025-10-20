@@ -471,7 +471,7 @@ export class SAT extends Sat {
   // 构建系统提示
   private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
     const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
-    const groupSense = await this.memoryManager.searchMemories(session, prompt, 'group')
+    const groupSense = await this.memoryManager.searchMemories(session, prompt + session.username, 'group')
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
     const userMemory = await this.memoryManager.searchMemories(session, prompt, 'user')
     const user = await getUser(this.ctx, session.userId)

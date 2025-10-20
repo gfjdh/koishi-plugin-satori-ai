@@ -196,19 +196,19 @@ export class APIClient {
 
     switch (status) {
       case 400:
-        return {content: '请求体格式错误', error: true};
+        return {content: '请求体格式错误：' + message, error: true};
       case 401:
-        return {content: 'API key 错误，认证失败', error: true};
+        return {content: 'API key 错误，认证失败：' + message, error: true};
       case 402:
-        return {content: '账号余额不足', error: true};
+        return {content: '账号余额不足：' + message, error: true};
       case 422:
-        return {content: '请求体参数错误', error: true};
+        return {content: '请求体参数错误：' + message, error: true};
       case 429:
-        return {content: '请求速率（TPM 或 RPM）达到上限', error: true};
+        return {content: '请求速率（TPM 或 RPM）达到上限：' + message, error: true};
       case 500:
-        return {content: `api服务器内部故障`, error: true};
+        return {content: `api服务器内部故障：` + message, error: true};
       case 503:
-        return {content: 'api服务器负载过高', error: true};
+        return {content: 'api服务器负载过高：' + message, error: true};
       default:
         return {content: message, error: true};
     }

@@ -247,7 +247,7 @@ export class MemoryManager {
   // 格式化匹配结果
   private formatMatches(matched: MemoryEntry[], type: 'user' | 'common' | 'group', topN = 5): string {
     const prefixMap = {
-      'common': '这是你可能用到的信息：',
+      'common': '这是你可能需要知道的信息：',
       'user': '以下是较久之前用户说过的话和对话时间：',
       'group': '以下是本群聊你可能需要知道的信息：'
     };
