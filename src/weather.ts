@@ -129,6 +129,9 @@ export class WeatherManager {
   // 更新用户位置信息
   public async updateLocation(session: Session, location: string): Promise<string | void> {
     if (!this.config.enable_weather_perception) return null
+    if (!location || location.trim() === '') {
+      return '位置不能为空，请提供有效的位置名称。'
+    }
     const user = await getUser(this.ctx, session.userId)
 
     // 如果配置了 JWT，则不在 URL 上带 key 参数，使用 Authorization: Bearer
@@ -232,6 +235,6 @@ export class WeatherManager {
     if (!this.config.enable_weather_perception) return null
     const weatherInfo = await this.getWeatherInfo(session)
     if (!weatherInfo) return null
-    return `当前用户所在地的天气信息为${weatherInfo}。`
+    return `当前我这里的天气是${weatherInfo}，你是明确知道这一点的。`
   }
 }
