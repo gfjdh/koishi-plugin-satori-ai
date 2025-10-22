@@ -8,6 +8,7 @@ export interface User {
     favorability: number;
     userlevel: number;
     usage: number;
+    location: string;
     lastChatTime?: number;
     items?: Record<string, ItemInfo>;
 }
@@ -215,6 +216,17 @@ export declare namespace Sat {
         min_pocket_money: number;
         max_pocket_money: number;
         pocket_money_cost: number;
+        enable_weather_perception: boolean;
+        Location_search_API_URL: string;
+        location_param_name: string;
+        weather_api_key: string;
+        weather_param_name: string;
+        weather_api_URL: string;
+        weather_cd_time: number;
+        weather_jwt_private_key_pem?: string;
+        weather_jwt_kid?: string;
+        weather_jwt_sub?: string;
+        weather_jwt_exp_seconds?: number;
         enable_favorability: boolean;
         max_favorability_perday: number;
         input_censor_favorability: boolean;

@@ -10,6 +10,7 @@ export interface User {
   favorability: number
   userlevel: number
   usage: number
+  location: string
   lastChatTime?: number
   items?: Record<string, ItemInfo>;
 }
@@ -247,6 +248,18 @@ export namespace Sat {
     max_pocket_money: number
     pocket_money_cost: number
 
+    enable_weather_perception: boolean
+    Location_search_API_URL: string
+    location_param_name: string
+    weather_api_key: string
+    weather_param_name: string
+    weather_api_URL: string
+    weather_cd_time: number
+    weather_jwt_private_key_pem?: string
+    weather_jwt_kid?: string
+    weather_jwt_sub?: string
+    weather_jwt_exp_seconds?: number
+
     enable_favorability: boolean
     max_favorability_perday: number
     input_censor_favorability: boolean
@@ -367,6 +380,21 @@ export namespace Sat {
       time_interval: Schema.number().default(1000).description('每句话的时间间隔'),
       reply_pointing: Schema.boolean().default(true).description('是否在与多人同时对话时显示回复指向'),
     }).description('对话设置'),
+
+    Schema.object({
+      enable_weather_perception: Schema.boolean().default(false).description('是否开启天气感知（JWT 配置可选，若同时配置私钥/kid/sub 则优先使用 JWT）'),
+      Location_search_API_URL: Schema.string().default('https://api.example.com/location/search.json?').description('位置搜索API地址（请至少填写到“?”）'),
+      location_param_name: Schema.string().default('location').description('位置参数名称'),
+      weather_api_URL: Schema.string().default('https://api.example.com/weather/now.json?').description('天气API地址（请至少填写到“?”）'),
+      weather_param_name: Schema.string().default('location').description('天气位置参数名称'),
+      weather_api_key: Schema.string().role('secret').default('').description('天气API Key'),
+      weather_cd_time: Schema.number().default(60).description('天气更新请求的最小间隔（分钟）（在对话时检查更新）'),
+      // JWT 配置（可选，若同时配置私钥/kid/sub 则优先使用 JWT）
+      weather_jwt_private_key_pem: Schema.string().role('secret').default('').description('Ed25519 私钥 PEM（包含 -----BEGIN PRIVATE KEY----- 和 -----END PRIVATE KEY-----）'),
+      weather_jwt_kid: Schema.string().default('').description('JWT 凭据 ID (kid)，来自控制台凭据页面'),
+      weather_jwt_sub: Schema.string().default('').description('JWT 的 sub（项目 ID）'),
+      weather_jwt_exp_seconds: Schema.number().default(300).description('JWT 有效期（秒），最大 86400（24 小时）'),
+  }).description('天气感知设置'),
 
     Schema.object({
       enable_favorability: Schema.boolean().default(false).description('是否开启好感度系统(每次对话默认+1好感度)'),

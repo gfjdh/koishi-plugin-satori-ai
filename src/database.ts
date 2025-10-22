@@ -22,6 +22,7 @@ export async function createUser(ctx: Context, user: Omit<User, 'id'>): Promise<
     favorability: user.favorability || 0,
     userlevel: user.userlevel || 0,
     usage: user.usage || 0,
+    location: user.location || '',
     lastChatTime: user.lastChatTime || new Date().getDate(),
     items: user.items || {}
   })
@@ -70,6 +71,12 @@ export async function updateUserP(ctx: Context, user: User, adjustment: number):
   await ctx.database.set('p_system', { userid: user.userid }, { p: user.p + adjustment })
 }
 
+// 更新用户位置信息
+export async function updateUserLocation(ctx: Context, user: User, location: string): Promise<void> {
+  if (!user) return
+  await ctx.database.set('p_system', { userid: user.userid }, { location: location })
+}
+
 export async function getUser(ctx: Context, userId: string): Promise<User | null> {
   const users = await ctx.database.get('p_system', { userid: userId })
   return users[0] || null
@@ -85,6 +92,7 @@ export async function ensureUserExists(ctx: Context, userId: string, username: s
       favorability: 0,
       userlevel: 0,
       usage: 0,
+      location: '',
       lastChatTime: new Date().getDate(),
       items: {}
     })
@@ -102,6 +110,7 @@ export function extendDatabase(ctx: Context) {
     favorability: 'integer',
     userlevel: 'integer',
     usage: 'integer',
+    location: 'string',
     lastChatTime: 'integer',
     items: 'object'
   }, { autoInc: true })

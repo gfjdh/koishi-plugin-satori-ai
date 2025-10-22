@@ -2,6 +2,7 @@ import { Context, Session } from 'koishi';
 import { Sat, User } from './types';
 import Puppeteer from 'koishi-plugin-puppeteer';
 import { BroadcastManager } from './broadcast';
+import { WeatherManager } from './weather';
 export declare let puppeteer: Puppeteer | null;
 export declare function refreshPuppeteer(ctx: Context): void;
 export declare class SAT extends Sat {
@@ -13,6 +14,7 @@ export declare class SAT extends Sat {
     private onlineUsers;
     private moodManager;
     broadcastManager: BroadcastManager;
+    weatherManager: WeatherManager;
     private usersToWarn;
     private puppeteer;
     private game;

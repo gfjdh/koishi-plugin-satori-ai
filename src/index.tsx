@@ -16,6 +16,7 @@ import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
 import { wrapInHTML } from './utils'
+import { WeatherManager } from './weather'
 
 const logger = new Logger('satori-ai')
 const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，现在请你参与一下群聊中的话题'
@@ -38,6 +39,7 @@ export class SAT extends Sat {
   private onlineUsers: string[] = []
   private moodManager: MoodManager
   public broadcastManager: BroadcastManager
+  public weatherManager: WeatherManager
   private usersToWarn: Map<string, string> = new Map()
   private puppeteer: Puppeteer | null
   private game: Game
@@ -93,6 +95,7 @@ export class SAT extends Sat {
     this.portraitManager = new UserPortraitManager(ctx, config)
     this.moodManager = new MoodManager(ctx, config)
     this.broadcastManager = new BroadcastManager(ctx, config)
+    this.weatherManager = new WeatherManager(ctx, config)
     ensureCensorFileExists(this.config.dataDir)
     refreshPuppeteer(ctx)
     // 如果 puppeteer 尚未在 ctx 上就绪，异步等待并注入（非阻塞）
@@ -236,6 +239,16 @@ export class SAT extends Sat {
     ctx.command('sat.get_warning_list', '查看警告列表', { authority: 4 })
       .alias('查看警告')
       .action(async ({ session }) => this.getWarningList(session))
+
+    if (this.config.enable_weather_perception) {
+      ctx.command('sat.update_location <text:text>', '更新用户天气位置信息', { authority: 0 })
+        .alias('更新位置')
+        .action(async ({ session }, location) => this.weatherManager.updateLocation(session, location))
+
+      ctx.command('sat.get_weather', '获取当前天气信息', { authority: 0 })
+        .alias('查看天气')
+        .action(async ({ session }) => this.weatherManager.getWeatherInfo(session))
+    }
 
     if (this.config.enable_mood && this.config.enable_favorability && this.config.enable_pocket_money) {
       ctx.command('sat.pocket_money', '消耗心情值换取p点')
@@ -474,6 +487,7 @@ export class SAT extends Sat {
     const groupSense = await this.memoryManager.searchMemories(session, prompt + session.username, 'group')
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
     const userMemory = await this.memoryManager.searchMemories(session, prompt, 'user')
+    const weatherPrompt = await this.weatherManager.buildWeatherPrompt(session)
     const user = await getUser(this.ctx, session.userId)
     const moodLevel = this.moodManager.getMoodLevel(user.userid)
     let systemPrompt = ''
@@ -493,6 +507,7 @@ export class SAT extends Sat {
     systemPrompt += '#首先明确一些参考信息\n'
     systemPrompt += '\n##' + commonSense
     systemPrompt += '\n##' + groupSense
+    if (weatherPrompt) systemPrompt += `\n##${weatherPrompt}\n`
     systemPrompt += '\n##' + channelDialogue
     systemPrompt += '\n##' + userMemory
     if (moodLevel == 'normal' || moodLevel == 'happy') systemPrompt += '\n##' + this.portraitManager.getUserPortrait(session)
