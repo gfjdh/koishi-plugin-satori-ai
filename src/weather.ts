@@ -74,7 +74,7 @@ export class WeatherManager {
       const signature = base64url(new Uint8Array(sig as ArrayBuffer))
       return `${signingInput}.${signature}`
     } catch (error: any) {
-      logger.error('生成 JWT 失败: ' + (error.message || error))
+      logger.error('生成 JWT 失败: ' + (error.message || error.status || error))
       return null
     }
   }
@@ -121,7 +121,7 @@ export class WeatherManager {
         }
       }
     } catch (error: any) {
-      logger.error('fetchJson 请求失败: ' + (error.message || error))
+      logger.error('fetchJson 请求失败: ' + (error.message || error.status || error))
       throw error
     }
   }
@@ -169,8 +169,8 @@ export class WeatherManager {
         return '未能找到该位置，请确认输入是否正确。'
       }
     } catch (error: any) {
-      logger.error(`未能更新用户 ${session.userId} 的位置: ${error.message}`)
-      return '无法更新位置，错误: ' + error.message + '。'
+      logger.error(`未能更新用户 ${session.userId} 的位置: ${error.message || error.status}`)
+      return '无法更新位置，错误: ' + error.message || error.status + '。'
     }
   }
 
@@ -225,8 +225,8 @@ export class WeatherManager {
         return '未能获取天气信息，请稍后再试。'
       }
     } catch (error: any) {
-      logger.error(`未能获取用户 ${session.userId} 的天气信息: ${error.message}`)
-      return '无法获取天气信息，错误: ' + error.message + '。'
+      logger.error(`未能获取用户 ${session.userId} 的天气信息: ${error.message || error.status}`)
+      return '无法获取天气信息，错误: ' + error.message || error.status || error.status + '。'
     }
   }
 
