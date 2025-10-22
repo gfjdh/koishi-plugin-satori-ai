@@ -1,7 +1,7 @@
 // src/weather.ts
 import { Context, Logger, Session } from 'koishi'
 import { gunzipSync } from 'zlib'
-import { ensureUserExists, getUser, updateUserLocation } from './database'
+import { getUser, updateUserLocation } from './database'
 import { Sat, User } from './types'
 
 const logger = new Logger('satori-weather')
@@ -132,8 +132,8 @@ export class WeatherManager {
     const user = await getUser(this.ctx, session.userId)
 
     // 如果配置了 JWT，则不在 URL 上带 key 参数，使用 Authorization: Bearer
-  const useJwt = !!(this.config.weather_jwt_kid && this.config.weather_jwt_sub && this.config.weather_jwt_private_key_pem)
-  const jwt = useJwt ? await this.generateJWT() : null
+    const useJwt = !!(this.config.weather_jwt_kid && this.config.weather_jwt_sub && this.config.weather_jwt_private_key_pem)
+    const jwt = useJwt ? await this.generateJWT() : null
 
     const baseURL = this.config.Location_search_API_URL
     const searchURL = useJwt
@@ -151,14 +151,14 @@ export class WeatherManager {
         const city = results[0]
         const fullLocation = city.path ?? `${city.adm1 || ''}${city.adm2 || ''}${city.name || ''}`
         logger.info(`用户 ${session.userId} 的位置已更新为 ${fullLocation}`)
-        location = city.name || location
+        location = city.id || location
         await updateUserLocation(this.ctx, user, location)
         return `${session.username} 的位置已更新为 ${fullLocation}。`
       } else if (results && results.name) {
         const city = results
         const fullLocation = city.path ?? `${city.adm1 || ''}${city.adm2 || ''}${city.name || ''}`
         logger.info(`用户 ${session.userId} 的位置已更新为 ${fullLocation}`)
-        location = city.name || location
+        location = city.id || location
         await updateUserLocation(this.ctx, user, location)
         return `${session.username} 的位置已更新为 ${fullLocation}。`
       } else {
@@ -232,8 +232,6 @@ export class WeatherManager {
     if (!this.config.enable_weather_perception) return null
     const weatherInfo = await this.getWeatherInfo(session)
     if (!weatherInfo) return null
-    const user = await getUser(this.ctx, session.userId)
-    const location = user.location
-    return `当前用户所在位置为${location}，天气信息为${weatherInfo}。`
+    return `当前用户所在地的天气信息为${weatherInfo}。`
   }
 }
