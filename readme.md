@@ -2,28 +2,36 @@
 
 [![npm](https://img.shields.io/npm/v/koishi-plugin-satori-ai?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-satori-ai) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![Static Badge](https://img.shields.io/badge/QQ交流群-2167028216-green)
 
-# 觉bot的ai对话
+当前版本: 1.4.0-beta.1  • 最后更新: 2025-10-30
 
-基于 Koishi 框架的智能聊天机器人插件，集成多轮对话、好感度系统、记忆管理、上下文感知等功能，支持深度自定义与扩展。
+基于 Koishi 框架的智能聊天机器人插件（Satori 适配器），集成多轮对话、长期记忆、好感度/情绪系统、可选的 Puppeteer 支持、天气感知与广播/小游戏等扩展功能，支持深度自定义与扩展。
 
 [作者主页](https://gfjdh.cn)
 
-本插件是一个基于 Koishi 框架的聊天机器人插件，支持多种触发方式和丰富的配置选项。
-适配于satori适配器，不保证其他适配器能否适用。
+适配目标：Satori 适配器（对其他适配器兼容性未经过完整测试）。
 
-使用前可以在[deepseek](https://platform.deepseek.com)或[火山引擎](https://www.volcengine.com/)中获取api-key
+使用前可在诸如 DeepSeek 或 火山引擎 等平台获取 API key：
 
-如果使用deepseek，你的baseURL应该形如"https://api.deepseek.com"
-如果使用火山引擎，你的baseURL应该形如"https://ark.cn-beijing.volces.com/api/v3"
-或其他兼容格式api均可
+- DeepSeek 示例 baseURL: "https://api.deepseek.com"
+- 火山引擎 示例 baseURL: "https://ark.cn-beijing.volces.com/api/v3"
 
-需要注意的是，deepseek模型的温度配置范围为0-2，而火山引擎为0-1
+注意：不同提供商的温度范围可能不同（例如 DeepSeek 0-2，火山引擎通常 0-1）。
 
-对于部署者行为及所产生的任何纠纷， Koishi 及 koishi-plugin-satori-ai 概不负责。
+对于部署者行为及其产生的任何纠纷，Koishi 及本插件概不负责。
 
-如果有更多文本内容想要修改，可以在 本地化 中修改 zh 内容
+如果想修改插件内置的本地化文本，可编辑本项目的 `locales/zh` 内容。
 
 ---
+
+## 最近更新要点
+
+- 升级至 v1.4.0-beta.1：完善 TypeScript 声明（`lib/*.d.ts`），并同步 package 信息。
+- 新增或增强功能：Puppeteer 可选集成（用于截图/渲染场景）、天气感知模块、Broadcast 管理、小游戏支持与更多配置选项（见下文配置节）。
+- 改进记忆与好感度系统：更多防护与开关（辅助模型情感分析、可见化显示、每日上限等）。
+- 增强并发与队列管理：频道级并发控制、重复请求检测、请求排队与超时保护。
+- 若干 Bug 修复与性能优化。
+
+详细变更请参见仓库提交记录（本地或 GitHub）。
 
 ## 功能特性
 
@@ -40,38 +48,29 @@
 - **并发控制**
   支持频道级并发限制，自动排队处理高负载请求
 
+额外模块与增强：
+
+- 可选 Puppeteer 集成：用于页面渲染、截图或抓取外部内容（需安装 `koishi-plugin-puppeteer`）。
+- WeatherManager：支持基于配置的天气感知与时效缓存（提供天气相关回复或上下文注入）。
+- BroadcastManager：用于广播/消息推送场景的集中管理与频道屏蔽配置。
+- 小游戏与经济系统：支持简单的游戏开关、口袋钱（pocket money）与道具消费逻辑。
+- 情绪（Mood）系统：与好感度并列，支持可见化反馈、辅助模型驱动的情绪调整与每日上限控制。
+
 ---
 
 ## 使用方法
 
 ### 安装与配置
 
-1. **安装插件**：
-   ```bash
+1. 安装插件：
+   ```powershell
    npm install koishi-plugin-satori-ai
    ```
-   或前往插件市场安装
 
-2. **配置插件**：
+2. 兼容性与依赖
 
-建议的关系prompt模板：
-```bash
-你对我的关系是xx，你的语气要xx。
-```
-
-完整配置示例（koishi.yml）：
-```yaml
-satori-ai:
-  baseURL: "https://api.deepseek.com"
-  keys:
-    - "your-api-key-1"
-    - "your-api-key-2"
-  auxiliary_LLM_URL: "https://api.example.com"  # 辅助模型API地址
-  auxiliary_LLM: "economy-model"                # 辅助模型名称
-  auxiliary_LLM_key: ["aux-key"]                # 辅助模型专用密钥
-  content_max_tokens: 1500                      # 生成内容最大token数
-  max_parallel_count: 3                         # 最大并行处理数
-```
+- 本插件的 peerDependency: `koishi` ^4.17.10。请确保 Koishi 版本满足要求。
+- 可选：若需启用 Puppeteer 功能（如页面渲染或截图），请额外安装并在 Koishi 中启用 `koishi-plugin-puppeteer`。
 
 ### 功能说明
 
@@ -87,7 +86,7 @@ satori-ai:
   - `sat.clear [-g]`：清空会话记忆（`-g`参数清空全局记忆）
   - `sat.common_sense <text:text>`：添加常识到知识库（管理员权限）
 
-#### [道具系统](https://github.com/gfjdh/koishi-plugin-p-shop)
+#### [道具系统（自用，并不推荐安装）](https://github.com/gfjdh/koishi-plugin-p-shop)
 - 当用户拥有以下道具时，回复会追加特殊内容：
   - **猫耳发饰**：回复末尾追加「喵~」
   - **觉fumo**：回复末尾追加换行符+「fumofumo」
@@ -101,36 +100,7 @@ satori-ai:
 
 - **检索机制**：
   - 自动过滤常用词（的/是/了等）
-  - 中文关键词权重加倍
   - 支持自动时间上下文注入（如「当前日期和时间：2024-02-20 下午」）
-
----
-
-## 高级配置
-
-### 辅助模型配置
-```yaml
-# 情感分析专用配置
-enable_auxiliary_LLM: true     # 启用情感分析模型
-auxiliary_LLM: "gpt-3.5-turbo" # 建议使用低成本模型
-value_of_favorability: 15      # 情感系数基准值（0-9分制）
-visible_favorability: true     # 显示好感度变化标识
-```
-
-### 记忆系统配置
-```yaml
-remember_min_length: 5         # 最小记忆长度（字符数）
-common_topN: 3                 # 常识检索返回条数
-dailogues_topN: 5              # 历史对话检索条数
-memory_block_words: ["xx"]   # 记忆屏蔽词列表
-```
-
-### 开发者选项
-```yaml
-log_reasoning_content: true    # 显示思维链日志
-log_system_prompt: true        # 打印完整系统提示
-sentences_divide: true         # 长回复自动分段
-```
 
 ---
 
@@ -141,16 +111,11 @@ sentences_divide: true         # 长回复自动分段
    sat.common_sense 太阳从东边升起
    ```
 
-2. **查看好感度效果**：
+2. **好感度升降效果**：
+  - 默认的+1是不显示的
    ```
    [用户] sat 你今天真可爱
    [bot] @用户 谢谢夸奖~（好感↑）
-   ```
-
-3. **触发道具效果**：
-   ```
-   [用户] sat 你好呀
-   [bot] @用户 你好喵~（佩戴猫耳发饰）
    ```
 
 ---
