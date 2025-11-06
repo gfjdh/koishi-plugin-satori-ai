@@ -295,7 +295,7 @@ export function countCommonChars(str1: string, str2: string): number {
 }
 
 import { puppeteer } from '.'
-export async function wrapInHTML(str: string): Promise<string> {
+export async function wrapInHTML(str: string, width: number = 20): Promise<string> {
   if (!puppeteer) {
     logger.warn('puppeteer未就绪')
     return '出现错误，请联系管理员'
@@ -325,7 +325,7 @@ export async function wrapInHTML(str: string): Promise<string> {
           font-size: 16px;
           line-height: 1.4;
           /* 最大约 20 个字符宽度（可调整为 10-20ch） */
-          max-width: 20ch;
+          max-width: ${width}ch;
           /* 同时允许内容根据文字宽度收缩（fit-content 在一些旧浏览器需备份） */
           width: -moz-fit-content;
           width: fit-content;

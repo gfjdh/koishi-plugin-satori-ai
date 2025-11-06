@@ -294,6 +294,8 @@ export namespace Sat {
     waiting_time: number
 
     enable_game: boolean
+    enable_galgame: boolean; // 是否启用 galgame 模块
+
     game_block_channel: string[]
     enable_fencing: boolean
     enable_OneTouch: boolean
@@ -441,6 +443,10 @@ export namespace Sat {
       max_pocket_money: Schema.number().default(400).description('随机p点最大值'),
       pocket_money_cost: Schema.number().default(2).description('消耗心情换p点的心情值'),
     }).description('好感度拓展：心情设置（需要开启好感度模块才能生效）'),
+
+    Schema.object({
+      enable_galgame: Schema.boolean().default(true).description('是否启用 galgame 模块'),
+    }).description('galgame 设置，详细功能请开启后进行默认事件体验'),
 
     Schema.object({
       Broadcast_block_channel: Schema.array(String).description('不提供广播的频道id'),

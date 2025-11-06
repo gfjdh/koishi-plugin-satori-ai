@@ -17,6 +17,7 @@ import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
 import { wrapInHTML } from './utils'
 import { WeatherManager } from './weather'
+import { Galgame } from './galgame'
 
 const logger = new Logger('satori-ai')
 const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，现在请你参与一下群聊中的话题'
@@ -43,6 +44,7 @@ export class SAT extends Sat {
   private usersToWarn: Map<string, string> = new Map()
   private puppeteer: Puppeteer | null
   private game: Game
+  private galgame: Galgame
 
   public setPuppeteer(puppeteer: Puppeteer): void {
     this.puppeteer = puppeteer
@@ -104,7 +106,12 @@ export class SAT extends Sat {
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
     this.registerCommands(ctx)
+
     if (this.config.enable_game) this.game = new Game(ctx, config, this)
+    if (config.enable_galgame) {
+      this.galgame = new Galgame(ctx, config);
+      this.registerGalgameCommands(ctx);
+    }
   }
 
   private getAPIConfig(): APIConfig {
@@ -266,6 +273,23 @@ export class SAT extends Sat {
         .option('id', '-i <id:string>', { authority: 4 })
         .action(async ({ session, options }) => this.moodManager.viewMood(session, options.id || session.userId))
     }
+  }
+
+  private registerGalgameCommands(ctx: Context) {
+    // Use English primary command names with Chinese aliases, mirroring project's command style
+    ctx.command('sat.galgame_start [eventName:text]', '开始约会事件')
+      .alias('约会')
+      .action(async ({ session }, eventName) => {
+        if (!session) return;
+        await this.galgame.startEvent(session, eventName);
+      });
+
+    ctx.command('sat.galgame_option <optionId:number>', '选择事件选项')
+      .alias('选项')
+      .action(async ({ session }, optionId) => {
+        if (!session) return;
+        await this.galgame.handleOption(session, optionId);
+      });
   }
 
   private async handleSatCommand(session: Session, prompt: string) {
