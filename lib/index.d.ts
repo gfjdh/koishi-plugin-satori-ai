@@ -18,6 +18,7 @@ export declare class SAT extends Sat {
     private usersToWarn;
     private puppeteer;
     private game;
+    private galgame;
     setPuppeteer(puppeteer: Puppeteer): void;
     private waitForPuppeteer;
     puppeteerReady(): boolean;
@@ -27,6 +28,7 @@ export declare class SAT extends Sat {
     private getMiddlewareConfig;
     private getFavorabilityConfig;
     private registerCommands;
+    private registerGalgameCommands;
     private handleSatCommand;
     private handleAuxiliaryDialogue;
     private checkFavorabilityBlock;

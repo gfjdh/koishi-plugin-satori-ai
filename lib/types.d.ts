@@ -258,6 +258,7 @@ export declare namespace Sat {
         Broadcast_block_channel: string[];
         waiting_time: number;
         enable_game: boolean;
+        enable_galgame: boolean;
         game_block_channel: string[];
         enable_fencing: boolean;
         enable_OneTouch: boolean;

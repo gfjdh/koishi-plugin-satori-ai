@@ -45,11 +45,14 @@ export class Galgame {
   }
 
   private async sendStoryContent(session: Session, content: StoryContent) {
+  // 兼容事件文本中占位符写法：{_USERNAME_} 或 _USERNAME_
+  const username = session.username || '你';
+  const storyText = String(content.text).replace(/\{?_USERNAME_\}?/g, username);
     if (content.isNarration) {
-      const wrappedText = await wrapInHTML(content.text, 40);
+      const wrappedText = await wrapInHTML(storyText, 40);
       await session.send(wrappedText);
     } else {
-      await session.send(content.text);
+      await session.send(storyText);
     }
 
     if (content.imageName) {
@@ -68,9 +71,9 @@ export class Galgame {
   // 然后在阅读时间上加上额外 3 秒缓冲，最终向上取整并转为毫秒。
   // 对中英文混合文本：中文按汉字计数，拉丁文按空格分词计数。
   private computeAutoAdvanceDelay(text: string): number {
-    const readingWpm = 200; // 平均阅读速度（词/分钟），可根据需要调整或改为配置项
+    const readingWpm = 500; // 平均阅读速度（词/分钟），可根据需要调整或改为配置项
 
-    if (!text) return 4000; // 回退值（4s）以防空文本
+    if (!text) return 1000; // 回退值（1s）以防空文本
 
     // 统计中文字符数（基本 CJK 范围）
     const cjkMatch = text.match(/[\u4e00-\u9fff]/g) || [];
@@ -86,8 +89,8 @@ export class Galgame {
     const wordsPerSecond = readingWpm / 60;
     const readingSeconds = effectiveWords / Math.max(wordsPerSecond, 0.001);
 
-    // 在阅读时间上加 3 秒缓冲并向上取整为整数秒，至少 1 秒
-    const delaySeconds = Math.max(1, Math.ceil(readingSeconds) + 3);
+    // 在阅读时间上加 2 秒缓冲并向上取整为整数秒，至少 1 秒
+    const delaySeconds = Math.max(1, Math.ceil(readingSeconds) + 2);
     return delaySeconds * 1000;
   }
 
@@ -313,7 +316,7 @@ story 为有序的段落数组，每项至少需要 id 和 text。
           },
           {
             id: 4,
-            text: '现在进入分支环节：请选择你的回应。\n发送格式：选项 1 或 选项 2。',
+            text: '此段展示分支和用户名占位，现在进入分支环节：请选择_USERNAME_的回应。\n发送格式：选项 1 或 选项 2。',
             options: [
               { text: '友好回应', targetId: 5 },
               { text: '冷淡回应', targetId: 6 },
