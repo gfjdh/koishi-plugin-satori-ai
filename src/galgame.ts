@@ -49,7 +49,7 @@ export class Galgame {
   const username = session.username || '你';
   const storyText = String(content.text).replace(/\{?_USERNAME_\}?/g, username);
     if (content.isNarration) {
-      const wrappedText = await wrapInHTML(storyText, 40);
+      const wrappedText = await wrapInHTML(storyText, 25);
       await session.send(wrappedText);
     } else {
       await session.send(storyText);
@@ -61,6 +61,8 @@ export class Galgame {
         const buffer = fs.readFileSync(imagePath);
         const ext = path.extname(imagePath).toLowerCase();
         const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+        // 在发送图片前等待 1 秒
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         await session.send(h.image(buffer, mime));
       }
     }
@@ -110,11 +112,23 @@ export class Galgame {
       delete this.ongoingEvents[userId];
       delete this.currentId[userId];
       this.completedEvents[userId] = event.eventName;
+
+      // 如果用户画像文件存在，则在最后一行添加约会记录
+      try {
+        const portraitPath = path.join(this.config.dataDir, 'UserPortrait', `${userId}.txt`);
+        if (fs.existsSync(portraitPath)) {
+          const appendText = `\n近期你和他进行了约会：${event.eventName}`;
+          fs.appendFileSync(portraitPath, appendText, 'utf-8');
+        }
+      } catch (e) {
+        // 忽略写入错误以免影响流程
+      }
       return;
     }
 
     if (content.options) {
       // 发送选项列表给用户并提示如何选择
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       const optionsText = content.options.map((opt, idx) => `选项 ${idx + 1}: ${opt.text}`).join('\n');
       await session.send(optionsText + '\n发送格式类似 "选项 1" 来进行选择');
 
@@ -137,10 +151,10 @@ export class Galgame {
     // 把结局文本和奖励信息合并成一条消息发送
     const rewardParts: string[] = [];
     if (ending.favorabilityReward) {
-      rewardParts.push(`好感度 +${ending.favorabilityReward}`);
+      rewardParts.push(`好感度 ${ending.favorabilityReward}`);
     }
     if (ending.pReward) {
-      rewardParts.push(`P点 +${ending.pReward}`);
+      rewardParts.push(`P点 ${ending.pReward}`);
     }
     if (ending.itemRewards) {
       for (const [name, qty] of Object.entries(ending.itemRewards)) {
@@ -149,6 +163,8 @@ export class Galgame {
     }
 
     const rewardText = rewardParts.length ? `\n\n获得奖励：\n${rewardParts.join('\n')}` : '';
+    // 在发送结局文本前等待 1 秒
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await session.send(ending.text + rewardText);
     if (ending.image) {
       const imagePath = path.resolve(this.config.dataDir, 'event', ending.image);
@@ -156,6 +172,8 @@ export class Galgame {
         const buffer = fs.readFileSync(imagePath);
         const ext = path.extname(imagePath).toLowerCase();
         const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+        // 在发送结局图片前等待 1 秒
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         await session.send(h.image(buffer, mime));
       }
     }
@@ -213,7 +231,7 @@ export class Galgame {
         .map((event) => event.eventName);
 
       const result = '当前可用的约会事件有：\n' + events.join('\n') + '\n请输入命令：约会 [事件名] 来开始对应的事件。';
-      const wrappedText = await wrapInHTML(result);
+      const wrappedText = await wrapInHTML(result, 25);
       await session.send(wrappedText);
       return;
     }
