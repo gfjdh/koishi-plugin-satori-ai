@@ -22,12 +22,13 @@ import { Galgame } from './galgame'
 const logger = new Logger('satori-ai')
 const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，现在请你参与一下群聊中的话题'
 
-export let puppeteer : Puppeteer | null = null
+export let puppeteer: Puppeteer | null = null
 
 export function refreshPuppeteer(ctx: Context) {
   if (ctx.puppeteer) {
     puppeteer = ctx.puppeteer
   } else {
+    this.dispose();
     logger.warn('puppeteer未就绪')
   }
 }
@@ -112,6 +113,21 @@ export class SAT extends Sat {
       this.galgame = new Galgame(ctx, config);
       this.registerGalgameCommands(ctx);
     }
+
+    // 注册进程退出事件以释放 Puppeteer
+    process.on('exit', () => {
+      void this.dispose();
+    });
+
+    process.on('SIGINT', () => {
+      void this.dispose();
+      process.exit();
+    });
+
+    process.on('SIGTERM', () => {
+      void this.dispose();
+      process.exit();
+    });
   }
 
   private getAPIConfig(): APIConfig {
@@ -152,36 +168,36 @@ export class SAT extends Sat {
     }
   }
   private getMiddlewareConfig(): MiddlewareConfig & FavorabilityConfig {
-      return {
-        private: this.config.private,
-        nick_name: this.config.nick_name,
-        nick_name_list: this.config.nick_name_list,
-        nick_name_block_words: this.config.nick_name_block_words,
-        max_favorability_perday: this.config.max_favorability_perday,
-        random_min_tokens: this.config.random_min_tokens,
-        randnum: this.config.randnum,
-        max_tokens: this.config.max_tokens,
-        enable_favorability: this.config.enable_favorability,
-        dataDir: this.config.dataDir,
-        input_censor_favorability: this.config.input_censor_favorability,
-        value_of_input_favorability: this.config.value_of_input_favorability,
-        output_censor_favorability: this.config.output_censor_favorability,
-        value_of_output_favorability: this.config.value_of_output_favorability,
-        enable_auxiliary_LLM: this.config.enable_auxiliary_LLM,
-        offset_of_fafavorability: this.config.offset_of_fafavorability,
-        prompt_0: this.config.prompt_0,
-        favorability_div_1: this.config.favorability_div_1,
-        prompt_1: this.config.prompt_1,
-        favorability_div_2: this.config.favorability_div_2,
-        prompt_2: this.config.prompt_2,
-        favorability_div_3: this.config.favorability_div_3,
-        prompt_3: this.config.prompt_3,
-        favorability_div_4: this.config.favorability_div_4,
-        prompt_4: this.config.prompt_4,
-        prompt_5: this.config.prompt_5,
-        enable_warning: this.config.enable_warning,
-        warning_group: this.config.warning_group,
-      }
+    return {
+      private: this.config.private,
+      nick_name: this.config.nick_name,
+      nick_name_list: this.config.nick_name_list,
+      nick_name_block_words: this.config.nick_name_block_words,
+      max_favorability_perday: this.config.max_favorability_perday,
+      random_min_tokens: this.config.random_min_tokens,
+      randnum: this.config.randnum,
+      max_tokens: this.config.max_tokens,
+      enable_favorability: this.config.enable_favorability,
+      dataDir: this.config.dataDir,
+      input_censor_favorability: this.config.input_censor_favorability,
+      value_of_input_favorability: this.config.value_of_input_favorability,
+      output_censor_favorability: this.config.output_censor_favorability,
+      value_of_output_favorability: this.config.value_of_output_favorability,
+      enable_auxiliary_LLM: this.config.enable_auxiliary_LLM,
+      offset_of_fafavorability: this.config.offset_of_fafavorability,
+      prompt_0: this.config.prompt_0,
+      favorability_div_1: this.config.favorability_div_1,
+      prompt_1: this.config.prompt_1,
+      favorability_div_2: this.config.favorability_div_2,
+      prompt_2: this.config.prompt_2,
+      favorability_div_3: this.config.favorability_div_3,
+      prompt_3: this.config.prompt_3,
+      favorability_div_4: this.config.favorability_div_4,
+      prompt_4: this.config.prompt_4,
+      prompt_5: this.config.prompt_5,
+      enable_warning: this.config.enable_warning,
+      warning_group: this.config.warning_group,
+    }
   }
   private getFavorabilityConfig(): FavorabilityConfig {
     return {
@@ -241,7 +257,7 @@ export class SAT extends Sat {
 
     ctx.command('sat.get_user_portrait <text:text>', '查看用户画像', { authority: 4 })
       .alias('查看画像')
-      .action(async ({}, userId) => this.portraitManager.getUserPortraitById(userId))
+      .action(async ({ }, userId) => this.portraitManager.getUserPortraitById(userId))
 
     ctx.command('sat.get_warning_list', '查看警告列表', { authority: 4 })
       .alias('查看警告')
@@ -329,7 +345,7 @@ export class SAT extends Sat {
   }
 
   // 处理辅助判断
-  private async handleAuxiliaryDialogue(session: Session, prompt: string, response: { content: string, error: boolean}) {
+  private async handleAuxiliaryDialogue(session: Session, prompt: string, response: { content: string, error: boolean }) {
     if (response.error || !this.config.enable_favorability) return null
     const user = await getUser(this.ctx, session.userId)
     const outputCheck = await outputContentCheck(this.ctx, response, session.userId, this.getFavorabilityConfig(), session, this.moodManager)
@@ -375,9 +391,9 @@ export class SAT extends Sat {
     let duplicateDialogue = recentDialogues.find(msg => msg.content == prompt)
     if (!duplicateDialogue) return null
 
-    if (this.config.enable_favorability){
+    if (this.config.enable_favorability) {
       updateFavorability(this.ctx, user, -5)
-      return session.text('commands.sat.messages.duplicate-dialogue')  + ' (好感↓)'
+      return session.text('commands.sat.messages.duplicate-dialogue') + ' (好感↓)'
     }
     return session.text('commands.sat.messages.duplicate-dialogue')
   }
@@ -385,12 +401,12 @@ export class SAT extends Sat {
   // 处理固定对话
   private async handleFixedDialoguesCheck(session: Session, user: User, prompt: string): Promise<string | void> {
     const fixedDialogues = await handleFixedDialogues(this.ctx, session, user, prompt, {
-        dataDir: this.config.dataDir,
-        enable_favorability: this.config.enable_favorability,
-        enable_fixed_dialogues: this.config.enable_fixed_dialogues
-      }
+      dataDir: this.config.dataDir,
+      enable_favorability: this.config.enable_favorability,
+      enable_fixed_dialogues: this.config.enable_fixed_dialogues
+    }
     )
-    if (fixedDialogues){ return fixedDialogues }
+    if (fixedDialogues) { return fixedDialogues }
     return null
   }
 
@@ -459,7 +475,7 @@ export class SAT extends Sat {
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength && this.config.enable_reasoner_like
     let response = await this.apiClient.chat(user, messages)
-    if (this.config.log_ask_response){
+    if (this.config.log_ask_response) {
       if (this.config.enable_favorability && this.config.enable_mood)
         logger.info(`Satori AI：（心情值：${this.moodManager.getMoodValue(user.userid)}）${response.content}`)
       else
@@ -494,7 +510,7 @@ export class SAT extends Sat {
       messages.push({ role: 'system', content: await this.buildSystemPrompt(session, prompt) })
     }
     // 添加上下文记忆
-    if (prompt != randomPrompt){
+    if (prompt != randomPrompt) {
       const userMemory = this.memoryManager.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
       messages.push(...userMemory)
     }
@@ -516,7 +532,7 @@ export class SAT extends Sat {
     const moodLevel = this.moodManager.getMoodLevel(user.userid)
     let systemPrompt = ''
 
-    if (prompt == randomPrompt){
+    if (prompt == randomPrompt) {
       systemPrompt += '#首先明确一些参考信息\n'
       systemPrompt += '\n##' + channelDialogue
       systemPrompt += this.getThinkingPrompt(user, prompt)
@@ -606,7 +622,7 @@ export class SAT extends Sat {
         // 提取第一个左括号及其对应的右括号（支持嵌套），同时支持中/英文括号
         const extractFirstBalanced = (text: string): string | null => {
           if (!text) return null
-          const pairs: Array<{ left: string; right: string }> = [ { left: '(', right: ')' }, { left: '（', right: '）' }]
+          const pairs: Array<{ left: string; right: string }> = [{ left: '(', right: ')' }, { left: '（', right: '）' }]
 
           for (const pair of pairs) {
             const { left, right } = pair
@@ -680,7 +696,7 @@ export class SAT extends Sat {
     }
     if (result.length == 0) return
     if (this.config.warning_admin_id)
-      session.send(session.text('commands.sat.messages.warning',[this.config.warning_admin_id]) + result)
+      session.send(session.text('commands.sat.messages.warning', [this.config.warning_admin_id]) + result)
     else
       session.send(result)
     this.usersToWarn.clear()
@@ -727,7 +743,7 @@ export class SAT extends Sat {
   }
 
   // 更新用户等级
-  private async handleUserLevel(session: Session, options: { id?: string , level?: number }) {
+  private async handleUserLevel(session: Session, options: { id?: string, level?: number }) {
     const userId = options.id || session.userId
     const user = await ensureUserExists(this.ctx, userId, session.username)
     const level = options.level || (user.userlevel > 1 ? user.userlevel : 1)
@@ -778,6 +794,19 @@ export class SAT extends Sat {
     if (this.ctx.censor) censored = await this.ctx.censor.transform(processedPrompt, session)
     this.memoryManager.updateChannelDialogue(session, censored, session.username)
     return null
+  }
+
+  public async dispose(): Promise<void> {
+    if (this.puppeteer) {
+      try {
+        await this.puppeteer.stop();
+        logger.info('Puppeteer 已成功释放');
+      } catch (error) {
+        logger.warn('释放 Puppeteer 时出错', error);
+      } finally {
+        this.puppeteer = null;
+      }
+    }
   }
 }
 
