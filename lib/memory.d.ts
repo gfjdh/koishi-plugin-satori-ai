@@ -7,7 +7,6 @@ export declare class MemoryManager {
     private channelDialogues;
     private charactersToRemove;
     private MAX_MEMORY_LENGTH;
-    private userMemoryCache;
     constructor(ctx: Context, config: MemoryConfig);
     updateMemories(session: Session, prompt: string, config: MemoryConfig, response: {
         content: string;
@@ -24,7 +23,7 @@ export declare class MemoryManager {
     clearAllMemories(): void;
     getChannelMemory(channelId: string): MemoryEntry[];
     saveLongTermMemory(session: Session, dialogues: MemoryEntry[], filePath?: string): Promise<void>;
-    searchMemories(session: Session, prompt: string, type?: 'user' | 'common' | 'group'): Promise<string>;
+    searchMemories(session: Session, type?: 'user' | 'common' | 'group'): Promise<string>;
     private findBestMatches;
     private calculateMatchScore;
     private formatMatches;
@@ -32,5 +31,4 @@ export declare class MemoryManager {
     private ensureMemoryFile;
     private loadMemoryFile;
     getChannelContext(channelId: string): MemoryEntry[];
-    getUserCachedMemory(userId: string): MemoryEntry[];
 }

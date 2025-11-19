@@ -63,5 +63,6 @@ export declare class SAT extends Sat {
     handleRandomMiddleware(session: Session): Promise<string>;
     handleNickNameMiddleware(session: Session, prompt: string): Promise<string>;
     handleChannelMemoryManager(session: Session): Promise<void>;
+    dispose(): Promise<void>;
 }
 export default SAT;

@@ -28,7 +28,6 @@ export function refreshPuppeteer(ctx: Context) {
   if (ctx.puppeteer) {
     puppeteer = ctx.puppeteer
   } else {
-    this.dispose();
     logger.warn('puppeteer未就绪')
   }
 }
@@ -523,10 +522,10 @@ export class SAT extends Sat {
 
   // 构建系统提示
   private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
-    const commonSense = await this.memoryManager.searchMemories(session, prompt, 'common')
-    const groupSense = await this.memoryManager.searchMemories(session, prompt + session.username, 'group')
+    const commonSense = await this.memoryManager.searchMemories(session, 'common')
+    const groupSense = await this.memoryManager.searchMemories(session, 'group')
     const channelDialogue = await this.memoryManager.getChannelDialogue(session)
-    const userMemory = await this.memoryManager.searchMemories(session, prompt, 'user')
+    const userMemory = await this.memoryManager.searchMemories(session, 'user')
     const weatherPrompt = await this.weatherManager.buildWeatherPrompt(session)
     const user = await getUser(this.ctx, session.userId)
     const moodLevel = this.moodManager.getMoodLevel(user.userid)

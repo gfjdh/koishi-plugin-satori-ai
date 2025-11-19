@@ -12,7 +12,6 @@ export class MemoryManager {
   private channelDialogues: Map<string, string[]> = new Map()
   private charactersToRemove: string[] = ["的", "一", "是", "了", "什", "么", "我", "谁", "不", "人", "在", "他", "有", "这", "个", "上", "们", "来", "到", "时", "大", "地", "为", "子", "中", "你", "说", "生", "国", "年", "着", "就", "那", "和", "要", "她", "出", "也", "得", "里", "后", "自", "以", "会", "id="];
   private MAX_MEMORY_LENGTH = 5000
-  private userMemoryCache: Map<string, MemoryEntry[]> = new Map()
   constructor(
     private ctx: Context,
     private config: MemoryConfig
@@ -178,40 +177,47 @@ export class MemoryManager {
   }
 
   // 记忆检索
-  public async searchMemories(session: Session, prompt: string, type: 'user' | 'common' | 'group' = 'user'): Promise<string> {
+  public async searchMemories(session: Session, type: 'user' | 'common' | 'group' = 'user'): Promise<string> {
     const filePathMap = {
       'user': this.getUserMemoryPath(session.userId),
       'common': path.join(this.config.dataDir, 'common_sense.txt'),
       'group': path.join(this.config.dataDir, 'group_sense', `${session.channelId}.txt`)
-    }
+    };
     const topNMap = {
       'user': this.config.dailogues_topN,
       'common': this.config.common_topN,
       'group': this.config.common_topN // 群常识和常识使用同样的topN
-    }
-    const filePath = filePathMap[type]
+    };
+    const filePath = filePathMap[type];
     if (!fs.existsSync(filePath)) {
-      return ''
+      return '';
     }
 
-    const keywords = prompt.split('').filter(word => !this.charactersToRemove.includes(word))
-    // 加载记忆条目并处理顺序
-    let entries = await this.loadMemoryFile(filePath)
-    const matched = this.findBestMatches(entries, keywords).slice(0, topNMap[type] * 5)
+    // 获取短期记忆中用户的所有对话内容
+    const channelId = this.config.personal_memory ? session.userId : session.channelId;
+    const recentMemories = this.getChannelContext(channelId);
+    const userDialogues = recentMemories
+      .filter(entry => entry.role === 'user')
+      .map(entry => entry.content)
+      .join('');
 
-    this.userMemoryCache.set(session.userId, matched)
+    const keywords = userDialogues.split('').filter(word => !this.charactersToRemove.includes(word));
+
+    // 加载记忆条目并处理顺序
+    let entries = await this.loadMemoryFile(filePath);
+    const matched = this.findBestMatches(entries, keywords).slice(0, topNMap[type] * 5);
 
     if (type === 'user') {
       // 动态调整记忆顺序
-      const remainingEntries = entries.filter(entry => !matched.includes(entry))
-      let updatedEntries = [...remainingEntries, ...matched]
+      const remainingEntries = entries.filter(entry => !matched.includes(entry));
+      let updatedEntries = [...remainingEntries, ...matched];
       // 保存调整后的记忆
-      fs.writeFileSync(filePath, JSON.stringify(updatedEntries, null, 2))
+      fs.writeFileSync(filePath, JSON.stringify(updatedEntries, null, 2));
     }
 
     // 返回格式化结果
-    const result = this.formatMatches(matched, type, topNMap[type])
-    return result
+    const result = this.formatMatches(matched, type, topNMap[type]);
+    return result;
   }
 
   // 记忆检索
@@ -300,10 +306,5 @@ export class MemoryManager {
   // 获取频道上下文
   public getChannelContext(channelId: string): MemoryEntry[] {
     return this.channelMemories.get(channelId)?.dialogues || []
-  }
-
-  // 获取用户缓存记忆
-  public getUserCachedMemory(userId: string): MemoryEntry[] {
-    return this.userMemoryCache.get(userId) || []
   }
 }
