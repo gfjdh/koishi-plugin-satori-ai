@@ -155,13 +155,6 @@ export class APIClient {
         if (reasoning_content != '无' && content && content.length > reasoning_content.length) {
           logger.warn('返回内容疑似包含推理内容')
         }
-        const responseMsg:Sat.Msg = { role: 'assistant', content: content }
-        if (payload.messages.some(msg => msg === responseMsg) && content.length > 5) {
-          const lastMsg = payload.messages[payload.messages.length - 1]
-          payload.messages[payload.messages.length - 1].content = lastMsg.content + '(注意不要重复之前的内容)'
-          logger.warn(`返回内容与之前内容相同，重试(第${i}次)中...`)
-          continue
-        }
         return { content: content, error: false , reasoning_content: reasoning_content}
       } catch (error) {
         if (i == this.config.maxRetryTimes) {
