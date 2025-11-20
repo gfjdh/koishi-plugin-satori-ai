@@ -328,8 +328,6 @@ export class SAT extends Sat {
     // 对话次数检查
     const dialogueCountCheck = await this.checkUserDialogueCount(session, user)
     if (dialogueCountCheck) return dialogueCountCheck
-    // 更新频道并发数
-    await this.updateChannelParallelCount(session, 1)
     // 生成回复
     const response = await this.generateResponse(session, processedPrompt)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
@@ -425,7 +423,8 @@ export class SAT extends Sat {
   // 更新频道并发数
   private async updateChannelParallelCount(session: Session, value: number): Promise<void> {
     // 更新在线用户
-    this.onlineUsers.push(session.userId)
+    if (value > 0 && !this.onlineUsers.includes(session.userId))
+      this.onlineUsers.push(session.userId)
     this.ChannelParallelCount.set(session.channelId, (this.ChannelParallelCount.get(session.channelId) || 0) + value)
   }
   // 获取频道并发数
@@ -454,18 +453,29 @@ export class SAT extends Sat {
     if (this.getChannelParallelCount(session) > this.config.max_parallel_count) {
       logger.info(`频道 ${session.channelId} 并发数过高(${this.getChannelParallelCount(session)})，${session.username}等待中...`)
     }
-    while (this.getChannelParallelCount(session) > this.config.max_parallel_count) {
-      this.updateChannelParallelCount(session, -1)
+    let waitTimes = 0
+    while (this.getChannelParallelCount(session) >= this.config.max_parallel_count) {
+      waitTimes++
+      if (waitTimes > 60) {
+        // 最多等 60 秒，直接给用户一个「系统忙」提示
+        logger.error(`并发等待超时：channel=${session.channelId}`)
+        return { content: '系统繁忙，请稍后再试', error: true }
+      }
       await new Promise(resolve => setTimeout(resolve, 1000))
-      this.updateChannelParallelCount(session, 1)
     }
-    const messages = await this.buildMessages(session, prompt)
-    logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
-    const user = await getUser(this.ctx, session.userId)
-    let response = await this.getChatResponse(user, messages, prompt)
-    if (response.error) response = await this.getChatResponse(user, messages, prompt)
-    if (response.error) updateUserUsage(this.ctx, user, -1)
-    return response
+    // 更新频道并发数
+    await this.updateChannelParallelCount(session, 1)
+    try {
+      logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
+      const messages = await this.buildMessages(session, prompt)
+      const user = await getUser(this.ctx, session.userId)
+      let response = await this.getChatResponse(user, messages, prompt)
+      if (response.error) response = await this.getChatResponse(user, messages, prompt)
+      if (response.error) updateUserUsage(this.ctx, user, -1)
+      return response
+    } finally {
+      await this.updateChannelParallelCount(session, -1)
+    }
   }
 
   // 获取聊天回复
@@ -473,7 +483,9 @@ export class SAT extends Sat {
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength && this.config.enable_reasoner_like
+    const startTime = Date.now()
     let response = await this.apiClient.chat(user, messages)
+    logger.info(`API 调用耗时: ${Date.now() - startTime}ms`)
     if (this.config.log_ask_response) {
       if (this.config.enable_favorability && this.config.enable_mood)
         logger.info(`Satori AI：（心情值：${this.moodManager.getMoodValue(user.userid)}）${response.content}`)
@@ -481,10 +493,15 @@ export class SAT extends Sat {
         logger.info(`Satori AI：${response.content}`)
     }
     if (!response.error) {
+      const filterStartTime = Date.now()
       response.content = filterResponse(response.content, this.config.reasoner_filter_word.split('-'), {
         applyBracketFilter: this.config.reasoner_filter,
         applyTagFilter: useNoReasoner || this.config.enhanceReasoningProtection,
       }).content
+      const filterTime = Date.now() - filterStartTime
+      if (filterTime > 1000) {
+        logger.warn(`filterResponse 耗时异常: ${filterTime}ms, 内容长度: ${response.content?.length || 0}`)
+      }
     }
 
     return response
@@ -606,7 +623,6 @@ export class SAT extends Sat {
   // 处理回复
   private async formatResponse(session: Session, response: string, auxiliaryResult: string | void, reasoningContent?: string) {
     const user = await getUser(this.ctx, session.userId)
-    this.updateChannelParallelCount(session, -1)
     this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
     if (!response) return session.text('commands.sat.messages.no-response')
 
@@ -666,7 +682,18 @@ export class SAT extends Sat {
       logger.info('Puppeteer 未就绪，正在重新初始化 Puppeteer...')
       this.setPuppeteer(this.ctx.puppeteer)
     }
-    if (firstReasoning.length > 15) await session.send(await wrapInHTML(firstReasoning))
+    if (firstReasoning.length > 15) {
+      const renderStartTime = Date.now()
+      try {
+        await session.send(await wrapInHTML(firstReasoning))
+        const renderTime = Date.now() - renderStartTime
+        if (renderTime > 5000) {
+          logger.warn(`wrapInHTML 渲染耗时异常: ${renderTime}ms, 内容长度: ${firstReasoning.length}`)
+        }
+      } catch (error) {
+        logger.error(`wrapInHTML 渲染失败: ${error}`)
+      }
+    }
     if (this.config.sentences_divide && response.length > 10) {
       const sentences = splitSentences(response, this.config.min_sentences_length, this.config.max_sentences_length).map(text => h.text(text))
       for (const sentence of sentences) {
@@ -771,7 +798,6 @@ export class SAT extends Sat {
 
   // 随机中间件转接
   public async handleRandomMiddleware(session: Session) {
-    await this.updateChannelParallelCount(session, 1)
     const response = await this.generateResponse(session, randomPrompt)
     return await this.formatResponse(session, response.content, null)
   }

@@ -173,7 +173,8 @@ export class MemoryManager {
       updated = updated.slice(-this.MAX_MEMORY_LENGTH)
     }
 
-    fs.writeFileSync(filePath, JSON.stringify(updated, null, 2))
+    // 改为异步写入，避免 Windows Defender/OneDrive 等服务导致同步 I/O 阻塞
+    await fs.promises.writeFile(filePath, JSON.stringify(updated, null, 2), 'utf-8')
   }
 
   // 记忆检索
@@ -211,8 +212,8 @@ export class MemoryManager {
       // 动态调整记忆顺序
       const remainingEntries = entries.filter(entry => !matched.includes(entry));
       let updatedEntries = [...remainingEntries, ...matched];
-      // 保存调整后的记忆
-      fs.writeFileSync(filePath, JSON.stringify(updatedEntries, null, 2));
+      // 改为异步写入，避免阻塞
+      await fs.promises.writeFile(filePath, JSON.stringify(updatedEntries, null, 2), 'utf-8');
     }
 
     // 返回格式化结果
@@ -290,14 +291,17 @@ export class MemoryManager {
 
   // 确保记忆文件存在
   private async ensureMemoryFile(filePath: string): Promise<void> {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    if (!fs.existsSync(filePath)) { fs.writeFileSync(filePath, '[]', 'utf-8') }
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
+    if (!fs.existsSync(filePath)) {
+      await fs.promises.writeFile(filePath, '[]', 'utf-8')
+    }
   }
 
   // 加载记忆文件
   private async loadMemoryFile(filePath: string): Promise<MemoryEntry[]> {
     try {
-      return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+      const content = await fs.promises.readFile(filePath, 'utf-8')
+      return JSON.parse(content)
     } catch {
       return []
     }

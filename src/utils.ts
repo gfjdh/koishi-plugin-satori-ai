@@ -159,7 +159,9 @@ export function filterResponse(
   let working = prompt;
   // 只有在显式要求时才进行括号/方括号段落的过滤
   if (applyBracketFilter) {
-    const parts = working.split(/([（\[【《(][^）)]*[）\]】》)])/g);
+    // 修复灾难性回溯：限制括号内容最大长度，避免正则引擎陷入指数级回溯
+    // 原正则 [^）)]* 在遇到大量不匹配括号时会导致灾难性回溯
+    const parts = working.split(/([（\[【《(][^）)]{0,500}[）\]】》)])/g);
     const filtered = parts
       .map(part => {
         if (
@@ -342,5 +344,16 @@ export async function wrapInHTML(str: string, width: number = 20): Promise<strin
     </body>
   </html>`;
 
-  return puppeteer.render(html);
+  try {
+    // 增加超时保护，防止 puppeteer 渲染卡死导致整个实例阻塞
+    // Windows 更新后可能影响 Chromium 的 GPU/沙箱行为
+    const renderPromise = puppeteer.render(html);
+    const timeoutPromise = new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error('Puppeteer 渲染超时')), 30000)
+    );
+    return await Promise.race([renderPromise, timeoutPromise]);
+  } catch (error) {
+    logger.error(`Puppeteer 渲染失败: ${error}`)
+    return '渲染失败，请联系管理员'
+  }
 }
