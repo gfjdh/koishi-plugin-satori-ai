@@ -105,6 +105,7 @@ export interface APIConfig {
     maxRetryTimes?: number;
     retry_delay_time?: number;
     reasoning_content?: boolean;
+    max_output_tokens: number;
 }
 export interface APIError extends Error {
     response?: {
@@ -162,6 +163,7 @@ export declare namespace Sat {
         reasoner_prompt: string;
         no_system_prompt: boolean;
         max_tokens: number;
+        max_output_tokens: number;
         message_max_length: number;
         remember_min_length: number;
         temperature: number;

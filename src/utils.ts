@@ -184,7 +184,7 @@ export function filterResponse(
 
   // 如果不需要标签过滤，直接返回原始文本（或经过括号过滤后的文本）作为成功内容
   if (!applyTagFilter) {
-    return working ? { content: working, error: false } : { content: '有点问题，请重置对话', error: true };
+    return working ? { content: working, error: false } : { content: '返回内容为空，请重置对话', error: true };
   }
 
   // 标签过滤/抽取逻辑：优先收集所有 <p>...</p> 的内容并拼接；若没有则尝试其它标签（doubaothinking/answer）
@@ -208,13 +208,13 @@ export function filterResponse(
   }
 
   if (!combined) {
-    return { content: '有点问题，请重置对话', error: true };
+    return { content: '内容抽取失败，请重置对话', error: true };
   }
 
   // 清理残留的常见标签和换行标记
   const cleanupRegex = /<p>|<\/p>|<doubaothinking>|<\/doubaothinking>|<answer>|<\/answer>|<br>|<\/br>|<br\/>/gi;
   const cleanedContent = combined.replace(cleanupRegex, '').trim();
-  return cleanedContent ? { content: cleanedContent, error: false } : { content: '有点问题，请重置对话', error: true };
+  return cleanedContent ? { content: cleanedContent, error: false } : { content: '标签过滤失败，请重置对话', error: true };
 }
 
 // 添加输出屏蔽词

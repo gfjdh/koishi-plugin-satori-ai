@@ -146,7 +146,8 @@ export class SAT extends Sat {
       temperature: this.config.temperature,
       frequency_penalty: this.config.frequency_penalty,
       presence_penalty: this.config.presence_penalty,
-      reasoning_content: this.config.log_reasoning_content
+      reasoning_content: this.config.log_reasoning_content,
+      max_output_tokens: this.config.max_output_tokens
     }
   }
   private getMemoryConfig(): MemoryConfig {
@@ -474,6 +475,7 @@ export class SAT extends Sat {
       if (response.error) updateUserUsage(this.ctx, user, -1)
       return response
     } finally {
+      this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
       await this.updateChannelParallelCount(session, -1)
     }
   }
@@ -606,7 +608,9 @@ export class SAT extends Sat {
     const reasonerPrompt = this.config.reasoner_prompt
     const promptForNoReasoner = `\n#参考信息到此为止，接下来是思考要求\n#请你在回复时先进行分析思考，并且模仿思维链的模式输出思考内容，${reasonerPrompt};
 #你在思考时必须以 "<think>" 开头, "<\/think>" 结尾。仔细揣摩用户意图，**完整输出思考内容后**再输出正式的回复内容;
-#注意：你的正式回复内容必须使用“<p>”开头，在输出全部回复后使用“</p>”结尾（即最终回答只允许有一组标签），并且无论如何都要把标签输出完整
+#注意：你的正式回复内容必须使用“<p>”开头，在输出全部回复后使用“</p>”结尾（即最终回答只允许有一组标签），并且无论如何都要把标签输出完整。
+例子格式如下：
+<think>你的思考内容</think><p>你的正式回复内容</p>
 #接下来是对话要求，以下要求仅对最终的回复内容生效，不限制思考过程\n`
     const promptForReasoner = this.config.enhanceReasoningProtection ? `\n#参考信息到此为止，接下来是思考要求
 #你在思考时必须以 "嗯" 开头。仔细揣摩用户意图，思考结束后返回符合要求的回复。
@@ -623,7 +627,6 @@ export class SAT extends Sat {
   // 处理回复
   private async formatResponse(session: Session, response: string, auxiliaryResult: string | void, reasoningContent?: string) {
     const user = await getUser(this.ctx, session.userId)
-    this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
     if (!response) return session.text('commands.sat.messages.no-response')
 
     const catEar = user?.items?.['猫耳发饰']?.description && user.items['猫耳发饰'].description == 'on'

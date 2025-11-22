@@ -122,6 +122,7 @@ export class APIClient {
       messages,
       temperature: this.config.temperature,
       top_p: 1,
+      max_tokens: this.config.max_output_tokens,
       frequency_penalty: this.config.frequency_penalty,
       presence_penalty: this.config.presence_penalty
     }
@@ -155,6 +156,10 @@ export class APIClient {
         if (reasoning_content != '无' && content && content.length > reasoning_content.length) {
           logger.warn('返回内容疑似包含推理内容')
         }
+        if (response.usage.completion_tokens > this.config.max_output_tokens) {
+          logger.warn('返回内容过长导致被截断')
+          continue
+        }
         return { content: content, error: false , reasoning_content: reasoning_content}
       } catch (error) {
         if (i == this.config.maxRetryTimes) {
@@ -166,7 +171,7 @@ export class APIClient {
         continue
       }
     }
-    return { content: 'unreachable', error: true }
+    return { content: '请求失败，请重试', error: true }
   }
 
   // 生成请求头

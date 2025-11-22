@@ -122,6 +122,7 @@ export interface APIConfig {
   maxRetryTimes?: number
   retry_delay_time?: number
   reasoning_content?: boolean
+  max_output_tokens: number
 }
 // API响应
 export interface APIError extends Error {
@@ -190,6 +191,7 @@ export namespace Sat {
 
     no_system_prompt: boolean
     max_tokens: number
+    max_output_tokens: number
     message_max_length: number
     remember_min_length: number
     temperature: number
@@ -335,6 +337,7 @@ export namespace Sat {
       authority: Schema.number().role('slider').min(0).max(5).step(1).description('允许使用的最低权限').default(1),
       no_system_prompt: Schema.boolean().default(false).description('是否将系统提示的system替换为user（用于具有思维链的模型）'),
       max_tokens: Schema.number().description('最大请求长度（字符数）').default(100),
+      max_output_tokens: Schema.number().description('最大返回长度(不含思维链)（token数）').default(4096),
       message_max_length: Schema.number().description('最大频道上下文长度（条数）').default(10),
       temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
       frequency_penalty: Schema.number().default(0.0).description('频率惩罚'),
