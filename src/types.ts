@@ -320,7 +320,7 @@ export namespace Sat {
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('非深度思考模型api_key'),
       use_not_reasoner_LLM_length: Schema.number().default(8).description('触发使用非深度思考模型的字数（输入少于此字数时）,如果你希望始终使用非深度思考模型进行对话，请将此值设置成一个较大的值,反之亦然'),
-      enable_reasoner_like: Schema.boolean().default(true).description('是否启用非深度思考模型模仿思维链（可以在节省成本的同时提高效果）'),
+      enable_reasoner_like: Schema.boolean().default(true).description('是否启用非深度思考模型模仿思维链（可以在节省成本的同时提高效果，但是模型经常不按规定格式输出，所以不推荐开启）'),
       auxiliary_LLM_URL: Schema.string().default('https://api.deepseek.com').description('辅助模型请求地址'),
       auxiliary_LLM: Schema.string().default('deepseek-chat').description('辅助模型(用于好感度调整等功能，如不需要可不填，建议使用低成本模型'),
       auxiliary_LLM_key: Schema.union([
