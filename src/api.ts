@@ -17,12 +17,13 @@ export class APIClient {
 
   // 发送聊天请求
   public async chat(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean, reasoning_content?: string}> {
-    if(user.userid == 'Alice') return { content: '<p>(系统)这是一个测试句子。这个句子稍长一些，包含多个标点符号！这是一个特别长的句子，需要超过最大长度限制的句子应该被保留原样，但这种情况在实际使用中应该尽量避免。最后？这是一个需要合并的短句！;</p>',
-       error: false, reasoning_content: '(测试111111111111111111111111111111111111111111111111111111111111111555555555555)（测试2）' }
+    // if(user.userid == 'Alice') return { content: '<p>(系统)这是一个测试句子。这个句子稍长一些，包含多个标点符号！这是一个特别长的句子，需要超过最大长度限制的句子应该被保留原样，但这种情况在实际使用中应该尽量避免。最后？这是一个需要合并的短句！;</p>',
+    //    error: false, reasoning_content: '(测试111111111111111111111111111111111111111111111111111111111111111555555555555)（测试2）' }
     const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
     let keys: string[]
     let modle: string
     let baseURL: string
+    let thinkingType: string = "enabled"
     if (enableUserKey) {
       const ticket = user.items['地灵殿通行证'].metadata
       keys = [ticket?.key]
@@ -30,16 +31,19 @@ export class APIClient {
       baseURL = ticket?.baseURL
       const not_reasoner_model = ticket?.not_reasoner_model
       const length = ticket?.use_not_reasoner_LLM_length
-      if (not_reasoner_model && length && messages[messages.length - 1].content.length <= length)
+      if (not_reasoner_model && length && messages[messages.length - 1].content.length <= length) {
+        thinkingType = "disabled"
         modle = not_reasoner_model
+      }
     } else {
       const config = this.config;
       const useNotReasoner = messages[messages.length - 1].content.length <= config.use_not_reasoner_LLM_length;
       keys = useNotReasoner ? config.not_reasoner_LLM_key : config.keys;
       modle = useNotReasoner ? config.not_reasoner_LLM : config.appointModel;
       baseURL = useNotReasoner ? config.not_reasoner_LLM_URL : config.baseURL;
+      thinkingType = useNotReasoner ? "disabled" : "enabled"
     }
-    const payload = this.createPayload(messages, modle)
+    const payload = this.createPayload(messages, modle, thinkingType)
     for (let i = 0; i < keys.length; i++) {
       try {
         return await this.tryRequest(baseURL, payload, keys)
@@ -116,7 +120,7 @@ export class APIClient {
   }
 
   // 生成请求体
-  private createPayload(messages: Sat.Msg[], model: string): Payload {
+  private createPayload(messages: Sat.Msg[], model: string, thinkingType: string = "enabled"): Payload {
     return {
       model: model,
       messages,
@@ -124,7 +128,10 @@ export class APIClient {
       top_p: 1,
       max_tokens: this.config.max_output_tokens,
       frequency_penalty: this.config.frequency_penalty,
-      presence_penalty: this.config.presence_penalty
+      presence_penalty: this.config.presence_penalty,
+      thinking:{
+         type: thinkingType
+      }
     }
   }
 

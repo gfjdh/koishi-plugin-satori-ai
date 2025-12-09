@@ -28,6 +28,9 @@ export interface Payload {
     top_p?: number;
     frequency_penalty?: number;
     presence_penalty?: number;
+    thinking?: {
+        type: string;
+    };
 }
 export type FavorabilityAdjustment = number | {
     absolute: number;
