@@ -234,7 +234,8 @@ export class WeatherManager {
   public async buildWeatherPrompt(session: Session): Promise<string | null> {
     if (!this.config.enable_weather_perception) return null
     const weatherInfo = await this.getWeatherInfo(session)
-    if (!weatherInfo) return null
+    if (weatherInfo === '未设置位置信息，请先使用“更新位置”命令设置位置。')
+      return null
     return `当前我这里的天气是${weatherInfo}，你是明确知道这一点的。`
   }
 }

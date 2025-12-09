@@ -224,9 +224,9 @@ export class SAT extends Sat {
   }
 
   private registerCommands(ctx: Context) {
-    ctx.command('sat <text:text>', { authority: this.config.authority })
+    ctx.command('sat [...args]', { authority: this.config.authority })
       .alias(...this.config.alias)
-      .action(async ({ session }, prompt) => this.handleSatCommand(session, prompt))
+      .action(async ({ session }, ...prompts) => this.handleSatCommand(session, prompts.join(' ')))
 
     ctx.command('sat.clear', '清空会话')
       .option('global', '-g')
