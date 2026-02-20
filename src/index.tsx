@@ -2,6 +2,8 @@
 import { Context, Logger, Session, h } from 'koishi'
 import { } from '@koishijs/censor'
 import * as path from 'path'
+import { pathToFileURL } from 'url'
+import { EmojiManager } from './emoji'
 import { APIClient } from './api'
 import { MemoryManager } from './memory'
 import { handleFixedDialogues } from './fixed-dialogues'
@@ -45,6 +47,7 @@ export class SAT extends Sat {
   private puppeteer: Puppeteer | null
   private game: Game
   private galgame: Galgame
+  private emojiManager: EmojiManager
 
   public setPuppeteer(puppeteer: Puppeteer): void {
     this.puppeteer = puppeteer
@@ -98,6 +101,7 @@ export class SAT extends Sat {
     this.moodManager = new MoodManager(ctx, config)
     this.broadcastManager = new BroadcastManager(ctx, config)
     this.weatherManager = new WeatherManager(ctx, config)
+    this.emojiManager = new EmojiManager(ctx, config)
     ensureCensorFileExists(this.config.dataDir)
     refreshPuppeteer(ctx)
     // 如果 puppeteer 尚未在 ctx 上就绪，异步等待并注入（非阻塞）
@@ -339,6 +343,17 @@ export class SAT extends Sat {
     // 更新用户画像
     if (user.usage == this.config.portrait_usage - 1)
       this.portraitManager.generatePortrait(session, user, this.apiClient)
+
+    // 表情包逻辑
+    if (this.emojiManager.shouldSendEmoji()) {
+      const memories = this.memoryManager.getChannelMemory(channelId)
+      const emojiPath = await this.emojiManager.getEmoji(session, user, memories)
+      if (emojiPath) {
+        await session.send(h.image(pathToFileURL(emojiPath).href))
+        logger.info(`发送表情包: ${emojiPath} 给用户: ${session.username} (${session.userId})`)
+      }
+    }
+
     return await this.formatResponse(session, response.content, auxiliaryResult, response.reasoning_content)
   }
 

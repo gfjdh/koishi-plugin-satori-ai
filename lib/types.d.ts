@@ -268,6 +268,8 @@ export declare namespace Sat {
         enable_fencing: boolean;
         enable_OneTouch: boolean;
         cd_for_OneTouch: number;
+        enable_emoji: boolean;
+        emoji_probability: number;
     }
     const Config: Schema<Config>;
 }

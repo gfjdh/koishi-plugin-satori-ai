@@ -19,6 +19,7 @@ export declare class SAT extends Sat {
     private puppeteer;
     private game;
     private galgame;
+    private emojiManager;
     setPuppeteer(puppeteer: Puppeteer): void;
     private waitForPuppeteer;
     puppeteerReady(): boolean;

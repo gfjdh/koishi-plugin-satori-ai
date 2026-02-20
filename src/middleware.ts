@@ -17,7 +17,6 @@ export function createMiddleware(
     if (config.enable_favorability && config.enable_warning && session.channelId === config.warning_group)
       sat.getWarningList(session)
     await sat.broadcastManager.seedBroadcast(session)
-    if (!isSpecialMessage(session)) await sat.handleChannelMemoryManager(session)
 
     // 私信处理
     if (config.private && isPrivateSession(session)) {
@@ -33,6 +32,8 @@ export function createMiddleware(
     if (shouldRandomTrigger(session, config)) {
       return await sat.handleRandomMiddleware(session)
     }
+    
+    if (!isSpecialMessage(session)) await sat.handleChannelMemoryManager(session)
 
     return next()
   }
