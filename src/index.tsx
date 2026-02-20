@@ -2,6 +2,7 @@
 import { Context, Logger, Session, h } from 'koishi'
 import { } from '@koishijs/censor'
 import * as path from 'path'
+import { promises as fs } from 'fs'
 import { pathToFileURL } from 'url'
 import { EmojiManager } from './emoji'
 import { APIClient } from './api'
@@ -346,11 +347,17 @@ export class SAT extends Sat {
 
     // 表情包逻辑
     if (this.emojiManager.shouldSendEmoji()) {
-      const memories = this.memoryManager.getChannelMemory(channelId)
-      const emojiPath = await this.emojiManager.getEmoji(session, user, memories)
-      if (emojiPath) {
-        await session.send(h.image(pathToFileURL(emojiPath).href))
+      try {
+        const memories = this.memoryManager.getChannelMemory(channelId)
+        const emojiPath = await this.emojiManager.getEmoji(session, user, memories)
+        if (emojiPath) {
+          const buffer = await fs.readFile(emojiPath)
+          const ext = path.extname(emojiPath).slice(1) || 'gif'
+          await session.send(h.image(buffer, 'image/' + ext))
+        }
         logger.info(`发送表情包: ${emojiPath} 给用户: ${session.username} (${session.userId})`)
+      } catch (e) {
+        logger.error('Failed to send emoji:', e)
       }
     }
 

@@ -61,23 +61,30 @@ export class EmojiManager {
 
     // 获取最近5条消息
     const contextMessages = recentMessages.slice(-5).map(msg => {
+      // 避免 system prompt 混入 context 导致模型困惑
+      if (msg.role === 'system') return '';
       return `${msg.role === 'user' ? '用户' : 'AI'}: ${msg.content}`
-    }).join('\n')
+    }).filter(s => s).join('\n')
 
     // 构建提示词
     const categoryNames = this.categories.map(c => c.name).join('、')
-    const systemPrompt = `你是一个表情包推荐助手。请根据以下对话上下文，从给定的表情包类别中为AI选择一个最合适的表情包类别。
-对话上下文：
-${contextMessages}
-
+    const systemPrompt = `你是一个表情包推荐助手。请根据提供的对话上下文，从给定的表情包类别中为AI选择一个最合适的表情包类别。
 表情包类别列表：[${categoryNames}]
 如果不适合发送表情包，请返回 "none"。
 请只返回类别名称或 "none"，不要包含其他内容。`
 
+    const userPrompt = `对话上下文：
+${contextMessages}
+
+请推荐一个最合适的表情包类别，只输出类别名称。`
+
+    // 将 system prompt 合并到 user prompt 中，以提高兼容性
+    const fullPrompt = `${systemPrompt}\n\n${userPrompt}`
+
     const messages: Sat.Msg[] = [
-      { role: 'system', content: systemPrompt }
+        { role: 'user', content: fullPrompt }
     ]
-    logger.info(`表情包推荐提示词:\n${systemPrompt}`)
+    logger.info(`表情包推荐提示词:\n${fullPrompt}`)
 
     // 获取API配置
     const { baseURL, key, model } = this.getAPIConfig(user)
@@ -87,7 +94,7 @@ ${contextMessages}
       const categoryName = response.trim()
       logger.info(`模型推荐的表情包类别: ${categoryName}`)
 
-      if (categoryName === 'none') return null
+      if (!categoryName || categoryName === 'none') return null
 
       const category = this.categories.find(c => c.name === categoryName)
       if (category) {
@@ -143,17 +150,16 @@ ${contextMessages}
     const payload = {
       model: model,
       messages: messages,
-      temperature: 0.7, // 稍微增加一点随机性
-      max_tokens: 50, // 只需要返回分类名
-      thinking: {
-          type: "disabled"
-      }
+      temperature: 0.6,
+      max_tokens: 500, // 增加到500以适应可能的思考过程
     }
 
     try {
         const response = await this.ctx.http.post(url, payload, { headers, timeout: 10000 })
+        logger.info(`LLM响应: ${JSON.stringify(response)}`)
         if (response.choices && response.choices.length > 0) {
-            return response.choices[0].message.content
+            const content = response.choices[0].message?.content
+            return content || ''
         }
         throw new Error('API响应格式错误')
     } catch (error) {
