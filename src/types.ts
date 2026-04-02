@@ -389,7 +389,7 @@ export namespace Sat {
       max_sentences_length: Schema.number().default(20).description('每个分句的最大长度'),
       time_interval: Schema.number().default(1000).description('每句话的时间间隔'),
       reply_pointing: Schema.boolean().default(true).description('是否在与多人同时对话时显示回复指向'),
-      enable_emoji: Schema.boolean().default(false).description('是否启用表情包功能'),
+      enable_emoji: Schema.boolean().default(false).description('是否启用表情包功能（表情包文件按类命名分成文件夹放在数据路径下的emojis文件夹，最好是gif）'),
       emoji_probability: Schema.number().role('slider').min(0).max(1).step(0.01).default(0.1).description('在对话中发送表情包的概率'),
     }).description('对话设置'),
 
