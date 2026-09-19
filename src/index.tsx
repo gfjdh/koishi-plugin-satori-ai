@@ -654,7 +654,8 @@ export class SAT extends Sat {
     const catEar = user?.items?.['猫耳发饰']?.description && user.items['猫耳发饰'].description == 'on'
     const fumo = user?.items?.['觉fumo']?.description && user.items['觉fumo'].description == 'on'
     const ring = user?.items?.['订婚戒指']?.description && user.items['订婚戒指'].description == '已使用'
-    const eye = user?.items?.['仿制觉之瞳']?.description && user.items['仿制觉之瞳'].description == 'on'
+    // const eye = user?.items?.['仿制觉之瞳']?.description && user.items['仿制觉之瞳'].description == 'on'
+    const eye = false // 觉之瞳功能暂时关闭
     const replyPointing = this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1)
     let firstReasoning = ''
     if (eye && reasoningContent) {
