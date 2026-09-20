@@ -34,6 +34,7 @@ export interface Payload {
   top_p?: number
   frequency_penalty?: number
   presence_penalty?: number
+  reasoning_effort?: "low" | "medium" | "high" | "max"
   thinking?: {
     type: string
   }

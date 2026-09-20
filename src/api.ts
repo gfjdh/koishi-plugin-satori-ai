@@ -129,6 +129,7 @@ export class APIClient {
       max_tokens: this.config.max_output_tokens,
       frequency_penalty: this.config.frequency_penalty,
       presence_penalty: this.config.presence_penalty,
+      reasoning_effort: "low",
       thinking:{
          type: thinkingType
       }
