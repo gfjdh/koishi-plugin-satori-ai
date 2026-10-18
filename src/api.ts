@@ -5,8 +5,17 @@ import { trimSlash, isErrorWithMessage } from './utils'
 import { APIConfig, APIError, Payload, Sat, User } from './types'
 
 const logger = new Logger('satori-api')
+
+/** 票失败后的冷却时间：冷却期内直接使用默认辅助模型，不再浪费时间试坏 key。 */
+const TICKET_FAILURE_COOLDOWN_MS = 10 * 60_000
+/** 这些状态码代表票本身不可用，冷却期内跳过；网络/5xx 只降级本次，不冷却。 */
+const TICKET_FAILURE_COOLDOWN_STATUSES = new Set([401, 402, 403, 404, 422, 429])
+const MAX_RATE_LIMIT_BACKOFF_MS = 30_000
+const MAX_RETRY_AFTER_MS = 60_000
+
 export class APIClient {
   private currentKeyIndex = 0
+  private ticketFailedUntil = new Map<string, number>()
 
   constructor(
     private ctx: Context,
@@ -59,53 +68,129 @@ export class APIClient {
   // 发送辅助聊天请求
   // 与 chat() 一致：持“地灵殿通行证”的用户优先使用自己的 key/模型，
   // 这样后台归档、汇总和画像不会消耗机器人的辅助模型额度。
+  // 票里的 key 运行失败时降级到默认辅助模型，避免该用户的历史补齐每轮都卡住。
   public async auxiliaryChat(messages: Sat.Msg[], user?: User | null): Promise<{content:string, error: boolean}> {
-    const route = this.resolveAuxiliaryRoute(messages, user)
-    const AuxiliaryPayload = this.createAuxiliaryPayload(messages, route.model)
-    const url = `${trimSlash(route.baseURL)}/chat/completions`
-    const headers = this.createHeaders(route.keys)
+    const userId = user?.userid
+    const ticket = this.ticketAuxiliaryRoute(messages, user)
 
-    let content: string
-    for (let i = 1; i <= this.config.maxRetryTimes; i++) {
-      try {
-        const response = await this.ctx.http.post(url, AuxiliaryPayload, { headers, timeout: 3600000 })
-        content = response.choices[0].message.content
-        return { content: content, error: false }
-      } catch (error) {
-        if (i == this.config.maxRetryTimes) {
-          return this.handleAPIError(error)
+    if (ticket) {
+      const until = userId ? this.ticketFailedUntil.get(userId) : undefined
+      if (until && until > Date.now()) {
+        logger.debug(`用户 ${userId} 的地灵殿通行证处于失败冷却期，辅助请求直接使用默认模型`)
+      } else {
+        if (until) this.ticketFailedUntil.delete(userId)
+        // 票只试一次：失败就立刻降级，不把整轮心跳耗在坏 key 的重试上
+        const result = await this.requestAuxiliary(ticket, messages, 1)
+        if (!result.error) return result
+
+        const status = result.status
+        if (userId && TICKET_FAILURE_COOLDOWN_STATUSES.has(status)) {
+          this.ticketFailedUntil.set(userId, Date.now() + TICKET_FAILURE_COOLDOWN_MS)
+          if (this.ticketFailedUntil.size > 500) this.pruneTicketFailures()
         }
-        logger.warn(`辅助模型API请求失败(${error})，重试(第${i}次)中...`)
-        continue
+        logger.warn(`地灵殿通行证辅助请求失败（${result.content}），本次降级到默认辅助模型`
+          + (TICKET_FAILURE_COOLDOWN_STATUSES.has(status) ? '，后续 10 分钟不再尝试该票' : ''))
       }
     }
-    return { content: 'unreachable', error: true }
+
+    return this.requestAuxiliary(this.defaultAuxiliaryRoute(), messages)
   }
 
   /**
-   * 辅助请求的路由：持票且配置完整时走用户的 key/model，否则回退默认辅助模型。
-   * 不完整的票配置不能让后台归档静默失败，所以这里降级并告警。
+   * 辅助请求的实际发送与重试。
+   * 所有失败之间都有 retry_delay_time 的间隔；429/503 按指数退避并带抖动，
+   * 有 Retry-After 时优先遵守，避免并发 worker 在同一时刻再次冲击限流接口。
    */
-  private resolveAuxiliaryRoute(messages: Sat.Msg[], user?: User | null) {
-    const ticket = user?.items?.['地灵殿通行证']
-    if (ticket?.description === 'on') {
-      const metadata = ticket.metadata || {}
-      let model = metadata.model
-      // 与 chat() 保持一致：输入较短的请求使用非思考模型
-      const last = messages[messages.length - 1]
-      if (metadata.not_reasoner_model && metadata.use_not_reasoner_LLM_length
-        && last && (last.content || '').length <= metadata.use_not_reasoner_LLM_length) {
-        model = metadata.not_reasoner_model
-      }
-      if (metadata.key && model && metadata.baseURL) {
-        return {
-          keys: [metadata.key as string],
-          model: model as string,
-          baseURL: metadata.baseURL as string,
+  private async requestAuxiliary(
+    route: { keys: string[], model: string, baseURL: string },
+    messages: Sat.Msg[],
+    maxAttempts = Math.max(1, this.config.maxRetryTimes),
+  ): Promise<{content:string, error: boolean, status: number}> {
+    const payload = this.createAuxiliaryPayload(messages, route.model)
+    const url = `${trimSlash(route.baseURL)}/chat/completions`
+    const headers = this.createHeaders(route.keys)
+    const retryDelay = Math.max(0, this.config.retry_delay_time || 5000)
+
+    for (let i = 1; i <= maxAttempts; i++) {
+      try {
+        const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
+        return { content: response.choices[0].message.content, error: false, status: 0 }
+      } catch (error) {
+        const status = this.statusOf(error)
+        if (i == maxAttempts) {
+          return { ...this.handleAPIError(error), status }
         }
+        const delay = this.retryDelayFor(status, i, retryDelay, this.retryAfterMs(error))
+        logger.warn(`辅助模型API请求失败(${error})，${Math.round(delay / 1000 * 10) / 10}秒后重试(第${i}次)...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
       }
-      logger.warn('地灵殿通行证缺少 key/model/baseURL，辅助请求回退到默认辅助模型')
     }
+    return { content: 'unreachable', error: true, status: 0 }
+  }
+
+  /** 指数退避，最高 30 秒；加 ±20% 抖动，避免多个 worker 同步重试。
+   *  服务端给了 Retry-After 就严格按它来，不再打折。 */
+  private retryDelayFor(status: number, attempt: number, base: number, retryAfter: number | null): number {
+    if (status !== 429 && status !== 503) return base
+    if (retryAfter != null) return Math.min(retryAfter, MAX_RETRY_AFTER_MS)
+    const backoff = Math.min(base * 2 ** (attempt - 1), MAX_RATE_LIMIT_BACKOFF_MS)
+    return backoff > 0 ? Math.round(backoff * (0.8 + Math.random() * 0.4)) : 0
+  }
+
+  /** Retry-After 可能是秒数，也可能是 HTTP 日期。 */
+  private retryAfterMs(error: unknown): number | null {
+    const headers = (error as { response?: { headers?: unknown } })?.response?.headers
+    if (!headers) return null
+    const getter = headers as { get?: (name: string) => string | null }
+    const raw = typeof getter.get === 'function'
+      ? getter.get('retry-after')
+      : (headers as Record<string, unknown>)['retry-after']
+    if (raw == null) return null
+    const text = String(raw).trim()
+    if (!text) return null
+    const seconds = Number(text)
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000)
+    const date = Date.parse(text)
+    if (!Number.isNaN(date)) return Math.max(0, date - Date.now())
+    return null
+  }
+
+  private statusOf(error: unknown): number {
+    return (error as { response?: { status?: number }, status?: number })?.response?.status
+      || (error as { status?: number })?.status
+      || 0
+  }
+
+  private pruneTicketFailures(): void {
+    const now = Date.now()
+    for (const [userId, until] of this.ticketFailedUntil) {
+      if (until <= now) this.ticketFailedUntil.delete(userId)
+    }
+  }
+
+  private ticketAuxiliaryRoute(messages: Sat.Msg[], user?: User | null) {
+    const ticket = user?.items?.['地灵殿通行证']
+    if (ticket?.description !== 'on') return null
+    const metadata = ticket.metadata || {}
+    let model = metadata.model
+    // 与 chat() 保持一致：输入较短的请求使用非思考模型
+    const last = messages[messages.length - 1]
+    if (metadata.not_reasoner_model && metadata.use_not_reasoner_LLM_length
+      && last && (last.content || '').length <= metadata.use_not_reasoner_LLM_length) {
+      model = metadata.not_reasoner_model
+    }
+    if (metadata.key && model && metadata.baseURL) {
+      return {
+        keys: [metadata.key as string],
+        model: model as string,
+        baseURL: metadata.baseURL as string,
+      }
+    }
+    logger.warn('地灵殿通行证缺少 key/model/baseURL，辅助请求回退到默认辅助模型')
+    return null
+  }
+
+  private defaultAuxiliaryRoute() {
     return {
       keys: this.config.auxiliary_LLM_key,
       model: this.config.auxiliary_LLM,
