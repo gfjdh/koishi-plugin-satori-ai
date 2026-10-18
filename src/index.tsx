@@ -176,6 +176,7 @@ export class SAT extends Sat {
       summary_heartbeat_minutes: this.config.summary_heartbeat_minutes,
       summary_dry_run: this.config.summary_dry_run,
       summary_max_scopes_per_tick: this.config.summary_max_scopes_per_tick,
+      summary_max_calls_per_tick: this.config.summary_max_calls_per_tick,
       memory_active_window_days: this.config.memory_active_window_days,
       memory_retention_days: this.config.memory_retention_days,
       memory_context_max_chars: this.config.memory_context_max_chars,
@@ -488,7 +489,7 @@ export class SAT extends Sat {
 
   // 处理输入
   private async processInput(session: Session, prompt: string) {
-    const processedPrompt = processPrompt(prompt)
+    const processedPrompt = processPrompt(prompt, this.config.nick_name_list, [session.selfId])
     // 敏感词处理
     let censored = processedPrompt
     if (this.ctx.censor) {
@@ -858,7 +859,7 @@ export class SAT extends Sat {
 
   // 频道记忆中间件转接
   public async handleChannelMemoryManager(session: Session): Promise<void> {
-    const processedPrompt = processPrompt(session.content)
+    const processedPrompt = processPrompt(session.content, this.config.nick_name_list, [session.selfId])
     if (this.performPreChecks(session, processedPrompt)) return null
     // 敏感词处理
     let censored = processedPrompt

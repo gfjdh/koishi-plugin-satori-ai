@@ -227,6 +227,7 @@ export namespace Sat {
     summary_heartbeat_minutes: number
     summary_dry_run: boolean
     summary_max_scopes_per_tick: number
+    summary_max_calls_per_tick: number
     memory_active_window_days: number
     memory_retention_days: number
     memory_context_max_chars: number
@@ -394,6 +395,7 @@ export namespace Sat {
       topic_switch_check: Schema.boolean().default(true).description('是否用辅助模型判断话题切换'),
       summary_heartbeat_minutes: Schema.number().default(10).description('后台汇总心跳间隔（分钟）'),
       summary_max_scopes_per_tick: Schema.number().default(3).description('每次心跳最多处理的用户/群数量'),
+      summary_max_calls_per_tick: Schema.number().default(8).description('每个用户/群每次心跳最多发起的辅助模型调用数（归档与分层汇总各占一半预算；历史积压时调大可加快补齐）'),
       memory_active_window_days: Schema.number().default(7).description('只对最近多少天内活跃过的用户/群做汇总'),
       memory_retention_days: Schema.number().default(180).description('原始对话保留天数'),
       memory_recall_topN: Schema.number().default(5).description('关键词召回的历史记忆条数'),

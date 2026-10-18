@@ -12,8 +12,11 @@ export declare class MemoryRepository {
     getDialoguesAfter(scopeId: string, after: Date, options?: {
         kinds?: string[];
         limit?: number;
+        before?: Date;
     }): Promise<SatDialogue[]>;
     countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number>;
+    /** after < createdAt < before 的对话数，用于判断一个已关闭的日块是否归档干净 */
+    countDialoguesInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<number>;
     countDialogues(scopeId: string): Promise<number>;
     /** 只清理普通对话，legacy 迁移数据保留（一次性数据，量有界） */
     pruneDialogues(before: Date): Promise<number>;
@@ -44,7 +47,7 @@ export declare class MemoryRepository {
     /** 子粒度的最早起点（服务端 ORDER BY periodStart ASC LIMIT 1，等价于 MIN(periodStart)） */
     getEarliestChildStart(scopeId: string, granularity: Granularity): Promise<Date | null>;
     /** 区间查询：from < periodEnd <= to，走真正的 SQL 条件而不是 JS 侧过滤 */
-    getMemoriesInRange(scopeId: string, granularity: Granularity, from: Date | null, to: Date): Promise<SatMemory[]>;
+    getMemoriesInRange(scopeId: string, granularity: Granularity, from: Date | null, to: Date, limit?: number): Promise<SatMemory[]>;
     createMemory(row: Omit<SatMemory, 'id'>): Promise<void>;
     /** 该 scope 是否已经产过分层记忆（用于判断迁移是否第一次跑） */
     hasAnyMemory(scopeId: string): Promise<boolean>;

@@ -15,9 +15,12 @@ export declare function isErrorWithMessage(error: unknown): error is {
 };
 /**
  * @param prompt 包含待处理标签的原始字符串
+ * @param botNames bot 的称呼列表；用于去掉 @bot / 以昵称开场这类「称呼」，
+ *   它们只是唤起方式，不应该进入对话记录与总结
+ * @param botIds bot 的账号 id；群名片可能改得和正文很像，优先用 id 判断 @ 的是不是 bot
  * @returns 处理后的字符串，所有匹配标签被替换为对应名称
  */
-export declare function processPrompt(prompt: string): string;
+export declare function processPrompt(prompt: string, botNames?: string[], botIds?: string[]): string;
 /**
  * @param prompt 包含待处理标签的原始字符串
  * @param words 需要过滤的关键词

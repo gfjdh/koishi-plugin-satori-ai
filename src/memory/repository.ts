@@ -28,9 +28,12 @@ export class MemoryRepository {
   async getDialoguesAfter(
     scopeId: string,
     after: Date,
-    options?: { kinds?: string[]; limit?: number },
+    options?: { kinds?: string[]; limit?: number; before?: Date },
   ): Promise<SatDialogue[]> {
-    const query: any = { scopeId, createdAt: { $gt: after } }
+    const createdAt: any = { $gt: after }
+    // 归档时用 before 把结果限制在一个自然日内，topic 记忆不得跨日
+    if (options?.before) createdAt.$lt = options.before
+    const query: any = { scopeId, createdAt }
     if (options?.kinds?.length) query.kind = { $in: options.kinds }
     return this.ctx.database.get('sat_dialogue', query, {
       sort: { createdAt: 'asc' },
@@ -40,6 +43,19 @@ export class MemoryRepository {
 
   async countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number> {
     const query: any = { scopeId, createdAt: { $gt: after } }
+    if (kinds?.length) query.kind = { $in: kinds }
+    const rows = await this.ctx.database.get('sat_dialogue', query, { fields: ['id'] })
+    return rows.length
+  }
+
+  /** after < createdAt < before 的对话数，用于判断一个已关闭的日块是否归档干净 */
+  async countDialoguesInRange(
+    scopeId: string,
+    after: Date,
+    before: Date,
+    kinds?: string[],
+  ): Promise<number> {
+    const query: any = { scopeId, createdAt: { $gt: after, $lt: before } }
     if (kinds?.length) query.kind = { $in: kinds }
     const rows = await this.ctx.database.get('sat_dialogue', query, { fields: ['id'] })
     return rows.length
@@ -162,11 +178,13 @@ export class MemoryRepository {
     granularity: Granularity,
     from: Date | null,
     to: Date,
+    limit?: number,
   ): Promise<SatMemory[]> {
     const periodEnd: any = { $lte: to }
     if (from) periodEnd.$gt = from
     return this.ctx.database.get('sat_memory', { scopeId, granularity, periodEnd }, {
       sort: { periodEnd: 'asc' },
+      limit,
     })
   }
 

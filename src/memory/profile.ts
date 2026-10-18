@@ -37,6 +37,10 @@ export class ProfileManager {
     private config: ProfileConfig,
   ) {}
 
+  isEnabled(): boolean {
+    return this.config.enabled
+  }
+
   /** 日总结完成后调用；持票用户走自己的 key（与 chat 一致） */
   async summarize(
     scopeId: string,

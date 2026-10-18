@@ -362,23 +362,38 @@ const B = 0.75
 
 沿用参考实现的判定结构（[memory.ts:48-83](../cyber-wife/satori-ai/src/memory/manager.ts)）：对话 ≤ `TOPIC_MIN_TURNS`(5) 返回 false，≥ `TOPIC_MAX_TURNS`(20) 直接 true，中间区间问 LLM。
 
-**新增兜底**：参考实现**没有**超龄强制归档，导致一个真实缺陷——如果用户一整天只聊一个话题不切换，就永远不产生 topic 记忆，而 day 汇总依赖 `getEarliestMemoryTime('topic')`，拿不到子记忆就 `continue`，**日总结永远不会发生**，整条金字塔断在第二级。
+**新增兜底**：参考实现**没有**超龄强制归档，导致一个真实缺陷——如果用户一整天只聊一个话题不切换，就永远不产生 topic 记忆，而 day 汇总依赖子记忆，拿不到就 `continue`，**日总结永远不会发生**，整条金字塔断在第二级。所以：当天话题持续超过 `TOPIC_MAX_AGE_HOURS`(24) → 强制归档一次。
 
-所以：`topicStart` 距现在超过 `TOPIC_MAX_AGE_HOURS`(24) 且区间内有对话 → 强制归档一次。
+**topic 不跨自然日（2026-10-18 修正）**：归档查询用 `before = 游标所在自然日的下一条日界线` 限制，最多取 `MAX_ARCHIVE_DIALOGUES`(200) 条。因此：
 
-### 7.2 各级阈值与日界线
+- 一个 topic 记忆的时间范围一定完全落在同一个自然日内；
+- 单日超过 200 条时，同一天会被拆成多块 topic；
+- 已关闭且归档干净的自然日，游标直接推进到日界（而不是最后一条对话），day 级据此判定"这一天的 topic 已经全部做完"；
+- 进行中的当天仍按原语义处理（话题切换判断或 24 小时兜底），不会为了凑日节点把半天的对话提前切走。
 
-| 级别 | 子粒度 | 阈值 |
+历史积压因此按自然日一块块消费：一次查询可以跨过整段没有对话的空白日期，空日期不产生任何节点，也不逐天空转。
+
+### 7.2 周期边界与闭合门控
+
+各级不是"按 1/7/28/90/365 天滚动窗口"切，而是**按日历周期分桶，每个周期最多一条节点**：
+
+| 级别 | 子粒度 | 周期 |
 |---|---|---|
-| day | topic | 1 天（日界线） |
-| week | day | 7 天 |
-| month | week | 28 天 |
-| season | month | 90 天 |
-| year | season | 365 天 |
+| day | topic | 日界线（默认 +08 04:00）到下一条日界线 |
+| week | day | 周一 04:00 到下一个周一 04:00 |
+| month | week | 每月 1 日 04:00 到下月 1 日 04:00 |
+| season | month | 1/4/7/10 月 1 日 04:00 到下季初 |
+| year | season | 1 月 1 日 04:00 到次年 1 月 1 日 |
 
-阈值与 `TOPIC_*` / `HALFLIFE_DAYS` / `MAX_SCOPES_PER_TICK` 一样，先做模块常量，需要调再提升为配置项（参考项目自己的 CLAUDE.md 也写着 "No 'flexibility' or 'configurability' that wasn't requested"）。
+**闭合门控**：上一层周期只有在 `周期末尾 <= sat_meta.topicStart`（归档游标）时才允许生成。游标之前的所有对话都已归档，等价于该周期内的 topic 已全部产出；这正是"先做完一个周期里所有 topic，再逐级上升"。周期末尾还没被游标越过就停在这一层等下一轮，绝不提前用半截数据生成父节点。
 
-**日界线计算**——这是参考实现最危险的地方（`now()` 返回偏移 Date + `setUTCHours(4)`），必须重写为纯函数，输入输出都是真实 UTC：
+**归属规则**：子项按 `periodEnd` 归入周期，区间左开右闭（`parentStart < periodEnd <= parentEnd`）。结束时间正好落在周期边界上的子项属于前一个周期。自然周会跨月/跨季/跨年（例如 8/31~9/7 的周节点属于 9 月），按 end 归属保证每个子项恰好进入一个父周期、不重不漏。
+
+**幂等**：每层的起算点是该层最新节点的 `periodEnd`，所以重跑不会对同一周期重复生成节点；没有子记忆的空周期自然被跳过。
+
+**单子节点晋升**：周期内只有一个子记忆时，父节点直接复制子节点内容与用户状态，不再调用模型（内容本来就等价）。多子节点才调用一次汇总模型。日节点无论晋升与否都会驱动一次画像更新（沿用原语义）。
+
+### 7.3 日界线计算
 
 ```ts
 /** 返回"最近一个已过的日界线时刻"，真实 UTC */
@@ -393,7 +408,7 @@ export function lastBoundary(now: Date, tzOffsetHours: number, boundaryHour: num
 
 DB 里全程存真实 UTC 时间戳，时区只在调用这个函数时参与。`tzOffsetHours` 默认 8，`boundaryHour` 默认 4（对齐参考实现"凌晨 4 点日界线"的意图）。
 
-### 7.3 汇总提示词
+### 7.4 汇总提示词
 
 沿用参考实现的措辞，核心要求是**无状态化存储**（把"明天"换成具体日期、"最近"换成具体时间范围），以及同时产出 `summary` 和 `user_state`：
 
@@ -406,7 +421,7 @@ DB 里全程存真实 UTC 时间戳，时区只在调用这个函数时参与。
 
 各级的 prompt 集中在 `prompts.ts`，JSON 解析统一走 `json.ts` 的 `parseLLMJson()`——参考实现用的是裸的 `content.match(/\{[\s\S]*\}/)`，贪婪匹配到最后一个 `}`，遇到嵌套对象、markdown 围栏或尾逗号就会抛。参考项目自己在 `agent/segment-utils.ts` 里有 `repairJSON` + `extractJSONObjects` 却没用在记忆模块里。
 
-### 7.4 事务
+### 7.5 事务
 
 一次汇总要写两条：插入父级记忆 + 推进游标。用 `ctx.database.transact` 包住，避免半途失败留下"记忆写了但游标没推进"或反之的脏状态。
 
@@ -481,6 +496,7 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 | `summary_heartbeat_minutes` | `10` | 心跳周期 |
 | `summary_dry_run` | `false` | 只记日志不调 LLM |
 | `summary_max_scopes_per_tick` | `3` | 单次心跳最多处理的 scope 数（游标轮转） |
+| `summary_max_calls_per_tick` | `8` | 每个 scope 每次心跳的辅助模型调用上限。归档与层级各分一半预算，防止积压时 topic 吃光预算、层级永远不前进。历史积压多时可调大加快补齐 |
 | `topic_switch_check` | `true` | 是否用 LLM 判断话题切换 |
 | `memory_recall_topN` | `5` | 关键词召回条数 |
 | `memory_active_window_days` | `7` | 多久没活动的 scope 不再参与后台汇总 |
@@ -659,4 +675,5 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 10. **真实数据迁移**（已完成）：`npx tsx .scratch/migrate-check.ts` —— 用生产环境 1131 个文件在临时 SQLite 库跑三次迁移，断言条数、时间范围、`topicStart`、`lastActiveAt`、画像/知识数量、幂等性与「重跑不回拨游标」（§12.4）。
 11. **启动冒烟**（已完成）：`npx tsx .scratch/smoke-start.ts` —— 用真实 `koishi.yml` 配置启动完整插件（临时数据库），验证 5 张表建立、`recordTurn` 落库、`getPromptContext` 组装、知识幂等写入。
 12. **真实语料检索**（已完成）：`npx tsx .scratch/real-retrieval-check.ts` —— 5000 条真实用户消息上的中文召回质量与耗时。
-13. **游标/活跃时间不变量**（已完成，§12.4）：`npx tsx .scratch/cursor-check.ts` —— 游标不动活跃时间、活跃时间单调、事务回滚（未知字段触发 minato `TypeError`，断言游标未推进且记忆未落库）、心跳自推进积压且重复运行不产生重复区间。
+13. **游标/活跃时间不变量**（已完成，§12.4）：`npx tsx .scratch/pyramid-check.ts` —— 游标不动活跃时间、活跃时间单调、事务回滚（未知字段触发 minato `TypeError`，断言游标未推进且记忆未落库）、`__global__` 排除。
+14. **金字塔顺序**（2026-10-18 修正，已完成）：`npx tsx .scratch/pyramid-check.ts` —— 断言 topic 不跨日（含 04:00 前归属、单日 >200 条拆块）、周期边界（日/周一/月/季/年）、周期未闭合时不得越级生成父节点、每个周期只有一条节点且每个子项恰好归入一个父周期、单子节点晋升不调模型、空日期不产生空节点、重跑完全幂等。

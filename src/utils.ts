@@ -129,17 +129,48 @@ export function isErrorWithMessage(
 
 /**
  * @param prompt 包含待处理标签的原始字符串
+ * @param botNames bot 的称呼列表；用于去掉 @bot / 以昵称开场这类「称呼」，
+ *   它们只是唤起方式，不应该进入对话记录与总结
+ * @param botIds bot 的账号 id；群名片可能改得和正文很像，优先用 id 判断 @ 的是不是 bot
  * @returns 处理后的字符串，所有匹配标签被替换为对应名称
  */
-export function processPrompt(prompt: string): string {
+export function processPrompt(prompt: string, botNames: string[] = [], botIds: string[] = []): string {
   if (!prompt) return '';
   if (prompt.includes(':poke')) return '戳戳';
+  const names = botNames.filter(Boolean);
+  const ids = botIds.filter(Boolean);
+  // @ 提及：<at id="..." name="古明地觉"/>。bot 自己的提及直接删除；
+  // 其他用户的 @ 仍还原成名字，因为正文里有指代意义。
+  prompt = prompt.replace(/<at\b[^>]*?name="([^\"]*)"[^>]*>/gi, (tag, name) => {
+    const id = /\bid="([^"]*)"/i.exec(tag)?.[1];
+    if (ids.includes(id) || names.includes(name)) return '';
+    return name;
+  });
+  // 少数适配器的 at 元素不带 name，同样不该出现在正文里
+  prompt = prompt.replace(/<at\b[^>]*\/?>/gi, '');
   prompt = prompt.replace(/<[^>]*?avatar[^>]*>/g, '。回复：');
   prompt = prompt.replace(/<[^>]*?img[^>]*>/g, '[图片]');
   prompt = prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `${name}`);
+  // 不用 @、直接以昵称开场（如「古明地觉 你好」）时，开头的昵称同样是称呼。
+  // 昵称后面必须紧跟空白/标点或到句尾，避免把「古明地觉真可爱」误伤成「真可爱」。
+  if (names.length) {
+    const pattern = [...new Set(names.map(name => name.replace(/[\s,，.。!！?？~～:：;；、]+$/, '')))]
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegExp)
+      .join('|');
+    if (pattern) {
+      const stripped = prompt.replace(
+        new RegExp(`^\\s*(?:${pattern})(?:\\s+|[，,。.!！?？~～:：;；、]+|$)`),
+        '',
+      );
+      // 只喊了名字、没有正文时保留原样，避免把消息变成空串
+      if (stripped.trim()) prompt = stripped;
+    }
+  }
   // 处理输入的字符串，删除其中的‘**’
   prompt = prompt.replace(/\*\*/g, '');
-  if (!prompt) return '**';
+  if (!prompt.trim()) return '**';
   return prompt.trim();
 }
 

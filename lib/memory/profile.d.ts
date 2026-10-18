@@ -15,6 +15,7 @@ export declare class ProfileManager {
     private api;
     private config;
     constructor(ctx: Context, repo: MemoryRepository, api: APIClient, config: ProfileConfig);
+    isEnabled(): boolean;
     /** 日总结完成后调用；持票用户走自己的 key（与 chat 一致） */
     summarize(scopeId: string, summary: string, memories: SatMemory[], user?: User | null): Promise<void>;
     getContext(scopeId: string): Promise<string>;
