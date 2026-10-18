@@ -125,7 +125,7 @@ export class APIClient {
       model: model,
       messages,
       temperature: this.config.temperature,
-      top_p: 1,
+      top_p: 0.9,
       max_tokens: this.config.max_output_tokens,
       frequency_penalty: this.config.frequency_penalty,
       presence_penalty: this.config.presence_penalty,
