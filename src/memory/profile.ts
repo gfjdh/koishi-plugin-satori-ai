@@ -7,7 +7,7 @@ import { MemoryRepository } from './repository'
 import { ProfileData, ProfileEntry, SatMemory } from './schema'
 import { parseLlmJson } from './json'
 import { buildProfilePrompt } from './prompts'
-import { applyProfileDelta, ProfileDelta } from './delta'
+import { applyProfileDelta, sanitizeProfileDelta, ProfileDelta } from './delta'
 
 const logger = new Logger('satori-profile')
 
@@ -78,14 +78,21 @@ export class ProfileManager {
       return
     }
 
+    // 模型偶尔会把“删除/修改说明”写进 content，或对 legacy_portrait 直接改写。
+    // 在合并前清洗，避免把编辑意图存成画像。
+    const { delta: cleanDelta, rejected } = sanitizeProfileDelta(delta)
+    if (rejected.length) {
+      logger.warn(`画像 delta 丢弃无效条目 scope=${scopeId}: ${rejected.join(', ')}`)
+    }
+
     const now = new Date().toISOString()
-    const next = applyProfileDelta(entries, delta, now, this.config.maxEntries)
+    const next = applyProfileDelta(entries, cleanDelta, now, this.config.maxEntries)
     const data: ProfileData = { entries: next, lastSummarizedAt: now }
     await this.repo.saveProfile(scopeId, data)
 
-    const added = (delta.added || []).length
-    const modified = (delta.modified || []).length
-    const deleted = (delta.deleted || []).length
+    const added = (cleanDelta.added || []).length
+    const modified = (cleanDelta.modified || []).length
+    const deleted = (cleanDelta.deleted || []).length
     logger.info(`画像已更新 scope=${scopeId} (+${added} ~${modified} -${deleted}, 共 ${next.length} 条)`)
   }
 

@@ -197,6 +197,7 @@ export declare namespace Sat {
         summary_dry_run: boolean;
         summary_max_scopes_per_tick: number;
         summary_max_calls_per_tick: number;
+        summary_concurrency: number;
         memory_active_window_days: number;
         memory_retention_days: number;
         memory_context_max_chars: number;

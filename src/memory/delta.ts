@@ -27,6 +27,70 @@ export function clampImportance(value: number | undefined, fallback = 10): numbe
   return Math.max(0, Math.min(50, Math.round(value)))
 }
 
+/** 迁移生成的旧画像原文。只允许被拆解后删除，不接受改写，避免整段旧画像被覆盖。 */
+export const PROTECTED_PROFILE_KEYS = new Set(['legacy_portrait'])
+
+const EDIT_INSTRUCTION_RE = /^(?:请\s*)?(?:(?:移除|删除|删掉|去掉|修改|更正|更新|替换|改为)|将[^。]{0,20}(?:改为|删除|移除|去掉|替换))/
+const EDIT_NOTE_RE = /(?:该项|该条|此项|此条)[^。]{0,20}(?:为准|删除|移除)|以\s*["“']?[A-Za-z][\w-]*["”']?\s*为准/
+
+/**
+ * 判断 content 是否是“编辑说明”而不是关于用户的事实。
+ * 模型偶尔会把“移除某表述”“以某条为准”直接写进 content，
+ * 这类内容必须丢弃，否则会覆盖掉真正的画像。
+ */
+export function looksLikeEditInstruction(content: string | undefined): boolean {
+  const text = (content || '').trim()
+  if (!text) return false
+  return EDIT_INSTRUCTION_RE.test(text) || EDIT_NOTE_RE.test(text)
+}
+
+export interface SanitizeResult {
+  delta: ProfileDelta
+  /** 被丢弃的条目，形如 key(added) / key(modified:protected) */
+  rejected: string[]
+}
+
+/**
+ * 应用前清洗模型输出：
+ * 1. deleted 既接受字符串，也接受 { key } / { title } 对象（模型常混用）；
+ * 2. 丢弃“编辑说明”样式的 added / modified；
+ * 3. 保护 legacy_portrait，只允许删除、不允许改写。
+ */
+export function sanitizeProfileDelta(delta: ProfileDelta): SanitizeResult {
+  const rejected: string[] = []
+
+  const filter = (items: DeltaEntry[] | undefined, kind: 'added' | 'modified') =>
+    (items || []).filter((item) => {
+      if (!item?.key) return true // 交给 apply 阶段按原规则忽略
+      if (PROTECTED_PROFILE_KEYS.has(item.key)) {
+        rejected.push(`${item.key}(${kind}:protected)`)
+        return false
+      }
+      if (looksLikeEditInstruction(item.content)) {
+        rejected.push(`${item.key}(${kind}:instruction)`)
+        return false
+      }
+      return true
+    })
+
+  const deleted: string[] = []
+  for (const item of (delta.deleted || []) as unknown[]) {
+    const key = typeof item === 'string'
+      ? item
+      : (item as { key?: unknown; title?: unknown })?.key ?? (item as { title?: unknown })?.title
+    if (typeof key === 'string' && key.trim()) deleted.push(key.trim())
+  }
+
+  return {
+    delta: {
+      added: filter(delta.added, 'added'),
+      modified: filter(delta.modified, 'modified'),
+      deleted,
+    },
+    rejected,
+  }
+}
+
 /**
  * 应用一次增量。
  *

@@ -177,6 +177,7 @@ export class SAT extends Sat {
       summary_dry_run: this.config.summary_dry_run,
       summary_max_scopes_per_tick: this.config.summary_max_scopes_per_tick,
       summary_max_calls_per_tick: this.config.summary_max_calls_per_tick,
+      summary_concurrency: this.config.summary_concurrency,
       memory_active_window_days: this.config.memory_active_window_days,
       memory_retention_days: this.config.memory_retention_days,
       memory_context_max_chars: this.config.memory_context_max_chars,
