@@ -57,10 +57,13 @@ export class APIClient {
   }
 
   // 发送辅助聊天请求
-  public async auxiliaryChat(messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
-    const AuxiliaryPayload = this.createAuxiliaryPayload(messages, this.config.auxiliary_LLM)
-    const url = `${trimSlash(this.config.auxiliary_LLM_URL)}/chat/completions`
-    const headers = this.createHeaders(this.config.auxiliary_LLM_key)
+  // 与 chat() 一致：持“地灵殿通行证”的用户优先使用自己的 key/模型，
+  // 这样后台归档、汇总和画像不会消耗机器人的辅助模型额度。
+  public async auxiliaryChat(messages: Sat.Msg[], user?: User | null): Promise<{content:string, error: boolean}> {
+    const route = this.resolveAuxiliaryRoute(messages, user)
+    const AuxiliaryPayload = this.createAuxiliaryPayload(messages, route.model)
+    const url = `${trimSlash(route.baseURL)}/chat/completions`
+    const headers = this.createHeaders(route.keys)
 
     let content: string
     for (let i = 1; i <= this.config.maxRetryTimes; i++) {
@@ -77,6 +80,37 @@ export class APIClient {
       }
     }
     return { content: 'unreachable', error: true }
+  }
+
+  /**
+   * 辅助请求的路由：持票且配置完整时走用户的 key/model，否则回退默认辅助模型。
+   * 不完整的票配置不能让后台归档静默失败，所以这里降级并告警。
+   */
+  private resolveAuxiliaryRoute(messages: Sat.Msg[], user?: User | null) {
+    const ticket = user?.items?.['地灵殿通行证']
+    if (ticket?.description === 'on') {
+      const metadata = ticket.metadata || {}
+      let model = metadata.model
+      // 与 chat() 保持一致：输入较短的请求使用非思考模型
+      const last = messages[messages.length - 1]
+      if (metadata.not_reasoner_model && metadata.use_not_reasoner_LLM_length
+        && last && (last.content || '').length <= metadata.use_not_reasoner_LLM_length) {
+        model = metadata.not_reasoner_model
+      }
+      if (metadata.key && model && metadata.baseURL) {
+        return {
+          keys: [metadata.key as string],
+          model: model as string,
+          baseURL: metadata.baseURL as string,
+        }
+      }
+      logger.warn('地灵殿通行证缺少 key/model/baseURL，辅助请求回退到默认辅助模型')
+    }
+    return {
+      keys: this.config.auxiliary_LLM_key,
+      model: this.config.auxiliary_LLM,
+      baseURL: this.config.auxiliary_LLM_URL,
+    }
   }
 
   // 发送生成用户画像请求
@@ -185,7 +219,8 @@ export class APIClient {
   // 生成请求头
   private createHeaders(keys: string[]): Record<string, string> {
     return {
-      Authorization: `Bearer ${keys[this.currentKeyIndex]}`,
+      // 持票用户只有一把 key，取模避免沿用多 key 轮换留下的下标
+      Authorization: `Bearer ${keys[this.currentKeyIndex % keys.length]}`,
       'Content-Type': 'application/json'
     }
   }

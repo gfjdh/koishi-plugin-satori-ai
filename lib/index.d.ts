@@ -8,8 +8,7 @@ export declare function refreshPuppeteer(ctx: Context): void;
 export declare class SAT extends Sat {
     config: Sat.Config;
     private apiClient;
-    private memoryManager;
-    private portraitManager;
+    private memoryService;
     private ChannelParallelCount;
     private onlineUsers;
     private moodManager;

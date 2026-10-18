@@ -430,7 +430,7 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 2. **只处理有新对话的 scope**：`sat_meta.lastActiveAt` 在每次写对话时更新；心跳只取 `lastActiveAt` 在活跃窗口内、且有对话晚于其 day 游标的 scope。
 3. **每 tick 限量 + 串行**：最多处理 `MAX_SCOPES_PER_TICK`(3) 个 scope，且**串行**执行。休眠 scope 靠轮转在后续 tick 里逐步推进，保证最终一致。
 4. **dry-run 模式**：`summary_dry_run = true` 时只把将要发给 LLM 的 prompt 和判定结果写日志，**不真的调用**。这是在没有测试框架的前提下验证汇总逻辑的关键手段（不烧 token）。
-5. **复用已有 LLM 通道**：走 [api.ts](external/satori-ai/src/api.ts) 的 `APIClient.auxiliaryChat(messages)`（已是低成本辅助模型 + 重试 + key 轮换），不新写 HTTP 调用。
+5. **复用已有 LLM 通道**：走 [api.ts](external/satori-ai/src/api.ts) 的 `APIClient.auxiliaryChat(messages, user)`（低成本辅助模型 + 重试 + key 轮换），不新写 HTTP 调用。传入 `user` 时与 `chat()` 一样优先使用其“地灵殿通行证”里的 key/model/baseURL；票配置不完整则告警并回退默认辅助模型。按人记忆（`personal_memory=true`）时 `scopeId` 就是 `userId`，心跳与话题归档据此解析用户；群级记忆无法唯一定位用户，不解析。
 
 ---
 
@@ -475,22 +475,26 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 
 | 配置 | 默认 | 说明 |
 |---|---|---|
-| `enable_layered_memory` | `true` | **总开关**。关闭时回退到旧引擎（`memory.ts` / `userportrait.ts` 保留一个版本周期） |
+| `enable_layered_memory` | `true` | **总开关**。关闭时只保留“短期记忆 + 知识库”：不写 `sat_dialogue`、不做分层汇总与召回（旧引擎已删除，没有回退分支） |
 | `memory_timezone_offset` | `8` | 日界线时区偏移 |
 | `memory_day_boundary_hour` | `4` | 日界线小时 |
 | `summary_heartbeat_minutes` | `10` | 心跳周期 |
 | `summary_dry_run` | `false` | 只记日志不调 LLM |
+| `summary_max_scopes_per_tick` | `3` | 单次心跳最多处理的 scope 数（游标轮转） |
 | `topic_switch_check` | `true` | 是否用 LLM 判断话题切换 |
 | `memory_recall_topN` | `5` | 关键词召回条数 |
+| `memory_active_window_days` | `7` | 多久没活动的 scope 不再参与后台汇总 |
 | `memory_retention_days` | `180` | 原始对话保留天数 |
 | `memory_context_max_chars` | `2000` | 分层上下文注入上限 |
 | `profile_enabled` | `true` | 增量画像开关（`enable_user_portrait` 保留为兼容别名） |
+| `profile_max_entries` | `60` | 画像最多保留条目数（超出按重要度淘汰） |
+| `profile_context_entries` | `30` | 注入提示词的画像条目数 |
 
 ### 语义变化
 
 | 配置 | 变化 |
 |---|---|
-| `remember_min_length` | **不再拦截与 bot 的对话落库**（分层汇总需要短对话作为输入），改为只作用于 `kind='ambient'` 的环境群聊记录。这是明确的行为变更，在 readme 里标注 |
+| `remember_min_length` | **已废弃，运行时不再读取**。分层汇总需要短对话作为输入；环境群聊（`kind='ambient'`）只存在于内存，本来就不落库。保留字段只为不破坏旧 `koishi.yml` |
 | `memory_block_words` | 仍然是硬门槛，但作用点从"是否写入长期记忆"变为"是否写入 `sat_dialogue`"——被屏蔽的轮次不落库，也就不会进入任何层级的汇总 |
 | `common_topN` / `dailogues_topN` | 名字保留（避免破坏现有 `koishi.yml`），语义变为知识/记忆召回的 topN |
 
@@ -513,19 +517,49 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 
 | 旧数据 | 新位置 | 处理 |
 |---|---|---|
-| `dataDir/dialogues/<userId>.txt` | `sat_dialogue`，`kind='legacy'` | JSON 数组 `{role, content}[]`。`role` 里用正则 `/对话日期和时间：\s*(\d{4}\/\d{1,2}\/\d{1,2})\s*(\d{1,2}:\d{2}:\d{2})/` 取时间戳（正则沿用 [userportrait.ts:68](external/satori-ai/src/userportrait.ts#L68)），取不到的条目跳过并计数告警。`aiContent=''`。**这样第一批分层汇总会把这些旧对话折成 topic/day 记忆，信息不丢** |
-| `dataDir/UserPortrait/<userId>.txt` | `sat_profile` | 整段原文作为**单条** entry：`{key:'历史画像', category:'fact', content: 原文, importance: 30}`，让后续 delta 更新自然吸收 |
-| `dataDir/common_sense.txt` | `sat_knowledge` | `kind='common'`, `targetId='*'` |
-| `dataDir/group_sense/<id>.txt` | `sat_knowledge` | `kind='group'`, `targetId=<id>` |
+| `dataDir/dialogues/<userId>.txt` | `sat_dialogue`，`kind='legacy'` | JSON 数组 `{role, content}[]`，`content` 是用户说过的话（旧系统不保存 AI 回复，`aiContent=''`）。**已用生产环境 1131 个真实文件验证**，`role` 有两种时间写法，都要解析：`对话日期和时间：2026/9/20 00:56:55`（117002 条）和 `对话日期和时间：10/18/2026, 10:04:24 AM`（3741 条，12 小时制）。时间由服务器 locale 写出，实测服务器为 `Asia/Shanghai`，按 `memory_timezone_offset` 换算成真实 UTC。`role` 字面量为 `"user"` 的旧条目（7480 条）没有可信时间，**跳过并在日志中计数/告警，不伪造日期**；旧文件保持原样。同文件内 `role+content` 完全相同的重复条目去重 |
+| `dataDir/UserPortrait/<userId>.txt` | `sat_profile` | 整段原文作为**单条** entry：`{key:'legacy_portrait', category:'fact', content: 原文, importance: 30}`，让后续 delta 更新自然吸收 |
+| `dataDir/common_sense.txt` | `sat_knowledge` | `kind='common'`, `targetId='*'`，`addKnowledgeIfAbsent` 去重 |
+| `dataDir/group_sense/<id>.txt` | `sat_knowledge` | `kind='group'`, `targetId=<id>`，`addKnowledgeIfAbsent` 去重 |
 
 > **作用域反推问题**：`dialogues/<userId>.txt` 只能反推出 `userId`。若 `personal_memory=false`（记忆按 channelId 组织），旧数据无法反推 channelId。处置：统一挂到 `userId` 作为 scopeId，并在日志里明确告警"检测到 personal_memory=false，历史记忆已按用户维度导入"。这是可接受的降级——数据不丢，只是作用域边界与之后的新数据不同。
 
 ### 12.2 幂等与安全
 
-- **触发**：`sat_meta.migratedAt` 为空时自动跑；也可用 `sat.memory.migrate` 手动重跑。
-- **幂等**：重跑前先 `remove('sat_dialogue', { kind: 'legacy' })` 再重灌（legacy 行是迁移专属标记，不会误删新数据）；`sat_knowledge` / `sat_profile` 按 `(kind, targetId)` / `scopeId` 先删后插。
-- **旧文件不删**，只重命名为 `<name>.migrated`。迁移日志里告知用户路径。
-- **回滚**：`enable_layered_memory=false` 即回到旧引擎；旧文件仍在（虽已重命名，可手工改回）。
+- **触发**：**手动执行 `sat.memory.migrate`**（需要 authority 4）。不在启动时自动跑，避免首次启动被 10 万级 INSERT 阻塞；`sat_meta.migratedAt` 记录完成时间，`--force` 可重跑。
+- **幂等**：重跑前先 `remove('sat_dialogue', { kind: 'legacy' })` 再重灌（legacy 行是迁移专属标记，不会误删新数据）；知识用 `addKnowledgeIfAbsent` 去重；画像只在 `sat_profile` 还没有该 scope 时写入，不会覆盖新系统产出的画像。**重跑不回拨归档游标**：只有 `sat_memory` 里还没有该 scope 的任何行（说明从没归档过）时才把 `topicStart` 设回最早一条旧对话；已经有记忆的 scope 保持游标不动，否则 `-f` 重跑会把同期区间再归档一次，产出区间完全相同的重复 topic 记忆。`lastActiveAt` 用 `touchMetaIfNewer` 只在更晚时更新，历史时间不会把「最近活跃」往回拨。
+- **批量写入**：每个用户文件的对话包在一个 `database.transact` 里，避免每行一个隐式事务（实测 12 万行约 80 秒）。
+- **旧文件不修改、不删除、也不改名**（偏离原计划的重命名为 `.migrated`）。迁移只读旧文件，回滚或重新解析都随时可行。
+- **回滚**：`enable_layered_memory=false` 只会退化成“短期记忆 + 知识库”，旧引擎代码已删除；旧文件仍在 `dataDir` 下。
+
+### 12.3 真实数据验证（2026-10-18）
+
+从生产服务器只读拉取全量数据到 `.scratch/server-data/full`，用临时 SQLite 库跑完整迁移：
+
+- 1131 个对话文件、128223 条记录：成功迁移 **120743** 条（CN 时间 117002 + US 时间 3741，去重后），跳过无时间条目 **7480** 条，JSON 解析失败 0。
+- 时间范围（UTC）：`2025-02-12T16:56:04Z` ~ `2026-10-18T04:45:17Z`，与服务器 `Asia/Shanghai` 的墙上时间一致。
+- 画像 59 份、知识 129 条（common 118 + group 11）全部落库。
+- 连续迁移两次，对话/画像/知识条数不变，幂等成立。
+- 另用 5000 条真实用户消息验证检索：`游戏/考试/猫/睡觉/喜欢/妈妈/下雨/工作` 均能命中语义相关条目，`量子力学` 无匹配；单次查询约 26ms。
+- 分层汇总（LLM 用固定响应替身）在迁移后的真实用户上连续跑 5 个心跳周期：`topicStart` 单调推进，每周期归档 200 条对话；topic/day/week/month/season 各 5 条、year 1 条，同层区间无重叠；5 次日总结各触发一次画像更新。共 26 次替身调用，零网络请求。
+- 迁移把 `topicStart` 指向最早一条旧对话，因此首次心跳会以每 tick 200 条的速度回填历史（4999 条 ≈ 25 个 tick）；不迁移则在首次对话时从"现在"开始。
+
+### 12.4 游标与活跃时间的不变量（2026-10-18 修复）
+
+上线后发现「历史积压只能等用户再开口才推进」，根因是三处语义混用，现已固定成不变量：
+
+| 不变量 | 实现 | 违反后果 |
+| --- | --- | --- |
+| `topicStart`（归档游标）只表示「已归档到哪」，**写入它绝不改 `lastActiveAt`** | `setTopicStart` 只 `set` 游标 | 归档的是历史区间，游标时间戳会把 `lastActiveAt` 拨回历史，scope 立刻掉出活跃窗口，下一轮心跳选不到它，积压停滞 |
+| `lastActiveAt` 单调不减，只在更晚时更新 | `touchMetaIfNewer` | 迁移回填历史时间会把「最近活跃」往回拨，同样是掉出活跃窗口 |
+| 归档结果与游标推进**同事务**提交 | `commitTopicArchive` → `database.transact` | 进程在两次写之间被中断（重启/崩溃）会留下没推进的游标，下一轮把同一批对话再归档一次，产出重复 topic 记忆 |
+| 迁移只在 scope 没有任何 `sat_memory` 行时回拨游标 | `hasAnyMemory` 守卫 | `-f` 重跑会把已归档区间重新归档成重复记忆 |
+
+归档仍只把游标推进到**本批对话的末尾**（不是 `now`），归档期间新到的消息不会被跳过。
+
+另外：`getActiveMetas` 排除 `__global__`。它只用来存 `migratedAt`，没有对话，却是合法的一行 `sat_meta`——上线实测它被心跳当成候选、每次处理都把 `lastActiveAt` 刷成当前时间，于是永远排在最前面，白占 3 个处理名额里的一个。
+
+验证：`.scratch/cursor-check.ts`（游标/活跃时间语义、事务回滚——用未知字段让 minato 抛 `TypeError` 断言游标未推进、心跳自推进积压）；`summarize-check.ts` 每 tick 追加断言 `lastActiveAt ≈ now` 且 scope 仍在 `getActiveMetas` 窗口内、topic 区间不重复；`migrate-check.ts` 第三次迁移断言已归档 scope 的游标不回拨、无记忆 scope 仍回到最早旧对话、迁移不增删记忆。
 
 ---
 
@@ -566,7 +600,7 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 | **P3** 分层汇总 + 心跳 | `summarizer.ts` + `heartbeat.ts` + `prompts.ts`；先开 `summary_dry_run=true` | dry-run 下日志里能看到各级的 prompt、区间判定与跳过原因，**零 LLM 调用**；再关 dry-run，把 `memory_day_boundary_hour` 临时设成"1 分钟前"制造边界，确认真的产出 topic/day 记忆；连续跑两个 tick 确认防重入生效（不产生重复记忆） |
 | **P4** 上下文接入 | `context.ts` + 改 [index.tsx](external/satori-ai/src/index.tsx) 的 `buildSystemPrompt` | `log_system_prompt=true` 看系统提示里出现分层段落；对比同一句话在接入前后的回复，确认没有丢掉常识/群常识/群聊记录三段 |
 | **P5** 增量画像 | `profile.ts` 替换 `userportrait.ts` | 跑一次 day 汇总看 delta 应用日志（`+n ~m -k`）；`sat.memory.view` 确认画像条目与类别分组正确；手工构造超 60 条的画像验证淘汰 |
-| **P6** 收尾 | 命令（`sat.memory.view` / `clear` / `migrate`）、Schema 配置项、readme、删除 `memory.ts` 与 `userportrait.ts` | `yarn build`（tsc）通过；`enable_layered_memory=false` 时旧引擎仍可跑（若保留回退开关） |
+| **P6** 收尾 | 命令（`sat.memory.view` / `clear` / `migrate`）、Schema 配置项、readme、删除 `memory.ts` 与 `userportrait.ts` | `yarn build`（tsc）通过；`enable_layered_memory=false` 时只保留短期记忆 + 知识库且不报错 |
 
 ### 命令设计（全部新增，不破坏现有命令语义）
 
@@ -599,13 +633,15 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 
 | 风险 | 缓解 |
 |---|---|
-| **LLM 成本失控**（心跳 × 多 scope × 5 级） | 每 tick 限 3 个 scope + 串行 + 只处理有新对话的 scope + 走低成本 `auxiliaryChat` + `summary_dry_run` 开发期验证 |
+| **LLM 成本失控**（心跳 × 多 scope × 5 级） | 每 tick 限 3 个 scope + 串行 + 只处理有新对话的 scope + 走低成本 `auxiliaryChat`（持票用户走其通行证 key，不占机器人辅助额度）+ `summary_dry_run` 开发期验证 |
 | **提示词膨胀**导致回复质量下降或超 token | `memory_context_max_chars` 上限 + 按"越近越优先"截断 |
 | **时区/日界线算错**导致总结错位或重复 | 抽成纯函数 `lastBoundary()`，P1 阶段离线断言覆盖日界线前后两侧 |
-| **迁移不可逆** | 旧文件只重命名不删除；`enable_layered_memory` 回退开关 |
+| **迁移不可逆** | 旧文件只读、不修改不删除；迁移只删 `kind='legacy'` 的行；`enable_layered_memory=false` 可停用分层引擎 |
 | **候选集无限增长**导致检索变慢 | SQL 层先按 `scopeId` + 时间窗（`memory_retention_days`）过滤再进 JS 打分；`pruneDialogues` 定期清理原始对话 |
 | **Koishi ORM 在 mongo 后端下正则慢** | 检索**不走 DB 正则**，只按 `scopeId`/`granularity`/时间范围取候选，BM25 在 JS 里算 |
 | **多实例部署**（同一 bot 多进程）心跳重复跑 | 防重入只解决单进程。多实例需额外方案（DB 行锁 / 独立心跳进程），本次**不做**，在 readme 里标注为已知限制 |
+| **归档把 scope 挤出活跃窗口**，历史积压只能等用户再开口 | 游标与活跃时间分离：`setTopicStart` 不写 `lastActiveAt`，迁移用 `touchMetaIfNewer` 只前进（§12.4）。上线时对存量 `lastActiveAt` 做一次单调修复（取该 scope 最后一条对话的时间） |
+| **归档写入被中断产生重复 topic 记忆** | `commitTopicArchive` 用 `database.transact` 把「记忆落库」和「游标推进」合并成一次提交（§12.4） |
 
 ---
 
@@ -620,3 +656,7 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 7. **画像**（P5）：`sat.memory.view` 确认条目按 6 类分组、importance 排序；构造超限场景验证淘汰。
 8. **端到端**（P6）：`yarn dev` + 真实群聊发消息，观察 24h 内 topic → day 的自动蒸馏。
 9. **构建**（P6）：`cd external/satori-ai && yarn build`（tsc）无错误。
+10. **真实数据迁移**（已完成）：`npx tsx .scratch/migrate-check.ts` —— 用生产环境 1131 个文件在临时 SQLite 库跑三次迁移，断言条数、时间范围、`topicStart`、`lastActiveAt`、画像/知识数量、幂等性与「重跑不回拨游标」（§12.4）。
+11. **启动冒烟**（已完成）：`npx tsx .scratch/smoke-start.ts` —— 用真实 `koishi.yml` 配置启动完整插件（临时数据库），验证 5 张表建立、`recordTurn` 落库、`getPromptContext` 组装、知识幂等写入。
+12. **真实语料检索**（已完成）：`npx tsx .scratch/real-retrieval-check.ts` —— 5000 条真实用户消息上的中文召回质量与耗时。
+13. **游标/活跃时间不变量**（已完成，§12.4）：`npx tsx .scratch/cursor-check.ts` —— 游标不动活跃时间、活跃时间单调、事务回滚（未知字段触发 minato `TypeError`，断言游标未推进且记忆未落库）、心跳自推进积压且重复运行不产生重复区间。

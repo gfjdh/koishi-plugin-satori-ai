@@ -6,14 +6,13 @@ import { promises as fs } from 'fs'
 import { pathToFileURL } from 'url'
 import { EmojiManager } from './emoji'
 import { APIClient } from './api'
-import { MemoryManager } from './memory'
+import { MemoryService, MemoryServiceConfig } from './memory'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
-import { Sat, User, FavorabilityConfig, MemoryConfig, APIConfig, MiddlewareConfig } from './types'
+import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './types'
 import { addOutputCensor, filterResponse, processPrompt, splitSentences, updateUserPWithTicket } from './utils'
-import { UserPortraitManager } from './userportrait'
 import { MoodManager } from './mood'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
@@ -37,8 +36,7 @@ export function refreshPuppeteer(ctx: Context) {
 
 export class SAT extends Sat {
   private apiClient: APIClient
-  private memoryManager: MemoryManager
-  private portraitManager: UserPortraitManager
+  private memoryService: MemoryService
   private ChannelParallelCount: Map<string, number> = new Map()
   private onlineUsers: string[] = []
   private moodManager: MoodManager
@@ -97,8 +95,7 @@ export class SAT extends Sat {
     extendDatabase(ctx)
     // 初始化模块
     this.apiClient = new APIClient(ctx, this.getAPIConfig())
-    this.memoryManager = new MemoryManager(ctx, this.getMemoryConfig())
-    this.portraitManager = new UserPortraitManager(ctx, config)
+    this.memoryService = new MemoryService(ctx, this.getMemoryConfig(), this.apiClient)
     this.moodManager = new MoodManager(ctx, config)
     this.broadcastManager = new BroadcastManager(ctx, config)
     this.weatherManager = new WeatherManager(ctx, config)
@@ -111,6 +108,8 @@ export class SAT extends Sat {
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
     // 注册命令
     this.registerCommands(ctx)
+    // 启动分层记忆的后台汇总（可在配置中关闭）
+    this.memoryService.start()
 
     if (this.config.enable_game) this.game = new Game(ctx, config, this)
     if (config.enable_galgame) {
@@ -155,7 +154,7 @@ export class SAT extends Sat {
       max_output_tokens: this.config.max_output_tokens
     }
   }
-  private getMemoryConfig(): MemoryConfig {
+  private getMemoryConfig(): MemoryServiceConfig {
     return {
       dataDir: this.config.dataDir,
       bracket_filter: this.config.bracket_filter,
@@ -170,6 +169,20 @@ export class SAT extends Sat {
       common_topN: this.config.common_topN,
       dailogues_topN: this.config.dailogues_topN,
       enhanceReasoningProtection: this.config.enhanceReasoningProtection,
+      enable_layered_memory: this.config.enable_layered_memory,
+      memory_timezone_offset: this.config.memory_timezone_offset,
+      memory_day_boundary_hour: this.config.memory_day_boundary_hour,
+      topic_switch_check: this.config.topic_switch_check,
+      summary_heartbeat_minutes: this.config.summary_heartbeat_minutes,
+      summary_dry_run: this.config.summary_dry_run,
+      summary_max_scopes_per_tick: this.config.summary_max_scopes_per_tick,
+      memory_active_window_days: this.config.memory_active_window_days,
+      memory_retention_days: this.config.memory_retention_days,
+      memory_context_max_chars: this.config.memory_context_max_chars,
+      memory_recall_topN: this.config.memory_recall_topN,
+      profile_enabled: this.config.profile_enabled && this.config.enable_user_portrait,
+      profile_max_entries: this.config.profile_max_entries,
+      profile_context_entries: this.config.profile_context_entries,
     }
   }
   private getMiddlewareConfig(): MiddlewareConfig & FavorabilityConfig {
@@ -262,7 +275,27 @@ export class SAT extends Sat {
 
     ctx.command('sat.get_user_portrait <text:text>', '查看用户画像', { authority: 4 })
       .alias('查看画像')
-      .action(async ({ }, userId) => this.portraitManager.getUserPortraitById(userId))
+      .action(async ({ }, userId) => this.memoryService.getProfileById(userId))
+
+    ctx.command('sat.memory.view [scopeId:text]', '查看分层记忆', { authority: 4 })
+      .alias('查看记忆')
+      .action(async ({ session }, scopeId) => this.memoryService.view(scopeId || session.userId))
+
+    ctx.command('sat.memory.migrate', '重新迁移旧版记忆文件', { authority: 4 })
+      .option('force', '-f')
+      .action(async ({ options }) => {
+        const result = await this.memoryService.migrate(!!options.force)
+        return `迁移完成：对话 ${result.dialogues} 条（跳过 ${result.skippedDialogues}），`
+          + `画像 ${result.portraits} 份，知识 ${result.knowledge} 条`
+      })
+
+    ctx.command('sat.memory.clear [scopeId:text]', '清空分层记忆', { authority: 4 })
+      .option('all', '-a')
+      .action(async ({ session, options }, scopeId) => {
+        const target = options.all ? undefined : (scopeId || session.userId)
+        await this.memoryService.clearPersistent(target)
+        return target ? `已清空 ${target} 的分层记忆` : '已清空所有分层记忆'
+      })
 
     ctx.command('sat.get_warning_list', '查看警告列表', { authority: 4 })
       .alias('查看警告')
@@ -324,8 +357,9 @@ export class SAT extends Sat {
     const preCheckResult = this.performPreChecks(session, processedPrompt)
     if (preCheckResult) return preCheckResult
     // 重复对话检查
-    const channelId = this.config.enable_self_memory ? session.userId : session.channelId
-    const recentDialogues = this.memoryManager.getChannelMemory(channelId).slice(-10)
+    // 与 recordTurn 使用同一个 scope，避免 personal_memory/enable_self_memory 不一致时查错桶
+    const channelId = this.memoryService.getScopeId(session)
+    const recentDialogues = this.memoryService.getChannelMemory(channelId).slice(-10)
     const duplicateCheck = await this.checkDuplicateDialogue(session, processedPrompt, recentDialogues, user)
     if (duplicateCheck) return duplicateCheck
     // 固定对话处理
@@ -337,18 +371,15 @@ export class SAT extends Sat {
     // 生成回复
     const response = await this.generateResponse(session, processedPrompt)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
-    // 更新记忆
-    await this.memoryManager.updateMemories(session, processedPrompt, this.getMemoryConfig(), response)
+    // 更新记忆（短期记忆 + 分层长期记忆）
+    await this.memoryService.recordTurn(session, processedPrompt, response)
     // 更新用户p
     if (!response.error) await updateUserPWithTicket(this.ctx, user, 10)
-    // 更新用户画像
-    if (user.usage == this.config.portrait_usage - 1)
-      this.portraitManager.generatePortrait(session, user, this.apiClient)
 
     // 表情包逻辑
     if (this.emojiManager.shouldSendEmoji()) {
       try {
-        const memories = this.memoryManager.getChannelMemory(channelId)
+        const memories = this.memoryService.getChannelMemory(channelId)
         const emojiPath = await this.emojiManager.getEmoji(session, user, memories)
         if (emojiPath) {
           const buffer = await fs.readFile(emojiPath)
@@ -376,7 +407,7 @@ export class SAT extends Sat {
     if (outputCensor) return "(好感↓)"
     if (this.config.enable_auxiliary_LLM && !response.error && response.content) {
       const messages = generateAuxiliaryPrompt(prompt, response.content, user, this.getFavorabilityConfig())
-      const result = await this.apiClient.auxiliaryChat(messages)
+      const result = await this.apiClient.auxiliaryChat(messages, user)
       if (result.error) {
         logger.error(`辅助判断失败：${result.content}`)
       } else {
@@ -551,7 +582,7 @@ export class SAT extends Sat {
     }
     // 添加上下文记忆
     if (prompt != randomPrompt) {
-      const userMemory = this.memoryManager.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
+      const userMemory = this.memoryService.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
       messages.push(...userMemory)
     }
     // 添加当前对话
@@ -563,10 +594,7 @@ export class SAT extends Sat {
 
   // 构建系统提示
   private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
-    const commonSense = await this.memoryManager.searchMemories(session, 'common')
-    const groupSense = await this.memoryManager.searchMemories(session, 'group')
-    const channelDialogue = await this.memoryManager.getChannelDialogue(session)
-    const userMemory = await this.memoryManager.searchMemories(session, 'user')
+    const memoryContext = await this.memoryService.getPromptContext(session, prompt)
     const weatherPrompt = await this.weatherManager.buildWeatherPrompt(session)
     const user = await getUser(this.ctx, session.userId)
     const moodLevel = this.moodManager.getMoodLevel(user.userid)
@@ -574,7 +602,7 @@ export class SAT extends Sat {
 
     if (prompt == randomPrompt) {
       systemPrompt += '#首先明确一些参考信息\n'
-      systemPrompt += '\n##' + channelDialogue
+      systemPrompt += '\n##' + memoryContext.ambient
       systemPrompt += this.getThinkingPrompt(user, prompt)
       systemPrompt += this.config.prompt
       if (this.config.enhanceReasoningProtection) {
@@ -585,12 +613,14 @@ export class SAT extends Sat {
     }
 
     systemPrompt += '#首先明确一些参考信息\n'
-    systemPrompt += '\n##' + commonSense
-    systemPrompt += '\n##' + groupSense
+    systemPrompt += '\n##' + memoryContext.common
+    systemPrompt += '\n##' + memoryContext.group
     if (weatherPrompt) systemPrompt += `\n##${weatherPrompt}\n`
-    systemPrompt += '\n##' + channelDialogue
-    systemPrompt += '\n##' + userMemory
-    if (moodLevel == 'normal' || moodLevel == 'happy') systemPrompt += '\n##' + this.portraitManager.getUserPortrait(session)
+    systemPrompt += '\n##' + memoryContext.ambient
+    if (memoryContext.pyramid) systemPrompt += '\n##' + memoryContext.pyramid + '\n'
+    if (memoryContext.recalled) systemPrompt += '\n##' + memoryContext.recalled
+    if ((moodLevel == 'normal' || moodLevel == 'happy') && memoryContext.profile)
+      systemPrompt += '\n##' + memoryContext.profile
 
     systemPrompt += this.getThinkingPrompt(user, prompt)
 
@@ -758,15 +788,15 @@ export class SAT extends Sat {
   // 清空会话
   private clearSession(session: Session, global: boolean) {
     if (global) {
-      this.memoryManager.clearAllMemories()
+      this.memoryService.clearAllMemories()
       return session.text('commands.sat.clear.messages.Allclean')
     } else {
       if (this.config.personal_memory) {
-        this.memoryManager.clearChannelMemory(session.userId)
+        this.memoryService.clearChannelMemory(session.userId)
       } else {
-        this.memoryManager.clearChannelMemory(session.channelId)
+        this.memoryService.clearChannelMemory(session.channelId)
       }
-      this.memoryManager.clearChannelDialogue(session.channelId)
+      this.memoryService.clearChannelDialogue(session.channelId)
     }
     return session.text('commands.sat.clear.messages.clean')
   }
@@ -774,11 +804,7 @@ export class SAT extends Sat {
   // 添加常识
   private async addCommonSense(session: Session, content: string) {
     if (!content) return session.text('commands.sat.common_sense.messages.no-prompt')
-    const filePath = path.join(this.config.dataDir, 'common_sense.txt')
-    await this.memoryManager.saveLongTermMemory(session, [{
-      role: 'user',
-      content: content.replace(/\"/g, '\'').trim()
-    }], filePath)
+    await this.memoryService.addCommonSense(content.replace(/\"/g, '\'').trim())
     return session.text('commands.sat.common_sense.messages.succeed', [content]);
   }
 
@@ -786,11 +812,7 @@ export class SAT extends Sat {
   public async addGroupCommonSense(session: Session, content: string, groupId: string) {
     if (!content) return session.text('commands.sat.common_sense.messages.no-prompt')
     const id = groupId || session.channelId
-    const filePath = path.join(this.config.dataDir, `group_sense`, `${id}.txt`)
-    await this.memoryManager.saveLongTermMemory(session, [{
-      role: 'user',
-      content: content.replace(/\"/g, '\'').trim()
-    }], filePath)
+    await this.memoryService.addGroupCommonSense(content.replace(/\"/g, '\'').trim(), id)
     return session.text('commands.sat.common_sense.messages.succeed', [`群${id}中：` + content]);
   }
 
@@ -799,8 +821,6 @@ export class SAT extends Sat {
     const userId = options.id || session.userId
     const user = await ensureUserExists(this.ctx, userId, session.username)
     const level = options.level || (user.userlevel > 1 ? user.userlevel : 1)
-    const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
-    if (enableUserKey || level > 3) await this.portraitManager.generatePortrait(session, user, this.apiClient)
     await updateUserLevel(this.ctx, user, level)
     return session.text('commands.sat.messages.update_level_succeed', [level])
   }
@@ -817,7 +837,7 @@ export class SAT extends Sat {
       result += session.text('commands.sat.messages.usage', [userUsage, '∞']) + '\n地灵殿通行证生效中\n'
     else
       result += session.text('commands.sat.messages.usage', [userUsage, maxUsage]) + '\n'
-    if (this.portraitManager.hasPortrait(user.userid))
+    if (await this.memoryService.hasProfile(this.memoryService.getScopeId(session)))
       result += '用户画像生效中\n'
     return result
   }
@@ -843,11 +863,12 @@ export class SAT extends Sat {
     // 敏感词处理
     let censored = processedPrompt
     if (this.ctx.censor) censored = await this.ctx.censor.transform(processedPrompt, session)
-    this.memoryManager.updateChannelDialogue(session, censored, session.username)
+    this.memoryService.updateChannelDialogue(session, censored, session.username)
     return null
   }
 
   public async dispose(): Promise<void> {
+    this.memoryService.stop()
     if (this.puppeteer) {
       try {
         await this.puppeteer.stop();

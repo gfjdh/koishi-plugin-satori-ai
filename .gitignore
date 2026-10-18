@@ -2,6 +2,7 @@ dist
 external
 emojis/*
 node_modules
+.scratch
 npm-debug.log
 yarn-debug.log
 yarn-error.log

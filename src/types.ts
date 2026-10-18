@@ -219,6 +219,22 @@ export namespace Sat {
     dailogues_topN: number
     enable_fixed_dialogues: boolean
 
+    // 分层记忆
+    enable_layered_memory: boolean
+    memory_timezone_offset: number
+    memory_day_boundary_hour: number
+    topic_switch_check: boolean
+    summary_heartbeat_minutes: number
+    summary_dry_run: boolean
+    summary_max_scopes_per_tick: number
+    memory_active_window_days: number
+    memory_retention_days: number
+    memory_context_max_chars: number
+    memory_recall_topN: number
+    profile_enabled: boolean
+    profile_max_entries: number
+    profile_context_entries: number
+
     enable_reasoner_like: boolean
     max_usage: number[]
     private: boolean
@@ -365,11 +381,28 @@ export namespace Sat {
       memory_filter: Schema.string().role('textarea').default('示例1-示例2').description('短期记忆过滤词，使用“-”分隔，含有过滤词的那一句不会被记忆，用于缓解复读问题'),
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
       memory_block_words: Schema.array(String).default(['好感']).description('记忆屏蔽词'),
-      remember_min_length: Schema.number().description('触发保存到记忆的长度').default(20),
+      remember_min_length: Schema.number().description('已废弃：分层记忆不再用长度门槛过滤与 AI 的对话').default(20),
       common_topN: Schema.number().default(5).description('群常识、常识记忆检索最大匹配数'),
       dailogues_topN: Schema.number().default(5).description('对话记忆检索最大匹配数'),
       enable_fixed_dialogues: Schema.boolean().default(false).description('是否启用固定对话（在dataDir中的fixed_dialogues.json修改）'),
     }).description('记忆设置'),
+
+    Schema.object({
+      enable_layered_memory: Schema.boolean().default(true).description('是否启用分层长期记忆（话题→日→周→月→季→年的自动归档）。关闭后仅保留短期记忆与常识库'),
+      memory_timezone_offset: Schema.number().default(8).description('分层记忆使用的时区偏移（小时），用于计算日界线'),
+      memory_day_boundary_hour: Schema.number().min(0).max(23).step(1).default(4).description('日界线小时，默认凌晨 4 点'),
+      topic_switch_check: Schema.boolean().default(true).description('是否用辅助模型判断话题切换'),
+      summary_heartbeat_minutes: Schema.number().default(10).description('后台汇总心跳间隔（分钟）'),
+      summary_max_scopes_per_tick: Schema.number().default(3).description('每次心跳最多处理的用户/群数量'),
+      memory_active_window_days: Schema.number().default(7).description('只对最近多少天内活跃过的用户/群做汇总'),
+      memory_retention_days: Schema.number().default(180).description('原始对话保留天数'),
+      memory_recall_topN: Schema.number().default(5).description('关键词召回的历史记忆条数'),
+      memory_context_max_chars: Schema.number().default(2000).description('分层记忆注入系统提示的最大字符数，超出时按“越近越优先”截断'),
+      summary_dry_run: Schema.boolean().default(false).description('调试用：只记录将要执行的汇总，不调用模型、不写库'),
+      profile_enabled: Schema.boolean().default(true).description('是否启用增量用户画像（由日总结驱动更新）'),
+      profile_max_entries: Schema.number().default(60).description('用户画像最多保留的条目数'),
+      profile_context_entries: Schema.number().default(30).description('注入系统提示的画像条目数'),
+    }).description('分层记忆设置'),
 
     Schema.object({
       max_usage: Schema.tuple([Number, Number, Number, Number, Number]).default([40, 240, 3000, 9999, 0]).description('每日最大使用次数(对应用户level0~level4)(0为不限制)'),
@@ -419,10 +452,10 @@ export namespace Sat {
       enable_auxiliary_LLM: Schema.boolean().default(false).description('是否使用辅助大模型判断好感度增减(量与输入屏蔽词每次扣除的好感度相关,不稳定，慎用)'),
       offset_of_fafavorability: Schema.number().default(3.5).description('辅助大模型好感度偏移量(越大越容易扣好感度)'),
       visible_favorability: Schema.boolean().default(true).description('是否开启好感度升降显示'),
-      enable_user_portrait: Schema.boolean().default(true).description('是否启用用户画像功能'),
-      portrait_usage: Schema.number().default(2).description('每天触发第几次对话后触发画像生成（最小为2）'),
-      max_portrait_dialogues: Schema.number().default(100).description('画像生成获取的最大对话条数'),
-      portrait_min_favorability: Schema.number().default(100).description('触发画像生成的最小好感度'),
+      enable_user_portrait: Schema.boolean().default(true).description('旧画像开关：与“分层记忆设置”的 profile_enabled 同时开启才生效'),
+      portrait_usage: Schema.number().default(2).description('已废弃：画像改由日总结驱动更新'),
+      max_portrait_dialogues: Schema.number().default(100).description('已废弃：画像改由日总结驱动更新'),
+      portrait_min_favorability: Schema.number().default(100).description('已废弃：画像改由日总结驱动更新'),
       prompt_0: Schema.string().role('textarea').description('厌恶好感补充设定'),
       favorability_div_1: Schema.number().default(15).description('厌恶-陌生分界线'),
       prompt_1: Schema.string().role('textarea').description('陌生好感补充设定'),
