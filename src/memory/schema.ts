@@ -50,6 +50,8 @@ export interface ProfileEntry {
 export interface ProfileData {
   entries: ProfileEntry[]
   lastSummarizedAt?: string
+  /** 历史回填完成时间；存在即表示已用高层汇总补过一次画像 */
+  backfilledAt?: string
 }
 
 // 用户画像（每个 scope 一行）

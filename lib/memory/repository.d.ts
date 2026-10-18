@@ -14,10 +14,19 @@ export declare class MemoryRepository {
         limit?: number;
         before?: Date;
     }): Promise<SatDialogue[]>;
+    /** after < createdAt < before 的最后一条对话时间，用于跳过当天剩余部分 */
+    getLastDialogueInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<Date | null>;
     countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number>;
     /** after < createdAt < before 的对话数，用于判断一个已关闭的日块是否归档干净 */
     countDialoguesInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<number>;
     countDialogues(scopeId: string): Promise<number>;
+    /** since 之后的对话数。用数据库 COUNT，避免把整段历史拉进内存。 */
+    countDialoguesSince(scopeId: string, since: Date, kinds?: string[]): Promise<number>;
+    /** 该 scope 最早/最晚一条对话的时间（走 scopeId+createdAt 索引） */
+    getDialogueTimeRange(scopeId: string, kinds?: string[]): Promise<{
+        first: Date | null;
+        last: Date | null;
+    }>;
     /** 只清理普通对话，legacy 迁移数据保留（一次性数据，量有界） */
     pruneDialogues(before: Date): Promise<number>;
     getMeta(scopeId: string): Promise<SatMeta | null>;
@@ -48,6 +57,8 @@ export declare class MemoryRepository {
     getEarliestChildStart(scopeId: string, granularity: Granularity): Promise<Date | null>;
     /** 区间查询：from < periodEnd <= to，走真正的 SQL 条件而不是 JS 侧过滤 */
     getMemoriesInRange(scopeId: string, granularity: Granularity, from: Date | null, to: Date, limit?: number): Promise<SatMemory[]>;
+    /** 某个时间点之前结束的最新节点（用于历史回填选材） */
+    getLatestMemoryBefore(scopeId: string, granularity: Granularity, before: Date): Promise<SatMemory | null>;
     createMemory(row: Omit<SatMemory, 'id'>): Promise<void>;
     /** 该 scope 是否已经产过分层记忆（用于判断迁移是否第一次跑） */
     hasAnyMemory(scopeId: string): Promise<boolean>;
@@ -56,6 +67,11 @@ export declare class MemoryRepository {
      * （重启 / 崩溃）会留下没推进的游标，下一轮把同一批对话再归档一次。
      */
     commitTopicArchive(memory: Omit<SatMemory, 'id'>, scopeId: string, topicStart: Date): Promise<void>;
+    /**
+     * 合并归档：多条 topic 记忆与游标推进一起提交。
+     * 中间失败不会留下「写了一半天节点、游标却没动」的半截状态。
+     */
+    commitTopicArchives(memories: Omit<SatMemory, 'id'>[], scopeId: string, topicStart: Date): Promise<void>;
     getRecallCandidates(scopeId: string, granularities: Granularity[], since: Date): Promise<SatMemory[]>;
     listMemories(scopeId: string, limit?: number): Promise<SatMemory[]>;
     clearScope(scopeId: string): Promise<void>;

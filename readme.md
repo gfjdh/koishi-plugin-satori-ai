@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/koishi-plugin-satori-ai?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-satori-ai) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![Static Badge](https://img.shields.io/badge/QQ交流群-2167028216-green)
 
-当前版本: 2.0.1  •  最后更新: 2026-10-18
+当前版本: 2.1.0  •  最后更新: 2026-10-18
 
 基于 Koishi 框架的智能聊天机器人插件（Satori 适配器），集成多轮对话、分层长期记忆与用户画像、好感度/情绪系统，可选 Puppeteer、天气感知、广播与小游戏等扩展功能，支持深度自定义。
 
@@ -24,6 +24,17 @@
 ---
 
 ## 最近更新要点
+
+### v2.1：历史积压归档提速与画像质量
+
+- **稀疏日合并归档**：连续多个对话稀疏的自然日（单日 ≤ 30 条）会合并成**一次**模型调用，按日期分别返回每一天的话题与总结，日界仍然严格保留。一次最多合并 5 个有对话的日子（可跨过空白日期，向前最多扫描 20 天），总量不超过 80 条对话。历史回填的调用量因此降到大约 1/5，实测归档速度从约 15 个 scope-day/分钟提升到 45 个/分钟以上。
+  - 合并产生的多条记忆与归档游标在**同一个事务**里提交；任何一天缺失或解析失败都会整批作废并退回单日归档，不会把某天的内容写进别的日期。
+- **异常日自动跳过**：某一天被模型内容审核拒绝（`data_inspection_failed` / `inappropriate content`）时立即跳过；其他错误连续失败 3 次后跳过。跳过只推进归档游标，既不会让一个坏日子卡死整个用户的历史补齐，也不会把游标推进到未来。
+- **并发心跳**：新增 `summary_concurrency`（默认 10），同时处理多个用户/群；单个用户/群内部仍严格串行以保证归档顺序。配合 `summary_heartbeat_minutes`（默认 10 分钟）、`summary_max_scopes_per_tick`（默认 30）、`summary_max_calls_per_tick`（默认 8）可以显著加快大量历史对话的补齐。
+- **近期对话感知**：系统提示中新增「近期对话时间与频率」段——最近一天/一周/一月/一季/一年的轮次、日均轮次与距上次对话的时间，让模型自然表达关心而不是念数字；`dialogue_stats_enabled` 可关闭。该段在预算裁剪时不会被丢弃。
+- **画像更新窗口**：画像只由最近 `profile_update_window_days`（默认 7 天）内结束的日总结更新，历史回填阶段不再为几个月前的每个日子重复调用模型。
+- **积压追平后一次性回填**：某个用户/群的历史全部归档完毕后，用金字塔里的季度/月/周总结补一次画像（每个 scope 只做一次，失败下轮重试），旧历史里的长期信息不会整体丢失。
+- **画像召回上限**：注入系统提示的画像条目上限 `profile_context_entries` 默认提高到 100，保留上限 `profile_max_entries` 同步为 100，按重要度/更新时间取前 N 条。
 
 ### v2.0：分层长期记忆重构
 
@@ -124,9 +135,11 @@ topic  （一次连续话题，不跨自然日）
                       └─ year    （自然年）
 ```
 
-- 话题切换由轮数阈值（5–20 条）与辅助模型共同判断；历史积压按自然日逐块归档。
+- 话题切换由轮数阈值（5–20 条）与辅助模型共同判断；历史积压按自然日逐块归档，话题与日节点都**不跨自然日**。
+- 对话稀疏的历史日子会合并归档：连续最多 5 个有对话的日子（单日 ≤ 30 条、合计 ≤ 80 条，可跨过空白日期）走一次模型调用，按日期分别返回各自的总结。合并失败或缺少某一天时整批作废，退回单日归档。
 - 只有当一个周期的**所有下层节点**都已产出、且归档游标已经越过该周期末尾时，才会生成周期节点。单子节点直接晋升，不额外调用模型。
-- 每 10 分钟一次心跳，每次最多处理 3 个活跃用户/群；每个 scope 的辅助模型调用预算默认 8 次，在归档与层级汇总之间平分。历史积压较多时可调大 `summary_max_calls_per_tick`。
+- 每 10 分钟一次心跳（`summary_heartbeat_minutes`），默认每轮最多处理 30 个活跃用户/群（`summary_max_scopes_per_tick`）、最多 10 个并发（`summary_concurrency`）；每个 scope 的辅助模型调用预算默认 8 次（`summary_max_calls_per_tick`），在归档与层级汇总之间平分。历史积压较多时优先调大并发与单轮 scope 数。
+- 某个 scope 的历史没追平前不会生成更高层级；追平后会用高层汇总补一次画像（每个 scope 一次）。
 - 原始对话默认保留 180 天（`memory_retention_days`），汇总后的记忆不会被清理。
 
 #### 数据存储
@@ -144,8 +157,9 @@ topic  （一次连续话题，不跨自然日）
 #### 检索与注入
 
 - 知识库与历史记忆使用 BM25 + 时间衰减打分，按查询词召回 TopN。
-- 系统提示中始终包含最近一条话题与最近一条日总结，再按预算追加召回记忆与画像条目。
-- 画像由日总结增量更新，最多保留 `profile_max_entries` 条。
+- 系统提示依次注入：近期对话统计（`dialogue_stats_enabled`）、最近一条话题与最近一条日总结、按查询召回的历史记忆、用户画像。超出 `memory_context_max_chars` 时按「越近越优先」裁剪，统计段不会被丢弃。
+- 画像由日总结增量更新，只使用最近 `profile_update_window_days` 天内结束的日节点；每个 scope 的历史追平后会用高层汇总回填一次。
+- 画像最多保留 `profile_max_entries` 条，注入时按重要度/更新时间取前 `profile_context_entries` 条（两者默认均为 100）。
 
 ---
 
@@ -180,7 +194,8 @@ topic  （一次连续话题，不跨自然日）
 1. **成本**
    - 分层记忆在后台持续调用辅助模型；历史积压时的总调用量约为「归档次数 + 日画像 + 多子节点汇总」。
    - 辅助模型建议使用低成本模型；`summary_dry_run: true` 可先观察将要执行的任务而不实际调用。
-   - 每隔一段时间会为每个日节点更新一次用户画像；不需要时可用 `profile_enabled: false` 关闭。
+   - 稀疏的历史日子会合并成一次调用归档，单日对话很多时才会逐日调用；遇到内容审核拒绝或连续失败的日子会自动跳过，不会卡住后续历史。
+   - 画像只由最近 `profile_update_window_days` 天内结束的日节点更新，每个 scope 追平后再回填一次；不需要时可用 `profile_enabled: false` 关闭。
 
 2. **好感度机制**
    - 启用辅助模型后，基础好感度自动增长将**失效**。
@@ -196,6 +211,7 @@ topic  （一次连续话题，不跨自然日）
    - 推荐 `max_parallel_count` 设为 2–4（根据 API 调整）。
    - 高并发场景建议启用 `online_user_check` 防止重复请求。
    - 活跃用户/群很多时可降低 `memory_active_window_days` 或 `summary_max_scopes_per_tick`，控制后台成本。
+   - 历史积压很多时反过来调大 `summary_concurrency`（同时处理的 scope 数）和 `summary_max_calls_per_tick`；单个 scope 内部始终串行，并发只发生在不同用户/群之间。
 
 5. **问题排查**
    - API 原始错误看 `satori-api` 日志；归档与汇总看 `satori-summary`、`satori-heartbeat`、`satori-memory`。

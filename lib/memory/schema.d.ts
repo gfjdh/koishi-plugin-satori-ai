@@ -38,6 +38,8 @@ export interface ProfileEntry {
 export interface ProfileData {
     entries: ProfileEntry[];
     lastSummarizedAt?: string;
+    /** 历史回填完成时间；存在即表示已用高层汇总补过一次画像 */
+    backfilledAt?: string;
 }
 export interface SatProfile {
     id: number;

@@ -6,6 +6,7 @@ export interface PromptContext {
     common: string;
     group: string;
     ambient: string;
+    stats: string;
     pyramid: string;
     recalled: string;
     profile: string;
@@ -18,6 +19,7 @@ export interface ContextConfig {
     retentionDays: number;
     contextMaxChars: number;
     timezoneOffset: number;
+    dialogueStatsEnabled: boolean;
     memoryConfig: any;
 }
 export declare class ContextBuilder {

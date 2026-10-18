@@ -7,12 +7,14 @@ import { ProfileManager } from './profile'
 import { Granularity, SatKnowledge, SatMemory } from './schema'
 import { rankDocuments, RetrievalDocument, truncate } from './retrieval'
 import { ShortTermMemory } from './short-term'
+import { buildDialogueStats } from './stats'
 import { formatTime } from './summarizer'
 
 export interface PromptContext {
   common: string
   group: string
   ambient: string
+  stats: string
   pyramid: string
   recalled: string
   profile: string
@@ -26,6 +28,7 @@ export interface ContextConfig {
   retentionDays: number
   contextMaxChars: number
   timezoneOffset: number
+  dialogueStatsEnabled: boolean
   memoryConfig: any
 }
 
@@ -40,16 +43,17 @@ export class ContextBuilder {
   async build(session: Session, query: string): Promise<PromptContext> {
     const scopeId = this.config.memoryConfig.personal_memory ? session.userId : session.channelId
 
-    const [common, group, pyramid, recalled, profile] = await Promise.all([
+    const [common, group, stats, pyramid, recalled, profile] = await Promise.all([
       this.buildKnowledge('common', '*', query, this.config.commonTopN),
       this.buildKnowledge('group', session.channelId, query, this.config.commonTopN),
+      this.config.dialogueStatsEnabled ? buildDialogueStats(this.repo, scopeId) : Promise.resolve(''),
       this.config.enabled ? this.buildPyramid(scopeId) : Promise.resolve(''),
       this.config.enabled ? this.buildRecall(scopeId, query) : Promise.resolve(''),
       this.profile.getContext(scopeId),
     ])
 
     const ambient = this.shortTerm.getChannelDialogue(session, this.config.memoryConfig)
-    return this.applyBudget({ common, group, ambient, pyramid, recalled, profile })
+    return this.applyBudget({ common, group, ambient, stats, pyramid, recalled, profile })
   }
 
   // ---------- 知识 ----------
@@ -167,7 +171,7 @@ export class ContextBuilder {
 
     const total = () =>
       context.common.length + context.group.length + context.ambient.length
-      + context.pyramid.length + context.recalled.length + context.profile.length
+      + context.stats.length + context.pyramid.length + context.recalled.length + context.profile.length
 
     if (total() <= max) return context
 
@@ -188,7 +192,7 @@ export class ContextBuilder {
     // 仍然超限：按剩余长度硬截断金字塔，保留最新的“近期话题”
     const otherLength = () =>
       context.common.length + context.group.length + context.ambient.length
-      + context.recalled.length + context.profile.length
+      + context.stats.length + context.recalled.length + context.profile.length
     const allowed = Math.max(0, max - otherLength())
     context.pyramid = truncate(context.pyramid, allowed)
     return context

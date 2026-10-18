@@ -202,9 +202,11 @@ export declare namespace Sat {
         memory_retention_days: number;
         memory_context_max_chars: number;
         memory_recall_topN: number;
+        dialogue_stats_enabled: boolean;
         profile_enabled: boolean;
         profile_max_entries: number;
         profile_context_entries: number;
+        profile_update_window_days: number;
         enable_reasoner_like: boolean;
         max_usage: number[];
         private: boolean;

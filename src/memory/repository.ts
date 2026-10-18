@@ -1,6 +1,6 @@
 // src/memory/repository.ts
 // 数据访问层：所有对 sat_* 表的读写都集中在这里。
-import { Context } from 'koishi'
+import { Context, $ } from 'koishi'
 import {
   GLOBAL_SCOPE, Granularity, ProfileData, SatDialogue, SatKnowledge, SatMemory, SatMeta, SatProfile,
 } from './schema'
@@ -41,6 +41,23 @@ export class MemoryRepository {
     })
   }
 
+  /** after < createdAt < before 的最后一条对话时间，用于跳过当天剩余部分 */
+  async getLastDialogueInRange(
+    scopeId: string,
+    after: Date,
+    before: Date,
+    kinds?: string[],
+  ): Promise<Date | null> {
+    const query: any = { scopeId, createdAt: { $gt: after, $lt: before } }
+    if (kinds?.length) query.kind = { $in: kinds }
+    const [row] = await this.ctx.database.get('sat_dialogue', query, {
+      sort: { createdAt: 'desc' },
+      limit: 1,
+      fields: ['createdAt'],
+    })
+    return row ? new Date(row.createdAt) : null
+  }
+
   async countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number> {
     const query: any = { scopeId, createdAt: { $gt: after } }
     if (kinds?.length) query.kind = { $in: kinds }
@@ -64,6 +81,34 @@ export class MemoryRepository {
   async countDialogues(scopeId: string): Promise<number> {
     const rows = await this.ctx.database.get('sat_dialogue', { scopeId }, { fields: ['id'] })
     return rows.length
+  }
+
+  /** since 之后的对话数。用数据库 COUNT，避免把整段历史拉进内存。 */
+  async countDialoguesSince(scopeId: string, since: Date, kinds?: string[]): Promise<number> {
+    const query: any = { scopeId, createdAt: { $gte: since } }
+    if (kinds?.length) query.kind = { $in: kinds }
+    return this.ctx.database.eval('sat_dialogue', row => $.count(row.id), query)
+  }
+
+  /** 该 scope 最早/最晚一条对话的时间（走 scopeId+createdAt 索引） */
+  async getDialogueTimeRange(scopeId: string, kinds?: string[]): Promise<{ first: Date | null, last: Date | null }> {
+    const query: any = { scopeId }
+    if (kinds?.length) query.kind = { $in: kinds }
+    const [firstRow] = await this.ctx.database.get('sat_dialogue', query, {
+      sort: { createdAt: 'asc' },
+      limit: 1,
+      fields: ['createdAt'],
+    })
+    if (!firstRow) return { first: null, last: null }
+    const [lastRow] = await this.ctx.database.get('sat_dialogue', query, {
+      sort: { createdAt: 'desc' },
+      limit: 1,
+      fields: ['createdAt'],
+    })
+    return {
+      first: new Date(firstRow.createdAt),
+      last: lastRow ? new Date(lastRow.createdAt) : null,
+    }
   }
 
   /** 只清理普通对话，legacy 迁移数据保留（一次性数据，量有界） */
@@ -188,6 +233,21 @@ export class MemoryRepository {
     })
   }
 
+  /** 某个时间点之前结束的最新节点（用于历史回填选材） */
+  async getLatestMemoryBefore(
+    scopeId: string,
+    granularity: Granularity,
+    before: Date,
+  ): Promise<SatMemory | null> {
+    const rows = await this.ctx.database.get('sat_memory', {
+      scopeId, granularity, periodEnd: { $lte: before },
+    }, {
+      sort: { periodEnd: 'desc' },
+      limit: 1,
+    })
+    return rows[0] || null
+  }
+
   async createMemory(row: Omit<SatMemory, 'id'>): Promise<void> {
     await this.ctx.database.create('sat_memory', row)
   }
@@ -209,6 +269,21 @@ export class MemoryRepository {
   ): Promise<void> {
     await this.ctx.database.transact(async (db) => {
       await db.create('sat_memory', memory)
+      await db.set('sat_meta', { scopeId }, { topicStart })
+    })
+  }
+
+  /**
+   * 合并归档：多条 topic 记忆与游标推进一起提交。
+   * 中间失败不会留下「写了一半天节点、游标却没动」的半截状态。
+   */
+  async commitTopicArchives(
+    memories: Omit<SatMemory, 'id'>[],
+    scopeId: string,
+    topicStart: Date,
+  ): Promise<void> {
+    await this.ctx.database.transact(async (db) => {
+      for (const memory of memories) await db.create('sat_memory', memory)
       await db.set('sat_meta', { scopeId }, { topicStart })
     })
   }

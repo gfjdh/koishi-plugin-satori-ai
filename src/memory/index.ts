@@ -30,9 +30,11 @@ export interface MemoryServiceConfig extends MemoryConfig {
   memory_retention_days: number
   memory_context_max_chars: number
   memory_recall_topN: number
+  dialogue_stats_enabled: boolean
   profile_enabled: boolean
   profile_max_entries: number
   profile_context_entries: number
+  profile_update_window_days: number
 }
 
 export interface TurnResponse {
@@ -63,6 +65,7 @@ export class MemoryService {
       dryRun: config.summary_dry_run,
       maxEntries: config.profile_max_entries,
       contextEntries: config.profile_context_entries,
+      updateWindowDays: config.profile_update_window_days,
     })
     // 按人记忆时 scopeId 就是 userId；群级记忆无法唯一定位用户，保持默认辅助模型
     const resolveUser = config.personal_memory
@@ -84,6 +87,7 @@ export class MemoryService {
       retentionDays: config.memory_retention_days,
       contextMaxChars: config.memory_context_max_chars,
       timezoneOffset: config.memory_timezone_offset,
+      dialogueStatsEnabled: config.dialogue_stats_enabled,
       memoryConfig: config,
     })
     this.heartbeat = new Heartbeat(ctx, this.repo, this.summarizer, {

@@ -182,9 +182,11 @@ export class SAT extends Sat {
       memory_retention_days: this.config.memory_retention_days,
       memory_context_max_chars: this.config.memory_context_max_chars,
       memory_recall_topN: this.config.memory_recall_topN,
+      dialogue_stats_enabled: this.config.dialogue_stats_enabled,
       profile_enabled: this.config.profile_enabled && this.config.enable_user_portrait,
       profile_max_entries: this.config.profile_max_entries,
       profile_context_entries: this.config.profile_context_entries,
+      profile_update_window_days: this.config.profile_update_window_days,
     }
   }
   private getMiddlewareConfig(): MiddlewareConfig & FavorabilityConfig {
@@ -619,6 +621,7 @@ export class SAT extends Sat {
     systemPrompt += '\n##' + memoryContext.group
     if (weatherPrompt) systemPrompt += `\n##${weatherPrompt}\n`
     systemPrompt += '\n##' + memoryContext.ambient
+    if (memoryContext.stats) systemPrompt += '\n##' + memoryContext.stats
     if (memoryContext.pyramid) systemPrompt += '\n##' + memoryContext.pyramid + '\n'
     if (memoryContext.recalled) systemPrompt += '\n##' + memoryContext.recalled
     if ((moodLevel == 'normal' || moodLevel == 'happy') && memoryContext.profile)

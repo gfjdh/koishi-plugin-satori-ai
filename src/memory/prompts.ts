@@ -8,6 +8,11 @@ export interface ArchiveResult {
   user_state?: string
 }
 
+/** 合并归档时模型为每一天返回的结果，date 用于与输入分组对齐 */
+export interface ArchiveDayResult extends ArchiveResult {
+  date?: string
+}
+
 export interface SummaryResult {
   summary?: string
   user_state?: string
@@ -56,6 +61,28 @@ ${dialogues}
 · topic 用不超过 12 个字概括这段对话的主题。
 · 仅输出 JSON，不要包含 markdown 代码块或其他内容：
 {"topic": "...", "summary": "...", "user_state": "..."}`,
+  }]
+}
+
+/** 把连续多个稀疏日的对话合并成一次调用，按日分别归档 */
+export function buildTopicBatchPrompt(days: { date: string; dialogues: string }[]): { role: string; content: string }[] {
+  const body = days.map(day => `【${day.date}】\n${day.dialogues}`).join('\n\n')
+  return [{
+    role: 'user',
+    content: `下面按自然日分组给出了几段对话记录。请为每一天分别形成一条可长期保存的独立记忆，不要跨天合并。
+
+对话记录：
+${body}
+
+要求：
+· 输出条数必须与输入分组数一致，每一天各一条；date 原样照抄分组标题里的日期（YYYY/MM/DD）。
+· 每一天只总结该日期分组内的对话，不要把其他日期的人物、事件混进来。
+· 无状态地存储信息：把“今天”“明天”“最近”“刚才”等相对时间替换成具体的日期或时间范围。
+· summary 简洁但保留关键事实、人物、地点、数字和用户的明确要求。
+· user_state 描述该日用户的处境、作息、情绪或正在做的事；没有相关信息时留空字符串。
+· topic 用不超过 12 个字概括该日对话的主题。
+· 仅输出 JSON，不要包含 markdown 代码块或其他内容：
+{"days":[{"date":"YYYY/MM/DD","topic":"...","summary":"...","user_state":"..."}]}`,
   }]
 }
 

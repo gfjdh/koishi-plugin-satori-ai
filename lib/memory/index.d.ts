@@ -17,9 +17,11 @@ export interface MemoryServiceConfig extends MemoryConfig {
     memory_retention_days: number;
     memory_context_max_chars: number;
     memory_recall_topN: number;
+    dialogue_stats_enabled: boolean;
     profile_enabled: boolean;
     profile_max_entries: number;
     profile_context_entries: number;
+    profile_update_window_days: number;
 }
 export interface TurnResponse {
     content: string;

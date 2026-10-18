@@ -4,6 +4,10 @@ export interface ArchiveResult {
     summary?: string;
     user_state?: string;
 }
+/** 合并归档时模型为每一天返回的结果，date 用于与输入分组对齐 */
+export interface ArchiveDayResult extends ArchiveResult {
+    date?: string;
+}
 export interface SummaryResult {
     summary?: string;
     user_state?: string;
@@ -15,6 +19,14 @@ export declare function buildTopicSwitchPrompt(dialogues: string, topicStart: st
 }[];
 /** 把一段原始对话归档为一条 topic 记忆 */
 export declare function buildTopicArchivePrompt(dialogues: string): {
+    role: string;
+    content: string;
+}[];
+/** 把连续多个稀疏日的对话合并成一次调用，按日分别归档 */
+export declare function buildTopicBatchPrompt(days: {
+    date: string;
+    dialogues: string;
+}[]): {
     role: string;
     content: string;
 }[];

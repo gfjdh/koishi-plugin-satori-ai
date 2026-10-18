@@ -233,9 +233,11 @@ export namespace Sat {
     memory_retention_days: number
     memory_context_max_chars: number
     memory_recall_topN: number
+    dialogue_stats_enabled: boolean
     profile_enabled: boolean
     profile_max_entries: number
     profile_context_entries: number
+    profile_update_window_days: number
 
     enable_reasoner_like: boolean
     max_usage: number[]
@@ -402,10 +404,12 @@ export namespace Sat {
       memory_retention_days: Schema.number().default(180).description('原始对话保留天数'),
       memory_recall_topN: Schema.number().default(5).description('关键词召回的历史记忆条数'),
       memory_context_max_chars: Schema.number().default(2000).description('分层记忆注入系统提示的最大字符数，超出时按“越近越优先”截断'),
+      dialogue_stats_enabled: Schema.boolean().default(true).description('是否注入近期对话时间与频率统计（最近一天/一周/一月及距上次对话的时间）'),
       summary_dry_run: Schema.boolean().default(false).description('调试用：只记录将要执行的汇总，不调用模型、不写库'),
       profile_enabled: Schema.boolean().default(true).description('是否启用增量用户画像（由日总结驱动更新）'),
-      profile_max_entries: Schema.number().default(60).description('用户画像最多保留的条目数'),
-      profile_context_entries: Schema.number().default(30).description('注入系统提示的画像条目数'),
+      profile_max_entries: Schema.number().default(100).description('用户画像最多保留的条目数'),
+      profile_context_entries: Schema.number().default(100).description('每次注入系统提示的画像条目数上限（按重要度/更新时间取前 N 条）'),
+      profile_update_window_days: Schema.number().default(7).description('画像只由最近 N 天内结束的日总结更新，避免历史回填阶段反复调用模型（0 为不限制）'),
     }).description('分层记忆设置'),
 
     Schema.object({
