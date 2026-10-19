@@ -403,7 +403,7 @@ export namespace Sat {
       memory_active_window_days: Schema.number().default(7).description('只对最近多少天内活跃过的用户/群做汇总'),
       memory_retention_days: Schema.number().default(180).description('原始对话保留天数'),
       memory_recall_topN: Schema.number().default(5).description('关键词召回的历史记忆条数'),
-      memory_context_max_chars: Schema.number().default(2000).description('分层记忆注入系统提示的最大字符数，超出时按“越近越优先”截断'),
+      memory_context_max_chars: Schema.number().default(8000).description('分层记忆注入系统提示的最大字符数：默认覆盖所有年份/今年各季/本季各月/本月各周/本周每日与未归日话题，超出时按“越近越优先”截断'),
       dialogue_stats_enabled: Schema.boolean().default(true).description('是否注入近期对话时间与频率统计（最近一天/一周/一月及距上次对话的时间）'),
       summary_dry_run: Schema.boolean().default(false).description('调试用：只记录将要执行的汇总，不调用模型、不写库'),
       profile_enabled: Schema.boolean().default(true).description('是否启用增量用户画像（由日总结驱动更新）'),

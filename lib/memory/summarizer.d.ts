@@ -43,8 +43,10 @@ export type ArchiveOutcome = 'ok' | 'empty' | 'rejected' | 'failed';
 /** 合并归档时模型返回的日期归一化为 YYYY/MM/DD */
 export declare function normalizeDayKey(value?: string): string | null;
 /** 模型侧的内容审核拒绝：这类错误重试同一段文本没有意义，直接跳过当天 */
-export declare function isRejectedContent(message?: string): boolean;
+export { isRejectedContent } from './reject';
 export declare function formatTime(date: Date, timezoneOffsetHours: number): string;
+/** 只到日期的格式，日/周/月等周期节点不需要分钟 */
+export declare function formatDay(date: Date, timezoneOffsetHours: number): string;
 /** date 所在自然日的起点：最近一个已过的日界线 */
 export declare function dayStart(date: Date, timezoneOffset: number, boundaryHour: number): Date;
 /** date 所在自然日的终点（下一条日界线） */
@@ -126,4 +128,3 @@ export declare class Summarizer {
     private lookupUser;
     private runExclusive;
 }
-export {};

@@ -19,6 +19,8 @@ import {
   ArchiveDayResult, ArchiveResult, SummaryResult,
 } from './prompts'
 import { ProfileManager } from './profile'
+import { redactSensitiveText } from './redact'
+import { isRejectedContent } from './reject'
 import { lastBoundary } from './retrieval'
 
 const logger = new Logger('satori-summary')
@@ -97,16 +99,18 @@ export function normalizeDayKey(value?: string): string | null {
 }
 
 /** 模型侧的内容审核拒绝：这类错误重试同一段文本没有意义，直接跳过当天 */
-export function isRejectedContent(message?: string): boolean {
-  if (!message) return false
-  return /data_inspection_failed|inappropriate content|内容审核|违规/i.test(message)
-}
+export { isRejectedContent } from './reject'
 
 export function formatTime(date: Date, timezoneOffsetHours: number): string {
   const shifted = new Date(new Date(date).getTime() + timezoneOffsetHours * 3_600_000)
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${shifted.getUTCFullYear()}/${pad(shifted.getUTCMonth() + 1)}/${pad(shifted.getUTCDate())}`
     + ` ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}`
+}
+
+/** 只到日期的格式，日/周/月等周期节点不需要分钟 */
+export function formatDay(date: Date, timezoneOffsetHours: number): string {
+  return formatTime(date, timezoneOffsetHours).slice(0, 10)
 }
 
 // ---------- 周期边界（输入输出都是真实 UTC 时刻，宿主时区无关） ----------
@@ -250,7 +254,12 @@ export class Summarizer {
       return 'empty'
     }
 
-    const result = await this.api.auxiliaryChat(buildTopicArchivePrompt(text), user)
+    let result = await this.api.auxiliaryChat(buildTopicArchivePrompt(text), user)
+    if (result.error && isRejectedContent(result.content)) {
+      // 被审核拒绝时用脱敏副本再试一次：少一点细节，也好过整天不归档
+      logger.warn(`topic 归档被内容审核拒绝，改用脱敏输入重试 scope=${scopeId}`)
+      result = await this.api.auxiliaryChat(buildTopicArchivePrompt(redactSensitiveText(text)), user)
+    }
     if (result.error) {
       logger.warn(`topic 归档失败 scope=${scopeId}: ${result.content}`)
       return isRejectedContent(result.content) ? 'rejected' : 'failed'
@@ -349,7 +358,14 @@ export class Summarizer {
       date: formatTime(block.from, this.tz).slice(0, 10),
       dialogues: this.formatDialogues(block.dialogues),
     }))
-    const result = await this.api.auxiliaryChat(buildTopicBatchPrompt(groups), user)
+    let result = await this.api.auxiliaryChat(buildTopicBatchPrompt(groups), user)
+    if (result.error && isRejectedContent(result.content)) {
+      logger.warn(`topic 合并归档被内容审核拒绝，改用脱敏输入重试 scope=${scopeId} 天数=${blocks.length}`)
+      result = await this.api.auxiliaryChat(buildTopicBatchPrompt(groups.map(group => ({
+        date: group.date,
+        dialogues: redactSensitiveText(group.dialogues),
+      }))), user)
+    }
     if (result.error) {
       logger.warn(`topic 合并归档失败 scope=${scopeId} 天数=${blocks.length}: ${result.content}`)
       return isRejectedContent(result.content) ? 'rejected' : 'failed'
@@ -540,6 +556,8 @@ export class Summarizer {
     if (this.config.dryRun) return
     if (!this.profile.isEnabled() || budget.calls <= 0) return
     if (await this.profile.isBackfilled(scopeId)) return
+    // 被内容审核拒绝过的 scope 在冷却期内不再发起回填，也不打日志
+    if (this.profile.isCoolingDown(scopeId)) return
 
     const windowStart = this.profile.windowStart()
     // 窗口不限制时没有「被跳过的旧历史」，不需要回填

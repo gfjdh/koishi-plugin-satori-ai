@@ -9,9 +9,9 @@ import { Heartbeat } from './heartbeat'
 import { Migrator } from './migrate'
 import { ProfileManager } from './profile'
 import { MemoryRepository } from './repository'
-import { extendMemoryDatabase, Granularity } from './schema'
+import { extendMemoryDatabase } from './schema'
 import { ShortTermMemory } from './short-term'
-import { Summarizer, formatTime } from './summarizer'
+import { Summarizer } from './summarizer'
 
 const logger = new Logger('satori-memory')
 
@@ -87,6 +87,7 @@ export class MemoryService {
       retentionDays: config.memory_retention_days,
       contextMaxChars: config.memory_context_max_chars,
       timezoneOffset: config.memory_timezone_offset,
+      dayBoundaryHour: config.memory_day_boundary_hour,
       dialogueStatsEnabled: config.dialogue_stats_enabled,
       memoryConfig: config,
     })
@@ -227,30 +228,10 @@ export class MemoryService {
     else await this.repo.clearAll()
   }
 
+  /** 与注入系统提示的分层记忆段落完全相同 */
   async view(scopeId: string): Promise<string> {
-    const dialogueCount = await this.repo.countDialogues(scopeId)
-    const memories = await this.repo.listMemories(scopeId, 20)
-    const profile = await this.repo.getProfile(scopeId)
-    const entries = profile?.data?.entries || []
-
-    const lines: string[] = []
-    lines.push(`作用域：${scopeId}`)
-    lines.push(`原始对话：${dialogueCount} 条`)
-    lines.push(`分层记忆：${memories.length} 条`)
-
-    for (const memory of memories) {
-      const range = `${formatTime(memory.periodStart, this.config.memory_timezone_offset)}`
-        + ` ~ ${formatTime(memory.periodEnd, this.config.memory_timezone_offset)}`
-      const topic = memory.topic ? `【${memory.topic}】` : ''
-      lines.push(`  [${memory.granularity}] ${range} ${topic}${memory.content}`)
-    }
-
-    lines.push(`画像条目：${entries.length} 条`)
-    for (const entry of entries.slice(0, 20)) {
-      lines.push(`  - [${entry.category}] ${entry.content}`)
-    }
-
-    return lines.join('\n')
+    const content = await this.contextBuilder.buildMemoryView(scopeId)
+    return content || '该作用域暂无分层记忆。'
   }
 }
 

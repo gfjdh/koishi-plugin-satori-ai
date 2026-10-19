@@ -8,8 +8,19 @@ import { ProfileData, ProfileEntry, SatMemory } from './schema'
 import { parseLlmJson } from './json'
 import { buildProfilePrompt } from './prompts'
 import { applyProfileDelta, sanitizeProfileDelta, ProfileDelta } from './delta'
+import { isRejectedContent } from './reject'
+import { redactSensitiveText } from './redact'
 
 const logger = new Logger('satori-profile')
+
+/** 画像输入被内容审核拒绝后该 scope 的冷却：重试同一段文本不会有不同结果。
+ *  不永久放弃，是因为地灵殿通行证一旦充值恢复，辅助线路换了 provider，
+ *  审核策略可能完全不同，那时应该重新尝试。 */
+export const PROFILE_REJECT_COOLDOWN_MS = 6 * 3_600_000
+/** 历史回填被拒后的冷却更长：它只在积压追平后触发，本身不是高频路径 */
+export const BACKFILL_REJECT_COOLDOWN_MS = 12 * 3_600_000
+
+export type ProfileOutcome = 'ok' | 'failed' | 'rejected' | 'skipped'
 
 const CATEGORY_LABELS: Record<string, string> = {
   identity: '身份信息',
@@ -32,15 +43,38 @@ export interface ProfileConfig {
 }
 
 export class ProfileManager {
+  /** 曾经被内容审核拒绝的 scope：之后直接用脱敏副本，不再白花一次调用 */
+  private redactScopes = new Set<string>()
+  /** 审核拒绝后的冷却截止时刻（内存态，重启后重新探测一次） */
+  private cooldownUntil = new Map<string, number>()
+
   constructor(
     private ctx: Context,
     private repo: MemoryRepository,
     private api: APIClient,
     private config: ProfileConfig,
+    /** 可注入的时钟，便于测试冷却窗口 */
+    private now: () => number = () => Date.now(),
   ) {}
 
   isEnabled(): boolean {
     return this.config.enabled
+  }
+
+  /** 该 scope 是否处于审核拒绝的冷却期；过期即清除 */
+  isCoolingDown(scopeId: string): boolean {
+    const until = this.cooldownUntil.get(scopeId)
+    if (!until) return false
+    if (until <= this.now()) {
+      this.cooldownUntil.delete(scopeId)
+      return false
+    }
+    return true
+  }
+
+  private cooldown(scopeId: string, ms: number, reason: string): void {
+    this.cooldownUntil.set(scopeId, this.now() + ms)
+    logger.warn(`画像更新冷却 scope=${scopeId} ${Math.round(ms / 3_600_000)} 小时：${reason}`)
   }
 
   /**
@@ -60,21 +94,22 @@ export class ProfileManager {
     return windowDays > 0 ? new Date(now - windowDays * 86_400_000) : null
   }
 
-  /** 日总结完成后调用；持票用户走自己的 key（与 chat 一致）。返回是否发起了模型调用。 */
+  /** 日总结完成后调用；持票用户走自己的 key（与 chat 一致）。 */
   async summarize(
     scopeId: string,
     summary: string,
     memories: SatMemory[],
     user: User | null = null,
     periodEnd: Date | null = null,
-  ): Promise<boolean> {
-    if (!this.config.enabled) return false
-    if (!summary && !memories.length) return false
-    if (!this.shouldUpdate(periodEnd)) return false
+  ): Promise<ProfileOutcome> {
+    if (!this.config.enabled) return 'skipped'
+    if (!summary && !memories.length) return 'skipped'
+    if (!this.shouldUpdate(periodEnd)) return 'skipped'
+    if (this.isCoolingDown(scopeId)) return 'skipped'
 
     if (this.config.dryRun) {
       logger.info(`[dry-run] 画像更新跳过 scope=${scopeId} 输入长度=${summary.length + memories.length}`)
-      return false
+      return 'skipped'
     }
 
     const input = [
@@ -82,10 +117,10 @@ export class ProfileManager {
       ...memories.map(memory => `【记忆】${memory.content}${memory.userState ? `（用户状态：${memory.userState}）` : ''}`),
     ].filter(Boolean).join('\n\n')
 
-    if (!input) return false
+    if (!input) return 'skipped'
 
     const profile = await this.repo.getProfile(scopeId)
-    return this.applyUpdate(scopeId, profile?.data, input, user)
+    return this.applyUpdate(scopeId, profile?.data, input, user, PROFILE_REJECT_COOLDOWN_MS)
   }
 
   async isBackfilled(scopeId: string): Promise<boolean> {
@@ -101,48 +136,74 @@ export class ProfileManager {
     scopeId: string,
     sections: { label: string, content: string }[],
     user: User | null = null,
-  ): Promise<boolean> {
-    if (!this.config.enabled) return false
+  ): Promise<ProfileOutcome> {
+    if (!this.config.enabled) return 'skipped'
+    if (this.isCoolingDown(scopeId)) return 'skipped'
 
     const input = sections
       .filter(section => section.content)
       .map(section => `【${section.label}】\n${section.content}`)
       .join('\n\n')
-    if (!input) return false
+    if (!input) return 'skipped'
 
     const profile = await this.repo.getProfile(scopeId)
-    if (profile?.data?.backfilledAt) return false
+    if (profile?.data?.backfilledAt) return 'skipped'
 
     if (this.config.dryRun) {
       logger.info(`[dry-run] 画像历史回填跳过 scope=${scopeId} 输入长度=${input.length}`)
-      return false
+      return 'skipped'
     }
 
-    return this.applyUpdate(scopeId, profile?.data, input, user, {
+    return this.applyUpdate(scopeId, profile?.data, input, user, BACKFILL_REJECT_COOLDOWN_MS, {
       backfilledAt: new Date().toISOString(),
     })
   }
 
-  /** 调模型、清洗 delta、合并落库；返回是否发起了模型调用。 */
+  /** 调模型、清洗 delta、合并落库。 */
   private async applyUpdate(
     scopeId: string,
     existing: ProfileData | undefined,
     input: string,
     user: User | null,
+    cooldownMs: number,
     extra: Partial<ProfileData> = {},
-  ): Promise<boolean> {
+  ): Promise<ProfileOutcome> {
     const entries = existing?.entries || []
+    const redact = this.redactScopes.has(scopeId)
 
-    const result = await this.api.auxiliaryChat(buildProfilePrompt(entries, input), user)
-    if (result.error) {
+    let result = await this.api.auxiliaryChat(
+      buildProfilePrompt(...this.promptInput(entries, input, redact)), user,
+    )
+
+    if (result.error && isRejectedContent(result.content)) {
+      // 内容审核拒绝：同一段文本原样重发没有意义。先用脱敏副本试一次，
+      // 仍被拒就进入冷却，避免每分钟重试一次把调用额度和日志全烧光。
+      if (redact) {
+        this.cooldown(scopeId, cooldownMs, '脱敏后仍被内容审核拒绝')
+        return 'rejected'
+      }
+      this.redactScopes.add(scopeId)
+      logger.warn(`画像更新被内容审核拒绝，改用脱敏输入重试 scope=${scopeId}`)
+      result = await this.api.auxiliaryChat(
+        buildProfilePrompt(...this.promptInput(entries, input, true)), user,
+      )
+      if (result.error) {
+        if (isRejectedContent(result.content)) {
+          this.cooldown(scopeId, cooldownMs, '脱敏后仍被内容审核拒绝')
+          return 'rejected'
+        }
+        logger.warn(`画像更新失败 scope=${scopeId}: ${result.content}`)
+        return 'failed'
+      }
+    } else if (result.error) {
       logger.warn(`画像更新失败 scope=${scopeId}: ${result.content}`)
-      return true
+      return 'failed'
     }
 
     const delta = parseLlmJson<ProfileDelta>(result.content)
     if (!delta) {
       logger.warn(`画像 delta 解析失败 scope=${scopeId}: ${result.content?.slice(0, 200)}`)
-      return true
+      return 'failed'
     }
 
     // 模型偶尔会把“删除/修改说明”写进 content，或对 legacy_portrait 直接改写。
@@ -152,17 +213,30 @@ export class ProfileManager {
       logger.warn(`画像 delta 丢弃无效条目 scope=${scopeId}: ${rejected.join(', ')}`)
     }
 
-    const now = new Date().toISOString()
-    const next = applyProfileDelta(entries, cleanDelta, now, this.config.maxEntries)
+    const stamp = new Date().toISOString()
+    const next = applyProfileDelta(entries, cleanDelta, stamp, this.config.maxEntries)
     // 保留 backfilledAt 等既有字段，避免普通日更新把它冲掉
-    const data: ProfileData = { ...(existing || {}), entries: next, lastSummarizedAt: now, ...extra }
+    const data: ProfileData = { ...(existing || {}), entries: next, lastSummarizedAt: stamp, ...extra }
     await this.repo.saveProfile(scopeId, data)
 
     const added = (cleanDelta.added || []).length
     const modified = (cleanDelta.modified || []).length
     const deleted = (cleanDelta.deleted || []).length
     logger.info(`画像已更新 scope=${scopeId} (+${added} ~${modified} -${deleted}, 共 ${next.length} 条)`)
-    return true
+    return 'ok'
+  }
+
+  /** 需要脱敏时给出替换后的条目与输入；否则原样返回，避免无谓改动模型看到的文本 */
+  private promptInput(
+    entries: ProfileEntry[],
+    input: string,
+    redact: boolean,
+  ): [ProfileEntry[], string] {
+    if (!redact) return [entries, input]
+    return [
+      entries.map(entry => ({ ...entry, content: redactSensitiveText(entry.content) })),
+      redactSensitiveText(input),
+    ]
   }
 
   async getContext(scopeId: string): Promise<string> {

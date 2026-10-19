@@ -60,6 +60,7 @@ export declare class MemoryService {
     getProfileById(scopeId: string): Promise<string>;
     migrate(force?: boolean): Promise<import("./migrate").MigrateResult>;
     clearPersistent(scopeId?: string): Promise<void>;
+    /** 与注入系统提示的分层记忆段落完全相同 */
     view(scopeId: string): Promise<string>;
 }
 export type { PromptContext };

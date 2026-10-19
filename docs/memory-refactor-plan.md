@@ -474,11 +474,11 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 | `common` | `searchMemories(session, 'common')` | `sat_knowledge` 里 `kind='common'` |
 | `group` | `searchMemories(session, 'group')` | `sat_knowledge` 里 `kind='group'` 且 `targetId=channelId` |
 | `ambient` | `getChannelDialogue(session)` | 措辞不变（含"注意分辨发言人是谁"） |
-| `pyramid` | **新增** | 近期话题 / 近日总结 / 近周总结 / 近月总结 / 近季总结 / 年度总结 |
+| `pyramid` | **新增** | 全时间范围覆盖：所有年份 / 今年各季 / 本季各月 / 本月各周 / 本周每日 / 未归日话题 |
 | `recalled` | `searchMemories(session, 'user')` | BM25 召回的历史记忆 |
 | `profile` | `getUserPortrait(session)` | 增量画像 |
 
-**token 预算**：新增 `memory_context_max_chars`(默认 2000)。金字塔 + 召回 + 画像拼起来可能很长，超预算时按 `年度总结 → 近季 → 近月 → 召回` 的顺序截断（越近的越优先保留）。
+**token 预算**：新增 `memory_context_max_chars`(默认 8000)。金字塔注入的是每一级父周期内的**全部**节点（而不是每级一条），完整覆盖通常需要 5–8k 字符。超预算时先整体移除召回，再让每层只留最新一条，最后从最粗的层级（历年 → 今年各季 → …）整段丢弃；仍然超限时硬截断，始终优先保留最近的内容。
 
 ---
 
@@ -501,7 +501,7 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 | `memory_recall_topN` | `5` | 关键词召回条数 |
 | `memory_active_window_days` | `7` | 多久没活动的 scope 不再参与后台汇总 |
 | `memory_retention_days` | `180` | 原始对话保留天数 |
-| `memory_context_max_chars` | `2000` | 分层上下文注入上限 |
+| `memory_context_max_chars` | `8000` | 分层上下文注入上限（全时间范围覆盖） |
 | `profile_enabled` | `true` | 增量画像开关（`enable_user_portrait` 保留为兼容别名） |
 | `profile_max_entries` | `60` | 画像最多保留条目数（超出按重要度淘汰） |
 | `profile_context_entries` | `30` | 注入提示词的画像条目数 |
@@ -650,7 +650,7 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 | 风险 | 缓解 |
 |---|---|
 | **LLM 成本失控**（心跳 × 多 scope × 5 级） | 每 tick 限 3 个 scope + 串行 + 只处理有新对话的 scope + 走低成本 `auxiliaryChat`（持票用户走其通行证 key，不占机器人辅助额度）+ `summary_dry_run` 开发期验证 |
-| **提示词膨胀**导致回复质量下降或超 token | `memory_context_max_chars` 上限 + 按"越近越优先"截断 |
+| **提示词膨胀**导致回复质量下降或超 token | `memory_context_max_chars` 上限（默认 8000）+ 按"越近越优先"截断：每层先留最新一条，再从最粗的层级开始丢弃 |
 | **时区/日界线算错**导致总结错位或重复 | 抽成纯函数 `lastBoundary()`，P1 阶段离线断言覆盖日界线前后两侧 |
 | **迁移不可逆** | 旧文件只读、不修改不删除；迁移只删 `kind='legacy'` 的行；`enable_layered_memory=false` 可停用分层引擎 |
 | **候选集无限增长**导致检索变慢 | SQL 层先按 `scopeId` + 时间窗（`memory_retention_days`）过滤再进 JS 打分；`pruneDialogues` 定期清理原始对话 |
