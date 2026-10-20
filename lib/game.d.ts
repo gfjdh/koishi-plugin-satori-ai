@@ -14,6 +14,7 @@ export declare class Game {
     private GAMES;
     private channelGames;
     private availableGames;
+    private oneTouchPvp;
     private userUsage;
     private context;
     private config;
@@ -21,9 +22,12 @@ export declare class Game {
     constructor(ctx: Context, cfg: Sat.Config, sat: SAT);
     private registerCommands;
     startGame(session: Session, gameName: string, args: string[]): Promise<string>;
+    private startOneTouchPvp;
     endGame(session: Session): Promise<string>;
+    private getGameController;
     private chat;
     private getGameCd;
     private getGameList;
     private resultJudge;
+    private judgePvp;
 }

@@ -8,20 +8,23 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { processPrompt } from './utils'
 
+// 「奶瓶」道具提示词的兜底值：正常情况下由 p-shop 的道具配置页写入道具 metadata
+const DEFAULT_MOTHER_PROMPT = '你与用户的关系是母子，你是用户的母亲。你要像真正的母亲一样疼爱、照顾用户，语气温柔慈爱，可以唠叨、叮嘱，关心他的饮食起居和身体，包容他的一切小脾气，永远站在他这边。'
+
 export async function handleFavorabilitySystem(ctx: Context, session: Session, config: FavorabilityConfig): Promise<string | void> {
   const user = await ensureUserExists(ctx, session.userId, session.username);
   const level = getFavorabilityLevel(user, config)
   // 初始好感度检查
-  if (user.favorability < config.favorability_div_1 - 20 && user.favorability > -900 && level !== '夫妻') {
+  if (user.favorability < config.favorability_div_1 - 20 && user.favorability > -900 && !isFamilyLevel(level)) {
     return session.text('commands.sat.messages.block1');
   }
   const processedPrompt = processPrompt(session.content)
   // 英语内容检查
   const englishCount = (processedPrompt.match(/[a-zA-Z]/g) || []).length;
-  if (user.favorability < 50 && englishCount > 8 && level !== '夫妻') {
+  if (user.favorability < 50 && englishCount > 8 && !isFamilyLevel(level)) {
     return session.text('commands.sat.messages.tooManyEnglishLetters');
   }
-  if (englishCount > 30 && level !== '夫妻') {
+  if (englishCount > 30 && !isFamilyLevel(level)) {
     return session.text('commands.sat.messages.tooManyEnglishLetters');
   }
   if (englishCount > 60) {
@@ -30,12 +33,18 @@ export async function handleFavorabilitySystem(ctx: Context, session: Session, c
   return;
 }
 
+// 是否为「家人」关系（夫妻、母子不受初始好感度与英文长度限制）
+export function isFamilyLevel(level: FavorabilityLevel): boolean {
+  return level === '夫妻' || level === '母子'
+}
+
 // 获取好感度等级
 export function getFavorabilityLevel(
   user: User,
   config: FavorabilityConfig
 ): FavorabilityLevel {
   if (user.favorability >= config.favorability_div_3 && user?.items['镇定贴']?.count > 0 && user?.items['镇定贴']?.description && user?.items['镇定贴']?.description == 'on') return '朋友'
+  if (user?.items['奶瓶']?.count > 0 && user?.items['奶瓶']?.description && user?.items['奶瓶']?.description == 'on') return '母子'
   if (user?.items['订婚戒指']?.count > 0 && user?.items['订婚戒指']?.description && user?.items['订婚戒指']?.description == '已使用') return '夫妻'
   if (user.favorability < config.favorability_div_1) return '厌恶'
   if (user.favorability < config.favorability_div_2) return '陌生'
@@ -50,6 +59,10 @@ export function generateLevelPrompt(
   config: FavorabilityConfig,
   user: User
 ): string {
+  // 母子的提示词由 p-shop 的道具配置页写入道具 metadata，这里只做兜底
+  if (level === '母子') {
+    return `${user?.items['奶瓶']?.metadata?.prompt || DEFAULT_MOTHER_PROMPT}\n`
+  }
   const prompts = {
     '厌恶': config.prompt_0,
     '陌生': config.prompt_1,

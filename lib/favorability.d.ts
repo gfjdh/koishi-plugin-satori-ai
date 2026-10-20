@@ -3,6 +3,7 @@ import { User, FavorabilityLevel, FavorabilityConfig } from './types';
 import { MoodManager } from './mood';
 import { Sat } from './types';
 export declare function handleFavorabilitySystem(ctx: Context, session: Session, config: FavorabilityConfig): Promise<string | void>;
+export declare function isFamilyLevel(level: FavorabilityLevel): boolean;
 export declare function getFavorabilityLevel(user: User, config: FavorabilityConfig): FavorabilityLevel;
 export declare function generateLevelPrompt(level: FavorabilityLevel, config: FavorabilityConfig, user: User): string;
 export declare function generateAuxiliaryPrompt(prompt: string, responseContent: string, user: User, config: FavorabilityConfig): Sat.Msg[];

@@ -68,7 +68,7 @@ export interface FavorabilityConfig {
   prompt_5: string
 }
 //好感度等级
-export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人' | '夫妻'
+export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人' | '夫妻' | '母子'
 
 //记忆配置
 export interface MemoryEntry {

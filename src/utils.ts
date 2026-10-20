@@ -7,6 +7,17 @@ import * as path from 'path'
 
 const logger = new Logger('satori-utils')
 
+// 取消息里第一个非 bot 的 @ 目标，用于发起对战
+export function getMentionedUser(session: Session): { id: string; name?: string } | null {
+  for (const element of session.elements || []) {
+    if (element.type !== 'at') continue
+    const id = String(element.attrs?.id ?? '')
+    if (!id || id === session.selfId) continue
+    return { id, name: element.attrs?.name ? String(element.attrs.name) : undefined }
+  }
+  return null
+}
+
 // 正则表达式特殊字符转义
 export function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

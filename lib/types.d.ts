@@ -57,7 +57,7 @@ export interface FavorabilityConfig {
     prompt_4: string;
     prompt_5: string;
 }
-export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人' | '夫妻';
+export type FavorabilityLevel = '厌恶' | '陌生' | '朋友' | '暧昧' | '恋人' | '夫妻' | '母子';
 export interface MemoryEntry {
     role: string;
     content: string;

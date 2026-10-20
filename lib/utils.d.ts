@@ -1,5 +1,9 @@
 import { Context, Session } from 'koishi';
 import { User } from './types';
+export declare function getMentionedUser(session: Session): {
+    id: string;
+    name?: string;
+} | null;
 export declare function escapeRegExp(str: string): string;
 export declare function parseTimeToMinutes(timeStr: string): number;
 export declare function parseTime(timestamp: number): number;

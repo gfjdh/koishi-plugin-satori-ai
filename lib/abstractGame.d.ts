@@ -4,10 +4,18 @@ declare module 'koishi' {
         'game-result'(session: Session, result: gameResult): void;
     }
 }
+export interface gamePlayerResult {
+    playerID: string;
+    name?: string;
+    win: number;
+    bonus: number;
+}
 export interface gameResult {
     playerID: string;
     message: string;
     gameName: string;
+    playerResults?: gamePlayerResult[];
+    cancelled?: boolean;
 }
 /**
  * 单局游戏的抽象基类，提供通用生命周期方法
@@ -16,16 +24,19 @@ export declare abstract class abstractGameSingleGame {
     protected session: Session;
     protected disposeListener: () => boolean;
     protected lastActionTime: number;
+    protected playerIDs: string[];
     constructor(disposeListener: () => boolean, session: Session);
     startGame(): Promise<string>;
-    endGame(): Promise<{
+    endGame(session?: Session): Promise<{
         message: string;
         gameName: string;
         playerID: string;
     }>;
     getPlayerID(): string;
+    getPlayerIDs(): string[];
+    acceptsInput(userId: string): boolean;
     getLastActionTime(): number;
-    processInput(str: string): Promise<string>;
+    processInput(str: string, session?: Session): Promise<string>;
 }
 type Constructor<T> = new (...args: any[]) => T;
 /**

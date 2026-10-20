@@ -4,13 +4,13 @@ import { winFlag } from './game'
 
 const logger = new Logger('satori-game-onetouch')
 
-enum playerStatus {
+export enum playerStatus {
   Normal, // 正常状态
   Stunned, // 眩晕状态
   lastStunned // 上一回合被眩晕
 }
 
-interface PlayerState {
+export interface PlayerState {
   left: number // 左手势
   right: number // 右手势
   hp: number // 生命值
@@ -22,7 +22,7 @@ interface PlayerState {
   status: playerStatus // 玩家状态
 }
 
-interface SkillEffect {
+export interface SkillEffect {
   name?: string // 技能名称
   damage?: number // 普通伤害
   damageTimes?: number // 伤害次数
@@ -52,7 +52,7 @@ export interface OneTouchResult extends gameResult {
   bonus: number
 }
 
-const SKILL_MAP: { [key: string]: SkillEffect } = {
+export const SKILL_MAP: { [key: string]: SkillEffect } = {
   // 基础技能
   '-1': {},
   '1': { pierceDamage: 1, bleed: 3, name: '锥刺' }, //特性：流血
@@ -445,107 +445,15 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   // selfStun?: boolean // 自身眩晕
   // selfstrengthChange?: number // 自身力量变化
   private applyEffect(self: PlayerState, enemy: PlayerState, effect: SkillEffect, isCombo: boolean) {
-    // 处理力量反转
-    if (effect.revwersalOfStrength) {
-      const temp = self.strength
-      self.strength = enemy.strength
-      enemy.strength = temp
-    }
-
-    // 处理基础属性
-    if (effect.pierceDamage) enemy.hp -= Math.max(effect.pierceDamage + (self.strength || 0), 0)
-    if (effect.destroyShield) enemy.shield = Math.max(0, enemy.shield - effect.destroyShield)
-    if (effect.bleed) enemy.bleed += effect.bleed
-    if (effect.strengthChange) enemy.strength = enemy.strength + effect.strengthChange
-    if (effect.addLeft) enemy.left = (enemy.left + effect.addLeft) % 10
-    if (effect.addRight) enemy.right = (enemy.right + effect.addRight) % 10
-    if (effect.vulnerablility) enemy.vulnerablility = (enemy.vulnerablility || 0) + effect.vulnerablility
-
-    if (effect.heal) self.hp += effect.heal
-    if (effect.shield) self.shield = Math.min(self.shield + effect.shield, 5)
-    if (effect.selfstrengthChange) self.strength = self.strength + effect.selfstrengthChange
-    if (effect.addSelfLeft) self.left = (self.left + effect.addSelfLeft) % 10
-    if (effect.addSelfRight) self.right = (self.right + effect.addSelfRight) % 10
-
-    // 处理伤害
-    if (effect.damage) {
-      effect.damageTimes = effect.damageTimes || 1
-      for (let i = 0; i < effect.damageTimes; i++) {
-        const blocked = enemy.shield > 0
-        enemy.shield = Math.max(0, enemy.shield - (isCombo ? 2 : 1))
-        if (!blocked) {
-          enemy.hp -= Math.round(Math.max(0, effect.damage + (self.strength || 0)) * (enemy.vulnerablility ? 1.5 : 1))
-          if (effect.weakStun && enemy.status !== playerStatus.lastStunned) {
-            enemy.status = playerStatus.Stunned
-          }
-        }
-      }
-    }
-
-    // 处理反击
-    if (self.counterAttack) self.counterAttack = 0
-    if (effect.counterAttack) self.counterAttack = effect.counterAttack
-    if (enemy.counterAttack > 0 && (effect.damage > 0 || effect.pierceDamage > 0))
-      self.hp -= Math.max(enemy.counterAttack + (enemy.strength || 0), 0)
-
-    // 处理流血
-    if (effect.selfbleed) self.bleed += effect.selfbleed
-    if (self.bleed > 0) self.hp -= self.bleed
-    self.bleed = Math.max(0, self.bleed - 1)
-
-    // 处理华丽收场
-    if (effect.magnificentEnd) {
-      enemy.hp -= enemy.bleed * (enemy.bleed + 1) / 2
-      enemy.bleed = 0
-    }
-
-    // 处理易伤
-    if (self.vulnerablility) self.vulnerablility = Math.max(0, self.vulnerablility - 1)
-
-    // 处理眩晕
-    if (effect.stun && enemy.status !== playerStatus.lastStunned)
-      enemy.status = playerStatus.Stunned
-    if (effect.selfStun && self.status !== playerStatus.lastStunned)
-      self.status = playerStatus.Stunned
-
-    return
+    return applySkillEffect(self, enemy, effect, isCombo)
   }
 
   private checkCombo(a: number, b: number): SkillEffect | null {
-    const key = `${Math.min(a, b)}+${Math.max(a, b)}`
-    return SKILL_MAP[key] || null
+    return resolveCombo(a, b)
   }
 
   private buildResultMessage(effect: SkillEffect, isCombo: boolean, self: PlayerState, enemy: PlayerState): string {
-    let msg = []
-    if (effect.name) msg.push(`${effect.name}!`)
-    if (effect.revwersalOfStrength) msg.push(`双方力量反转！`)
-    if (effect.pierceDamage) msg.push(`对对方造成穿刺伤害${Math.max(0, effect.pierceDamage + (self.strength || 0))}`)
-    if (effect.damage) msg.push(`对对方造成${Math.round(Math.max(0, effect.damage + (self.strength || 0)) * (enemy.vulnerablility ? 1.5 : 1))}伤害`)
-    if (effect.damageTimes) msg.push(`${effect.damageTimes}次`)
-    if (effect.heal) msg.push(`自身恢复${effect.heal}生命`)
-    if (effect.selfbleed) msg.push(`自身流血${effect.selfbleed > 0 ? '增加' : '减少'}${Math.abs(effect.selfbleed)}`)
-    if (effect.bleed) msg.push(`对方叠加${effect.bleed}层流血`)
-    if (effect.shield) msg.push(`自身获得${effect.shield}层护盾`)
-    if (effect.destroyShield) msg.push(`破坏对方${effect.destroyShield}层护盾`)
-    if (effect.vulnerablility) msg.push(`给予对方易伤${effect.vulnerablility}层`)
-    if (effect.strengthChange) msg.push(`对方力量${effect.strengthChange > 0 ? '增加' : '减少'}${Math.abs(effect.strengthChange)}`)
-    if (effect.selfstrengthChange) msg.push(`自身力量${effect.selfstrengthChange > 0 ? '增加' : '减少'}${Math.abs(effect.selfstrengthChange)}`)
-    if (effect.counterAttack) msg.push(`获得${effect.counterAttack}层反击`)
-    if (effect.addSelfLeft) msg.push(`自身左手增加${effect.addSelfLeft}`)
-    if (effect.addSelfRight) msg.push(`自身右手增加${effect.addSelfRight}`)
-    if (effect.addLeft) msg.push(`对方左手增加${effect.addLeft}`)
-    if (effect.addRight) msg.push(`对方右手增加${effect.addRight}`)
-    if (effect.magnificentEnd) msg.push(`结算对方所有流血`)
-    if (enemy.status !== playerStatus.lastStunned) {
-      if (effect.stun) msg.push(`眩晕对方`)
-      if (effect.weakStun && enemy.shield === 0) msg.push(`弱眩晕对方`)
-    }
-    if (effect.selfStun) msg.push(`眩晕自己`)
-    if (enemy.counterAttack > 0 && (effect.damage > 0 || effect.pierceDamage > 0)) msg.push(`被反击${enemy.counterAttack + (enemy.strength || 0)}穿刺伤害`)
-    if (self.bleed > 0) msg.push(`自身受到流血伤害${self.bleed + 1}`)
-    if (isCombo) msg.unshift('触发组合技！\n')
-    return msg.join(' ')
+    return buildEffectMessage(effect, isCombo, self, enemy)
   }
 
   private aiSearchEntrance() {
@@ -766,7 +674,10 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   bonus: 当行动导致关键效果时，获得额外奖励，在ai回合结束时结算，若ai被眩晕则奖励继承到下一回合
   `
 
-  private skillList = `
+  private skillList = ONE_TOUCH_SKILL_LIST
+}
+
+export const ONE_TOUCH_SKILL_LIST = `
   具体的技能设计如下：
   一：${SKILL_MAP['1'].name}：造成${SKILL_MAP['1'].pierceDamage}穿刺伤害，${SKILL_MAP['1'].bleed}流血;
   二：${SKILL_MAP['2'].name}：造成${SKILL_MAP['2'].pierceDamage}穿刺伤害，眩晕对方；
@@ -798,6 +709,109 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   九+十：${SKILL_MAP['0+9'].name}：逆转双方力量，然后增加自身${SKILL_MAP['0+9'].selfstrengthChange}力量，对方${SKILL_MAP['0+9'].strengthChange}力量
   十+十：${SKILL_MAP['0+0'].name}：对对方造成${SKILL_MAP['0+0'].bleed}流血，自身${SKILL_MAP['0+0'].selfstrengthChange}力量，然后立即结算对方全部流血
   `
+
+// ——— 以下为对战模式复用的规则核心 ———
+
+export function resolveCombo(a: number, b: number): SkillEffect | null {
+  const key = `${Math.min(a, b)}+${Math.max(a, b)}`
+  return SKILL_MAP[key] || null
+}
+
+export function applySkillEffect(self: PlayerState, enemy: PlayerState, effect: SkillEffect, isCombo: boolean) {
+  // 处理力量反转
+  if (effect.revwersalOfStrength) {
+    const temp = self.strength
+    self.strength = enemy.strength
+    enemy.strength = temp
+  }
+
+  // 处理基础属性
+  if (effect.pierceDamage) enemy.hp -= Math.max(effect.pierceDamage + (self.strength || 0), 0)
+  if (effect.destroyShield) enemy.shield = Math.max(0, enemy.shield - effect.destroyShield)
+  if (effect.bleed) enemy.bleed += effect.bleed
+  if (effect.strengthChange) enemy.strength = enemy.strength + effect.strengthChange
+  if (effect.addLeft) enemy.left = (enemy.left + effect.addLeft) % 10
+  if (effect.addRight) enemy.right = (enemy.right + effect.addRight) % 10
+  if (effect.vulnerablility) enemy.vulnerablility = (enemy.vulnerablility || 0) + effect.vulnerablility
+
+  if (effect.heal) self.hp += effect.heal
+  if (effect.shield) self.shield = Math.min(self.shield + effect.shield, 5)
+  if (effect.selfstrengthChange) self.strength = self.strength + effect.selfstrengthChange
+  if (effect.addSelfLeft) self.left = (self.left + effect.addSelfLeft) % 10
+  if (effect.addSelfRight) self.right = (self.right + effect.addSelfRight) % 10
+
+  // 处理伤害
+  if (effect.damage) {
+    effect.damageTimes = effect.damageTimes || 1
+    for (let i = 0; i < effect.damageTimes; i++) {
+      const blocked = enemy.shield > 0
+      enemy.shield = Math.max(0, enemy.shield - (isCombo ? 2 : 1))
+      if (!blocked) {
+        enemy.hp -= Math.round(Math.max(0, effect.damage + (self.strength || 0)) * (enemy.vulnerablility ? 1.5 : 1))
+        if (effect.weakStun && enemy.status !== playerStatus.lastStunned) {
+          enemy.status = playerStatus.Stunned
+        }
+      }
+    }
+  }
+
+  // 处理反击
+  if (self.counterAttack) self.counterAttack = 0
+  if (effect.counterAttack) self.counterAttack = effect.counterAttack
+  if (enemy.counterAttack > 0 && (effect.damage > 0 || effect.pierceDamage > 0))
+    self.hp -= Math.max(enemy.counterAttack + (enemy.strength || 0), 0)
+
+  // 处理流血
+  if (effect.selfbleed) self.bleed += effect.selfbleed
+  if (self.bleed > 0) self.hp -= self.bleed
+  self.bleed = Math.max(0, self.bleed - 1)
+
+  // 处理华丽收场
+  if (effect.magnificentEnd) {
+    enemy.hp -= enemy.bleed * (enemy.bleed + 1) / 2
+    enemy.bleed = 0
+  }
+
+  // 处理易伤
+  if (self.vulnerablility) self.vulnerablility = Math.max(0, self.vulnerablility - 1)
+
+  // 处理眩晕
+  if (effect.stun && enemy.status !== playerStatus.lastStunned)
+    enemy.status = playerStatus.Stunned
+  if (effect.selfStun && self.status !== playerStatus.lastStunned)
+    self.status = playerStatus.Stunned
+}
+
+export function buildEffectMessage(effect: SkillEffect, isCombo: boolean, self: PlayerState, enemy: PlayerState): string {
+  let msg = []
+  if (effect.name) msg.push(`${effect.name}!`)
+  if (effect.revwersalOfStrength) msg.push(`双方力量反转！`)
+  if (effect.pierceDamage) msg.push(`对对方造成穿刺伤害${Math.max(0, effect.pierceDamage + (self.strength || 0))}`)
+  if (effect.damage) msg.push(`对对方造成${Math.round(Math.max(0, effect.damage + (self.strength || 0)) * (enemy.vulnerablility ? 1.5 : 1))}伤害`)
+  if (effect.damageTimes) msg.push(`${effect.damageTimes}次`)
+  if (effect.heal) msg.push(`自身恢复${effect.heal}生命`)
+  if (effect.selfbleed) msg.push(`自身流血${effect.selfbleed > 0 ? '增加' : '减少'}${Math.abs(effect.selfbleed)}`)
+  if (effect.bleed) msg.push(`对方叠加${effect.bleed}层流血`)
+  if (effect.shield) msg.push(`自身获得${effect.shield}层护盾`)
+  if (effect.destroyShield) msg.push(`破坏对方${effect.destroyShield}层护盾`)
+  if (effect.vulnerablility) msg.push(`给予对方易伤${effect.vulnerablility}层`)
+  if (effect.strengthChange) msg.push(`对方力量${effect.strengthChange > 0 ? '增加' : '减少'}${Math.abs(effect.strengthChange)}`)
+  if (effect.selfstrengthChange) msg.push(`自身力量${effect.selfstrengthChange > 0 ? '增加' : '减少'}${Math.abs(effect.selfstrengthChange)}`)
+  if (effect.counterAttack) msg.push(`获得${effect.counterAttack}层反击`)
+  if (effect.addSelfLeft) msg.push(`自身左手增加${effect.addSelfLeft}`)
+  if (effect.addSelfRight) msg.push(`自身右手增加${effect.addSelfRight}`)
+  if (effect.addLeft) msg.push(`对方左手增加${effect.addLeft}`)
+  if (effect.addRight) msg.push(`对方右手增加${effect.addRight}`)
+  if (effect.magnificentEnd) msg.push(`结算对方所有流血`)
+  if (enemy.status !== playerStatus.lastStunned) {
+    if (effect.stun) msg.push(`眩晕对方`)
+    if (effect.weakStun && enemy.shield === 0) msg.push(`弱眩晕对方`)
+  }
+  if (effect.selfStun) msg.push(`眩晕自己`)
+  if (enemy.counterAttack > 0 && (effect.damage > 0 || effect.pierceDamage > 0)) msg.push(`被反击${enemy.counterAttack + (enemy.strength || 0)}穿刺伤害`)
+  if (self.bleed > 0) msg.push(`自身受到流血伤害${self.bleed + 1}`)
+  if (isCombo) msg.unshift('触发组合技！\n')
+  return msg.join(' ')
 }
 
 export class OneTouchGame extends abstractGame<OneTouchSingleGame> {
@@ -829,12 +843,18 @@ export class OneTouchGame extends abstractGame<OneTouchSingleGame> {
 
 
 import { puppeteer } from '.'
-async function wrapInHTML(str: string): Promise<string> {
+export async function wrapInHTML(str: string): Promise<string> {
   if (!puppeteer) {
     logger.warn('puppeteer未就绪')
     return '出现错误，请联系管理员'
   }
-  return puppeteer.render(`<html><body>${str.replaceAll(/\n/g, '<BR>')}</body>
+  // 对局内容可能包含昵称等玩家输入，转义后再交给 puppeteer
+  const escaped = str
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll(/\n/g, '<BR>')
+  return puppeteer.render(`<html><body>${escaped}</body>
           <style>
           body {
             padding: 10px;

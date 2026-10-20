@@ -713,6 +713,7 @@ export class SAT extends Sat {
     const catEar = user?.items?.['猫耳发饰']?.description && user.items['猫耳发饰'].description == 'on'
     const fumo = user?.items?.['觉fumo']?.description && user.items['觉fumo'].description == 'on'
     const ring = user?.items?.['订婚戒指']?.description && user.items['订婚戒指'].description == '已使用'
+    const bottle = user?.items?.['奶瓶']?.description && user.items['奶瓶'].description == 'on'
     // const eye = user?.items?.['仿制觉之瞳']?.description && user.items['仿制觉之瞳'].description == 'on'
     const eye = false // 觉之瞳功能暂时关闭
     const replyPointing = this.config.reply_pointing && (this.getChannelParallelCount(session) > 0 || this.config.max_parallel_count == 1)
@@ -758,7 +759,7 @@ export class SAT extends Sat {
       if (moodLevel == 'angry') response += '（怒）'
       if (moodLevel == 'upset') response += '（烦躁）'
     }
-    if (auxiliaryResult && this.config.visible_favorability && !ring) {
+    if (auxiliaryResult && this.config.visible_favorability && !ring && !bottle) {
       response += auxiliaryResult
       this.addUserToWarnList(session, auxiliaryResult)
     }

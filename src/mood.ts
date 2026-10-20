@@ -53,6 +53,7 @@ export class MoodManager {
       case '暧昧': effect = effect * 0.8; break
       case '恋人': effect = effect * 0.6; break
       case '夫妻': effect = effect * 0.4; break
+      case '母子': effect = effect * 0.4; break
       default: effect = 0; break
     }
     effect = Math.round(effect) + 1
@@ -73,6 +74,7 @@ export class MoodManager {
       case '暧昧': effect = effect * 0.8; break
       case '恋人': effect = effect * 0.6; break
       case '夫妻': effect = effect * 0.4; break
+      case '母子': effect = effect * 0.4; break
       default: effect = 0; break
     }
     effect = Math.round(effect) + 1
