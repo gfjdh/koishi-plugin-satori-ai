@@ -125,6 +125,7 @@ export interface APIConfig {
   presence_penalty: number
   maxRetryTimes?: number
   retry_delay_time?: number
+  reasoning_effort?: "low" | "medium" | "high" | "max"
   reasoning_content?: boolean
   max_output_tokens: number
 }
@@ -247,6 +248,7 @@ export namespace Sat {
     nick_name_block_words: string[]
     reasoner_filter: boolean
     reasoner_filter_word: string
+    remove_words: string
     duplicateDialogueCheck: boolean
     enable_online_user_check: boolean
     random_min_tokens: number
@@ -315,6 +317,7 @@ export namespace Sat {
 
     maxRetryTimes: number
     retry_delay_time: number
+    reasoning_effort: "low" | "medium" | "high" | "max"
 
     Broadcast_block_channel: string[]
     waiting_time: number
@@ -368,6 +371,12 @@ export namespace Sat {
       temperature: Schema.number().role('slider').min(0).max(2).step(0.01).default(0.5).description('温度'),
       frequency_penalty: Schema.number().default(0.0).description('频率惩罚'),
       presence_penalty: Schema.number().default(0.0).description('存在惩罚'),
+      reasoning_effort: Schema.union([
+        Schema.const('low').description('低'),
+        Schema.const('medium').description('中'),
+        Schema.const('high').description('高'),
+        Schema.const('max').description('最高'),
+      ]).default('low').description('思考强度（reasoning_effort），仅在启用思考模式时生效，越高思考越充分但越慢'),
       maxRetryTimes: Schema.number().default(10).description('报错后最大重试次数'),
       retry_delay_time: Schema.number().default(5000).description('每次重试延迟时间'),
       max_parallel_count: Schema.number().default(2).description('频道最大并行请求数'),
@@ -421,6 +430,8 @@ export namespace Sat {
       reasoner_filter: Schema.boolean().default(true).description('是否启用返回内容过滤,开启后在对话时会过滤掉在括号内且含有过滤词的那一句,用于缓解思维链溢出问题'),
       reasoner_filter_word: Schema.string().role('textarea').default('系统-提示-用户-设定-回复')
       .description('返回内容过滤词，使用“-”分隔，在括号内且含有过滤词的那一句会被过滤，用于缓解思维链溢出问题'),
+      remove_words: Schema.string().role('textarea').default('')
+      .description('八股词汇滚呐：AI 返回内容中会被直接删除的词汇，使用“-”分隔。与“返回内容过滤词”不同，这里只删除词本身，不会删除整句，且在回复处理时最先执行'),
       duplicateDialogueCheck: Schema.boolean().default(true).description('是否检查重复对话'),
       enable_online_user_check: Schema.boolean().default(true).description('在未回答而再次提问时是否提示用户有未完成的对话'),
       random_min_tokens: Schema.number().default(20).description('随机触发对话的最小长度'),

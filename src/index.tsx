@@ -150,6 +150,7 @@ export class SAT extends Sat {
       temperature: this.config.temperature,
       frequency_penalty: this.config.frequency_penalty,
       presence_penalty: this.config.presence_penalty,
+      reasoning_effort: this.config.reasoning_effort,
       reasoning_content: this.config.log_reasoning_content,
       max_output_tokens: this.config.max_output_tokens
     }
@@ -709,6 +710,14 @@ export class SAT extends Sat {
   private async formatResponse(session: Session, response: string, auxiliaryResult: string | void, reasoningContent?: string) {
     const user = await getUser(this.ctx, session.userId)
     if (!response) return session.text('commands.sat.messages.no-response')
+
+    // 八股词汇滚呐：最高优先级，先把指定词汇从 AI 回复中删掉，
+    // 后续的饰品、心情、好感度追加与分句都不会再碰到这些词。
+    if (this.config.remove_words) {
+      const words = this.config.remove_words.split('-').map(word => word.trim()).filter(Boolean)
+      for (const word of words) response = response.split(word).join('')
+      if (!response) return session.text('commands.sat.messages.no-response')
+    }
 
     const catEar = user?.items?.['猫耳发饰']?.description && user.items['猫耳发饰'].description == 'on'
     const fumo = user?.items?.['觉fumo']?.description && user.items['觉fumo'].description == 'on'
