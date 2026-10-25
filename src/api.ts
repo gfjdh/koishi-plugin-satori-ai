@@ -272,18 +272,24 @@ export class APIClient {
     let content: string
     for (let i = 1; i <= this.config.maxRetryTimes; i++) {
       try {
-        const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
-        logger.info(`APIID: ${response.id}, 输入token: ${response.usage.prompt_tokens}, 输出token: ${response.usage.completion_tokens}, 总token: ${response.usage.total_tokens}`)
-        content = response.choices[0].message.content
-        const reasoning_content = response.choices[0].message.reasoning_content || '无'
-        if (this.config.reasoning_content) logger.info(`思维链: ${reasoning_content}`)
-        if (!content && reasoning_content) {
-          logger.warn('返回内容为空,但存在推理内容')
+        let result = await this.sendChat(url, payload, headers)
+        // 思考模式下模型偶尔把正文留在 reasoning_content 里，content 为空。
+        // 原样再发一次通常还是空，改成关闭思考再要一次；每轮最多重试一次，
+        // 已经是关闭思考的请求不再重复。
+        if (!result.content.trim() && payload.thinking?.type !== 'disabled') {
+          logger.warn('返回内容为空，关闭思考模式后重试一次')
+          result = await this.sendChat(url, { ...payload, thinking: { type: 'disabled' } }, headers)
+        }
+        content = result.content
+        const reasoning_content = result.reasoning_content
+        if (!content.trim()) {
+          if (reasoning_content != '无') logger.warn('返回内容为空,但存在推理内容')
+          else logger.warn('返回内容为空')
         }
         if (reasoning_content != '无' && content && content.length > reasoning_content.length) {
           logger.warn('返回内容疑似包含推理内容')
         }
-        if (response.usage.completion_tokens > this.config.max_output_tokens) {
+        if (result.completion_tokens > this.config.max_output_tokens) {
           logger.warn('返回内容过长导致被截断')
           continue
         }
@@ -299,6 +305,21 @@ export class APIClient {
       }
     }
     return { content: '请求失败，请重试', error: true }
+  }
+
+  // 单次发送：记录用量与思维链日志，返回 choices[0] 的关键字段
+  private async sendChat(url: string, payload: Payload, headers: Record<string, string>) {
+    const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
+    logger.info(`APIID: ${response.id}, 输入token: ${response.usage.prompt_tokens}, 输出token: ${response.usage.completion_tokens}, 总token: ${response.usage.total_tokens}`)
+    const message = response.choices[0].message
+    const reasoning_content = message.reasoning_content || '无'
+    if (this.config.reasoning_content) logger.info(`思维链: ${reasoning_content}`)
+    return {
+      // content 可能是 null，统一成空串，避免下游 filterResponse 直接崩掉
+      content: typeof message.content === 'string' ? message.content : '',
+      reasoning_content,
+      completion_tokens: response.usage.completion_tokens,
+    }
   }
 
   // 生成请求头
