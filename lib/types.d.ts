@@ -217,6 +217,12 @@ export declare namespace Sat {
         time_interval: number;
         max_parallel_count: number;
         reply_pointing: boolean;
+        enable_proactive: boolean;
+        proactive_min_idle_minutes: number;
+        proactive_max_idle_minutes: number;
+        proactive_quiet_start_hour: number;
+        proactive_quiet_end_hour: number;
+        proactive_max_idle_hours: number;
         enable_mood: boolean;
         max_mood: number;
         value_of_input_mood: number;

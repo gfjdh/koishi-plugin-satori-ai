@@ -88,6 +88,31 @@ export class ShortTermMemory {
     }
   }
 
+  /** 记录一条仅由机器人发出的主动消息（不伪造用户发言） */
+  recordAssistant(session: Session, content: string, config: MemoryConfig, scopeId?: string): void {
+    if (!content) return
+    let text = this.bracketFilter(content, config)
+    text = this.memoryFilter(text, config)
+
+    const channelId = scopeId || (config.personal_memory ? session.userId : session.channelId)
+    if (!this.channelMemories.has(channelId)) {
+      this.channelMemories.set(channelId, { dialogues: [], updatedAt: Date.now() })
+    }
+
+    const memory = this.channelMemories.get(channelId)
+    memory.dialogues.push({
+      role: 'assistant',
+      content: config.enhanceReasoningProtection
+        ? '<p>' + (config.enable_self_memory ? text : '…') + '</p>'
+        : (config.enable_self_memory ? text : '…'),
+    })
+    memory.updatedAt = Date.now()
+
+    if (memory.dialogues.length > config.message_max_length) {
+      memory.dialogues = memory.dialogues.slice(-config.message_max_length)
+    }
+  }
+
   /** 记录一条群聊环境发言（含不对 bot 说的） */
   updateChannelDialogue(session: Session, prompt: string, name: string, config: MemoryConfig): void {
     if (!config.channel_dialogues) return

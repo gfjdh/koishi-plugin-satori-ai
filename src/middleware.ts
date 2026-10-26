@@ -48,7 +48,11 @@ function isPrivateSession(session: Session): boolean {
 // 处理私聊消息
 async function handlePrivateMessage(SAT: SAT, session: Session) {
   const content = session.content.trim()
-  if (content) return await SAT.handleNickNameMiddleware(session, content)
+  if (content) {
+    // 记录活跃并在沉默后重新计时；主动消息只覆盖私聊
+    SAT.proactive.touch(session)
+    return await SAT.handleNickNameMiddleware(session, content)
+  }
 }
 
 // 昵称判断

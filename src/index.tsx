@@ -20,6 +20,7 @@ import { BroadcastManager } from './broadcast'
 import { wrapInHTML } from './utils'
 import { WeatherManager } from './weather'
 import { Galgame } from './galgame'
+import { ProactiveManager } from './proactive'
 
 const logger = new Logger('satori-ai')
 const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，现在请你参与一下群聊中的话题'
@@ -42,6 +43,7 @@ export class SAT extends Sat {
   private moodManager: MoodManager
   public broadcastManager: BroadcastManager
   public weatherManager: WeatherManager
+  public proactive: ProactiveManager
   private usersToWarn: Map<string, string> = new Map()
   private puppeteer: Puppeteer | null
   private game: Game
@@ -96,6 +98,7 @@ export class SAT extends Sat {
     // 初始化模块
     this.apiClient = new APIClient(ctx, this.getAPIConfig())
     this.memoryService = new MemoryService(ctx, this.getMemoryConfig(), this.apiClient)
+    this.proactive = new ProactiveManager(ctx, this, config)
     this.moodManager = new MoodManager(ctx, config)
     this.broadcastManager = new BroadcastManager(ctx, config)
     this.weatherManager = new WeatherManager(ctx, config)
@@ -110,6 +113,8 @@ export class SAT extends Sat {
     this.registerCommands(ctx)
     // 启动分层记忆的后台汇总（可在配置中关闭）
     this.memoryService.start()
+    // 启动私聊主动消息（可在配置中关闭）
+    this.proactive.start()
 
     if (this.config.enable_game) this.game = new Game(ctx, config, this)
     if (config.enable_galgame) {
@@ -567,6 +572,59 @@ export class SAT extends Sat {
     return response
   }
 
+  /**
+   * 生成一条主动消息（不写入长期记忆，不扣使用次数）。
+   * idleMinutes 用于告诉模型沉默时长；queryHint 用用户最后一句做记忆检索。
+   */
+  public async generateProactive(session: Session, idleMinutes: number, queryHint = ''): Promise<string> {
+    // 目标来自私聊埋点，正常流程下用户必定已存在；这里再兜一次底，
+    // 避免用户数据被清理后主动消息在 buildSystemPrompt 里读到 null。
+    await ensureUserExists(this.ctx, session.userId, session.username)
+
+    const idleText = idleMinutes < 60
+      ? `${Math.max(1, idleMinutes)} 分钟`
+      : `${Math.floor(idleMinutes / 60)} 小时`
+
+    const rule = `\n#接下来是主动消息要求
+用户已经 ${idleText} 没有主动说话了。
+你要主动找对方聊天，而不是回复某句话：
+1. 优先顺着你们上次没聊完的话题、共同记忆或用户最近的处境开口；没有可延续的内容时，再聊当前时间、天气或你正在做的事；
+2. 只发一到两句话，像即时通讯里的自然发言，不要分段、不要列点、不要旁白；
+3. 不要问“在吗”“忙吗”，不要提“你多久没说话”，不要出现系统、统计、记忆等字样；
+4. 符合你当前的好感度、心情和说话习惯。
+`
+
+    const system = await this.buildSystemPrompt(session, '[主动]', queryHint)
+    const messages: Sat.Msg[] = []
+    if (this.config.no_system_prompt) {
+      messages.push({ role: 'user', content: system + rule })
+      messages.push({ role: 'assistant', content: '<p>已明确对话要求</p>' })
+    } else {
+      messages.push({ role: 'system', content: system + rule })
+    }
+    messages.push({ role: 'user', content: '[主动]' })
+
+    const user = await getUser(this.ctx, session.userId)
+    const response = await this.getChatResponse(user, messages, '[主动]')
+    if (response.error) return ''
+
+    let content = response.content || ''
+    // 与 formatResponse 保持一致：八股词优先级最高
+    if (this.config.remove_words) {
+      const words = this.config.remove_words.split('-').map(word => word.trim()).filter(Boolean)
+      for (const word of words) content = content.split(word).join('')
+    }
+    content = content.trim()
+    if (!content) return ''
+
+    return content
+  }
+
+  /** 主动消息成功后由发送方调用，只写短期记忆 */
+  public recordProactive(session: Session, content: string): void {
+    this.memoryService.recordProactive(session, content)
+  }
+
   // 构建消息
   private async buildMessages(session: Session, prompt: string) {
     const messages: Sat.Msg[] = []
@@ -606,8 +664,8 @@ export class SAT extends Sat {
   //   2. 画像、金字塔、衣着、好感度/心情、用户名、天气：同一用户若干轮内不变
   //   3. 常识、群常识：半静态，但检索结果会随消息变化
   //   4. 对话统计、群聊环境、召回、当前时间：每轮必变，只能放在最后
-  private async buildSystemPrompt(session: Session, prompt: string): Promise<string> {
-    const memoryContext = await this.memoryService.getPromptContext(session, prompt)
+  private async buildSystemPrompt(session: Session, prompt: string, queryHint?: string): Promise<string> {
+    const memoryContext = await this.memoryService.getPromptContext(session, queryHint || prompt)
     const weatherPrompt = await this.weatherManager.buildWeatherPrompt(session)
     const user = await getUser(this.ctx, session.userId)
     const moodLevel = this.moodManager.getMoodLevel(user.userid)
@@ -905,6 +963,7 @@ export class SAT extends Sat {
   }
 
   public async dispose(): Promise<void> {
+    this.proactive.stop()
     this.memoryService.stop()
     if (this.puppeteer) {
       try {

@@ -250,6 +250,14 @@ export namespace Sat {
     max_parallel_count: number
     reply_pointing: boolean
 
+    // 主动消息（仅私聊）
+    enable_proactive: boolean
+    proactive_min_idle_minutes: number
+    proactive_max_idle_minutes: number
+    proactive_quiet_start_hour: number
+    proactive_quiet_end_hour: number
+    proactive_max_idle_hours: number
+
     enable_mood: boolean
     max_mood: number
     value_of_input_mood: number
@@ -430,6 +438,15 @@ export namespace Sat {
       enable_emoji: Schema.boolean().default(false).description('是否启用表情包功能（表情包文件按类命名分成文件夹放在数据路径下的emojis文件夹，最好是gif）'),
       emoji_probability: Schema.number().role('slider').min(0).max(1).step(0.01).default(0.1).description('在对话中发送表情包的概率'),
     }).description('对话设置'),
+
+    Schema.object({
+      enable_proactive: Schema.boolean().default(false).description('是否启用主动消息（仅在私聊中生效：用户沉默一段时间后由机器人主动开口）'),
+      proactive_min_idle_minutes: Schema.number().default(60).description('主动消息的最小沉默时长（分钟）'),
+      proactive_max_idle_minutes: Schema.number().default(120).description('主动消息的最大沉默时长（分钟），实际等待时间在此区间内随机'),
+      proactive_quiet_start_hour: Schema.number().min(0).max(23).step(1).default(23).description('安静时段开始小时（该时段内不发送主动消息）'),
+      proactive_quiet_end_hour: Schema.number().min(0).max(23).step(1).default(8).description('安静时段结束小时（跨零点时按夜间处理）'),
+      proactive_max_idle_hours: Schema.number().default(24).description('沉默超过多少小时后不再主动（用户再次发言会重新计时）'),
+    }).description('主动消息设置（仅私聊）'),
 
     Schema.object({
       enable_weather_perception: Schema.boolean().default(false).description('是否开启天气感知（JWT 配置可选，若同时配置私钥/kid/sub 则优先使用 JWT）'),

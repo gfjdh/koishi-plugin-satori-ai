@@ -9,6 +9,8 @@ export declare class ShortTermMemory {
     private memoryFilter;
     /** 记录一轮用户↔bot 对话到短期记忆 */
     updateChannelMemory(session: Session, prompt: string, config: MemoryConfig, response?: string, scopeId?: string): void;
+    /** 记录一条仅由机器人发出的主动消息（不伪造用户发言） */
+    recordAssistant(session: Session, content: string, config: MemoryConfig, scopeId?: string): void;
     /** 记录一条群聊环境发言（含不对 bot 说的） */
     updateChannelDialogue(session: Session, prompt: string, name: string, config: MemoryConfig): void;
     getChannelDialogue(session: Session, config: MemoryConfig): string;

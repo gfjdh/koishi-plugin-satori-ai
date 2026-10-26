@@ -191,6 +191,11 @@ export class MemoryService {
     return this.config.memory_block_words.some(word => word && content.includes(word))
   }
 
+  /** 主动消息只进短期记忆，不写 sat_dialogue，避免污染对话统计与长期归档 */
+  recordProactive(session: Session, content: string): void {
+    this.shortTerm.recordAssistant(session, content, this.config, this.getScopeId(session))
+  }
+
   // ---------- 系统提示 ----------
 
   async getPromptContext(session: Session, query: string): Promise<PromptContext> {

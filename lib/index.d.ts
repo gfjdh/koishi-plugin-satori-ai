@@ -3,6 +3,7 @@ import { Sat, User } from './types';
 import Puppeteer from 'koishi-plugin-puppeteer';
 import { BroadcastManager } from './broadcast';
 import { WeatherManager } from './weather';
+import { ProactiveManager } from './proactive';
 export declare let puppeteer: Puppeteer | null;
 export declare function refreshPuppeteer(ctx: Context): void;
 export declare class SAT extends Sat {
@@ -14,6 +15,7 @@ export declare class SAT extends Sat {
     private moodManager;
     broadcastManager: BroadcastManager;
     weatherManager: WeatherManager;
+    proactive: ProactiveManager;
     private usersToWarn;
     private puppeteer;
     private game;
@@ -49,6 +51,13 @@ export declare class SAT extends Sat {
         error: boolean;
         reasoning_content?: string;
     }>;
+    /**
+     * 生成一条主动消息（不写入长期记忆，不扣使用次数）。
+     * idleMinutes 用于告诉模型沉默时长；queryHint 用用户最后一句做记忆检索。
+     */
+    generateProactive(session: Session, idleMinutes: number, queryHint?: string): Promise<string>;
+    /** 主动消息成功后由发送方调用，只写短期记忆 */
+    recordProactive(session: Session, content: string): void;
     private buildMessages;
     private buildSystemPrompt;
     private getThinkingPrompt;

@@ -53,6 +53,8 @@ export declare class MemoryService {
     clearAllMemories(): void;
     recordTurn(session: Session, prompt: string, response: TurnResponse): Promise<void>;
     private isBlocked;
+    /** 主动消息只进短期记忆，不写 sat_dialogue，避免污染对话统计与长期归档 */
+    recordProactive(session: Session, content: string): void;
     getPromptContext(session: Session, query: string): Promise<PromptContext>;
     addCommonSense(content: string): Promise<void>;
     addGroupCommonSense(content: string, channelId: string): Promise<void>;
