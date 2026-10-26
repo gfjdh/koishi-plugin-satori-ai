@@ -89,7 +89,6 @@ export interface MemoryConfig {
   personal_memory: boolean
   channel_dialogues: boolean
   channel_dialogues_max_length: number
-  remember_min_length: number
   common_topN: number
   dailogues_topN: number
   enhanceReasoningProtection: boolean
@@ -169,15 +168,6 @@ export namespace Sat {
     role: string
     content: string
   }
-  export interface Payload {
-    engine: string
-    prompt: string
-    temperature: number
-    max_tokens?: number
-    top_p: number
-    frequency_penalty: number
-    presence_penalty: number
-  }
 
   export interface Config {
     baseURL: string
@@ -198,7 +188,6 @@ export namespace Sat {
     max_tokens: number
     max_output_tokens: number
     message_max_length: number
-    remember_min_length: number
     temperature: number
     frequency_penalty: number
     presence_penalty: number
@@ -298,9 +287,6 @@ export namespace Sat {
     offset_of_fafavorability: number
     visible_favorability: boolean
     enable_user_portrait: boolean
-    max_portrait_dialogues: number
-    portrait_usage: number
-    portrait_min_favorability: number
     prompt_0: string
     favorability_div_1: number
     prompt_1: string
@@ -394,7 +380,6 @@ export namespace Sat {
       memory_filter: Schema.string().role('textarea').default('示例1-示例2').description('短期记忆过滤词，使用“-”分隔，含有过滤词的那一句不会被记忆，用于缓解复读问题'),
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),
       memory_block_words: Schema.array(String).default(['好感']).description('记忆屏蔽词'),
-      remember_min_length: Schema.number().description('已废弃：分层记忆不再用长度门槛过滤与 AI 的对话').default(20),
       common_topN: Schema.number().default(5).description('群常识、常识记忆检索最大匹配数'),
       dailogues_topN: Schema.number().default(5).description('对话记忆检索最大匹配数'),
       enable_fixed_dialogues: Schema.boolean().default(false).description('是否启用固定对话（在dataDir中的fixed_dialogues.json修改）'),
@@ -472,9 +457,6 @@ export namespace Sat {
       offset_of_fafavorability: Schema.number().default(3.5).description('辅助大模型好感度偏移量(越大越容易扣好感度)'),
       visible_favorability: Schema.boolean().default(true).description('是否开启好感度升降显示'),
       enable_user_portrait: Schema.boolean().default(true).description('旧画像开关：与“分层记忆设置”的 profile_enabled 同时开启才生效'),
-      portrait_usage: Schema.number().default(2).description('已废弃：画像改由日总结驱动更新'),
-      max_portrait_dialogues: Schema.number().default(100).description('已废弃：画像改由日总结驱动更新'),
-      portrait_min_favorability: Schema.number().default(100).description('已废弃：画像改由日总结驱动更新'),
       prompt_0: Schema.string().role('textarea').description('厌恶好感补充设定'),
       favorability_div_1: Schema.number().default(15).description('厌恶-陌生分界线'),
       prompt_1: Schema.string().role('textarea').description('陌生好感补充设定'),

@@ -30,13 +30,10 @@ export declare class APIClient {
     private pruneTicketFailures;
     private ticketAuxiliaryRoute;
     private defaultAuxiliaryRoute;
-    generateUserPortrait(user: User, messages: Sat.Msg[]): Promise<{
-        content: string;
-        error: boolean;
-    }>;
     private createPayload;
     private createAuxiliaryPayload;
     private tryRequest;
+    private sendChat;
     private createHeaders;
     private handleAPIError;
     private rotateKey;

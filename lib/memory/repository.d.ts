@@ -19,7 +19,6 @@ export declare class MemoryRepository {
     countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number>;
     /** after < createdAt < before 的对话数，用于判断一个已关闭的日块是否归档干净 */
     countDialoguesInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<number>;
-    countDialogues(scopeId: string): Promise<number>;
     /** since 之后的对话数。用数据库 COUNT，避免把整段历史拉进内存。 */
     countDialoguesSince(scopeId: string, since: Date, kinds?: string[]): Promise<number>;
     /** 该 scope 最早/最晚一条对话的时间（走 scopeId+createdAt 索引） */
@@ -53,8 +52,6 @@ export declare class MemoryRepository {
     getActiveMetas(since: Date, limit: number): Promise<SatMeta[]>;
     /** 某粒度的最新一条（按 periodEnd 排序，服务端 LIMIT 1，等价于 MAX(periodEnd)） */
     getLatestMemory(scopeId: string, granularity: Granularity): Promise<SatMemory | null>;
-    /** 子粒度的最早起点（服务端 ORDER BY periodStart ASC LIMIT 1，等价于 MIN(periodStart)） */
-    getEarliestChildStart(scopeId: string, granularity: Granularity): Promise<Date | null>;
     /** 区间查询：from < periodEnd <= to，走真正的 SQL 条件而不是 JS 侧过滤 */
     getMemoriesInRange(scopeId: string, granularity: Granularity, from: Date | null, to: Date, limit?: number): Promise<SatMemory[]>;
     /** 某个时间点之前结束的最新节点（用于历史回填选材） */
@@ -73,7 +70,6 @@ export declare class MemoryRepository {
      */
     commitTopicArchives(memories: Omit<SatMemory, 'id'>[], scopeId: string, topicStart: Date): Promise<void>;
     getRecallCandidates(scopeId: string, granularities: Granularity[], since: Date): Promise<SatMemory[]>;
-    listMemories(scopeId: string, limit?: number): Promise<SatMemory[]>;
     clearScope(scopeId: string): Promise<void>;
     clearAll(): Promise<void>;
     getKnowledge(kind: string, targetId: string): Promise<SatKnowledge[]>;

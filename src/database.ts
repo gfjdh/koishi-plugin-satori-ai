@@ -9,6 +9,14 @@ declare module 'koishi' {
   }
 }
 
+/**
+ * 本地日期键（YYYYMMDD）。旧版本把「几号」(1–31) 存进 lastChatTime，
+ * 跨月同一天时不会重置每日次数；这里统一成完整日期，旧值比较不相等会自然重置一次。
+ */
+function todayKey(date: Date = new Date()): number {
+  return date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate()
+}
+
 export async function isTargetIdNotExists(ctx: Context, userId: string): Promise<boolean> {
   const users = await ctx.database.get('p_system', { userid: userId })
   return users.length === 0
@@ -23,7 +31,7 @@ export async function createUser(ctx: Context, user: Omit<User, 'id'>): Promise<
     userlevel: user.userlevel || 0,
     usage: user.usage || 0,
     location: user.location || '',
-    lastChatTime: user.lastChatTime || new Date().getDate(),
+    lastChatTime: user.lastChatTime || todayKey(),
     items: user.items || {}
   })
 }
@@ -38,6 +46,7 @@ export async function updateFavorability(ctx: Context, user: User, adjustment: F
   else
     newValue = user.favorability
 
+  user.favorability = newValue
   await ctx.database.set('p_system', { userid: user.userid }, { favorability: newValue })
 }
 
@@ -45,16 +54,22 @@ export async function updateFavorability(ctx: Context, user: User, adjustment: F
 export async function updateUserLevel(ctx: Context, user: User, level: number): Promise<void> {
   if (!user) return
   level = level < 5 ? level : 4
+  user.userlevel = level
   await ctx.database.set('p_system', { userid: user.userid }, { userlevel: level })
 }
 
 // 更新用户使用次数
 export async function updateUserUsage(ctx: Context, user: User, adjustment: number = 1): Promise<number | void> {
   if (!user) return
-  if (user.lastChatTime && new Date().getDate() !== user.lastChatTime) user.usage = 0
-  await ctx.database.set('p_system', { userid: user.userid }, { usage: user.usage + adjustment })
-  await ctx.database.set('p_system', { userid: user.userid }, { lastChatTime: new Date().getDate() })
-  return user.usage + adjustment
+  const today = todayKey()
+  if (user.lastChatTime !== today) user.usage = 0
+  const usage = Math.max(0, (user.usage || 0) + adjustment)
+  user.usage = usage
+  user.lastChatTime = today
+  // usage 与 lastChatTime 必须一起写：拆成两次 set 时，进程中断会留下
+  // 「次数已递增、日期还是昨天」的状态，下一次对话又会重置一次。
+  await ctx.database.set('p_system', { userid: user.userid }, { usage, lastChatTime: today })
+  return usage
 }
 
 // 更新用户物品
@@ -66,7 +81,9 @@ export async function updateUserItems(ctx: Context, user: User): Promise<void> {
 // 更新用户p点数
 export async function updateUserP(ctx: Context, user: User, adjustment: number): Promise<void> {
   if (!user) return
-  user.p = await ctx.database.get('p_system', { userid: user.userid })[0]?.p || user.p
+  // 先取数据库里的最新值：内存中的 user.p 可能已经过期（多频道同时操作）
+  const [latest] = await ctx.database.get('p_system', { userid: user.userid })
+  if (latest) user.p = latest.p
   if (user.p + adjustment < 0) adjustment = -user.p
   await ctx.database.set('p_system', { userid: user.userid }, { p: user.p + adjustment })
 }
@@ -93,7 +110,7 @@ export async function ensureUserExists(ctx: Context, userId: string, username: s
       userlevel: 0,
       usage: 0,
       location: '',
-      lastChatTime: new Date().getDate(),
+      lastChatTime: todayKey(),
       items: {}
     })
   }

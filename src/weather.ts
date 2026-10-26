@@ -170,7 +170,7 @@ export class WeatherManager {
       }
     } catch (error: any) {
       logger.error(`未能更新用户 ${session.userId} 的位置: ${error.message || error.status}`)
-      return '无法更新位置，错误: ' + error.message || error.status + '。'
+      return '无法更新位置，错误: ' + (error?.message || error?.status || '未知错误') + '。'
     }
   }
 
@@ -178,7 +178,7 @@ export class WeatherManager {
   public async getWeatherInfo(session: Session): Promise<string | null> {
     if (!this.config.enable_weather_perception) return null
     const user = await getUser(this.ctx, session.userId)
-    const location = user.location
+    const location = user?.location
     if (!location) return '未设置位置信息，请先使用“更新位置”命令设置位置。'
 
     // 优先使用 JWT，若未配置则用 API key 查询参数
@@ -226,7 +226,7 @@ export class WeatherManager {
       }
     } catch (error: any) {
       logger.error(`未能获取用户 ${session.userId} 的天气信息: ${error.message || error.status}`)
-      return '无法获取天气信息，错误: ' + error.message || error.status || error.status + '。'
+      return '无法获取天气信息，错误: ' + (error?.message || error?.status || '未知错误') + '。'
     }
   }
 

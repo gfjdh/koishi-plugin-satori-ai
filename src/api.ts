@@ -1,8 +1,8 @@
 
 // src/api.ts
 import { Context, Logger } from 'koishi'
-import { trimSlash, isErrorWithMessage } from './utils'
-import { APIConfig, APIError, Payload, Sat, User } from './types'
+import { trimSlash } from './utils'
+import { APIConfig, Payload, Sat, User } from './types'
 
 const logger = new Logger('satori-api')
 
@@ -47,10 +47,26 @@ export class APIClient {
     } else {
       const config = this.config;
       const useNotReasoner = messages[messages.length - 1].content.length <= config.use_not_reasoner_LLM_length;
-      keys = useNotReasoner ? config.not_reasoner_LLM_key : config.keys;
-      modle = useNotReasoner ? config.not_reasoner_LLM : config.appointModel;
-      baseURL = useNotReasoner ? config.not_reasoner_LLM_URL : config.baseURL;
-      thinkingType = useNotReasoner ? "disabled" : "enabled"
+      const mainKeys = (config.keys || []).filter(Boolean)
+      const notReasonerKeys = (config.not_reasoner_LLM_key || []).filter(Boolean)
+      if (useNotReasoner && !notReasonerKeys.length) {
+        // 短消息本该走非思考模型，但没配 key；退回主模型，避免整个请求被静默跳过
+        keys = mainKeys
+        modle = config.appointModel
+        baseURL = config.baseURL
+        thinkingType = "enabled"
+      } else {
+        keys = useNotReasoner ? notReasonerKeys : mainKeys
+        modle = useNotReasoner ? config.not_reasoner_LLM : config.appointModel;
+        baseURL = useNotReasoner ? config.not_reasoner_LLM_URL : config.baseURL;
+        thinkingType = useNotReasoner ? "disabled" : "enabled"
+      }
+    }
+    // 通行证/配置里可能残留空字符串，先剔除再判断是否还能发请求
+    keys = (keys || []).filter(Boolean)
+    if (!keys.length) {
+      logger.error('未配置任何可用的 API key')
+      return { content: '未配置 API key，请联系管理员', error: true }
     }
     const payload = this.createPayload(messages, modle, thinkingType)
     for (let i = 0; i < keys.length; i++) {
@@ -58,11 +74,12 @@ export class APIClient {
         return await this.tryRequest(baseURL, payload, keys)
       } catch (error) {
         if (i == keys.length - 1) {
-          return this.handleAPIError(error as APIError)
+          return this.handleAPIError(error)
         }
         this.rotateKey()
       }
     }
+    return { content: '请求失败，请重试', error: true }
   }
 
   // 发送辅助聊天请求
@@ -198,46 +215,6 @@ export class APIClient {
     }
   }
 
-  // 发送生成用户画像请求
-  public async generateUserPortrait(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean}> {
-    if(user.userid == 'Alice') return { content: '测试画像', error: false }
-    const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
-    let keys: string[]
-    let modle: string
-    let baseURL: string
-    if (enableUserKey) {
-      const key = user.items['地灵殿通行证'].metadata?.key
-      keys = [key]
-      modle = user.items['地灵殿通行证'].metadata?.model
-      baseURL = user.items['地灵殿通行证'].metadata?.baseURL
-    } else {
-      keys = this.config.keys
-      modle = this.config.appointModel
-      baseURL = this.config.baseURL
-    }
-    const payload = this.createAuxiliaryPayload(messages, modle)
-    const url = `${trimSlash(baseURL)}/chat/completions`
-    const headers = this.createHeaders(keys)
-
-    let content: string
-    for (let i = 1; i <= this.config.maxRetryTimes; i++) {
-      try {
-        const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
-        content = response.choices[0].message.content
-        return { content: content, error: false }
-      } catch (error) {
-        if (i == this.config.maxRetryTimes) {
-          return this.handleAPIError(error)
-        }
-        //等待后重试
-        await new Promise(resolve => setTimeout(resolve, this.config.retry_delay_time || 5000))
-        logger.warn(`生成画像时API请求失败(${error})，重试(第${i}次)中...`)
-        continue
-      }
-    }
-    return { content: 'unreachable', error: true }
-  }
-
   // 生成请求体
   private createPayload(messages: Sat.Msg[], model: string, thinkingType: string = "enabled"): Payload {
     return {
@@ -310,7 +287,9 @@ export class APIClient {
   // 单次发送：记录用量与思维链日志，返回 choices[0] 的关键字段
   private async sendChat(url: string, payload: Payload, headers: Record<string, string>) {
     const response = await this.ctx.http.post(url, payload, { headers, timeout: 3600000 })
-    logger.info(`APIID: ${response.id}, 输入token: ${response.usage.prompt_tokens}, 输出token: ${response.usage.completion_tokens}, 总token: ${response.usage.total_tokens}`)
+    // 部分兼容接口不返回 usage，不能直接解引用
+    const usage = response.usage || {}
+    logger.info(`APIID: ${response.id}, 输入token: ${usage.prompt_tokens}, 输出token: ${usage.completion_tokens}, 总token: ${usage.total_tokens}`)
     const message = response.choices[0].message
     const reasoning_content = message.reasoning_content || '无'
     if (this.config.reasoning_content) logger.info(`思维链: ${reasoning_content}`)
@@ -318,7 +297,7 @@ export class APIClient {
       // content 可能是 null，统一成空串，避免下游 filterResponse 直接崩掉
       content: typeof message.content === 'string' ? message.content : '',
       reasoning_content,
-      completion_tokens: response.usage.completion_tokens,
+      completion_tokens: usage.completion_tokens ?? 0,
     }
   }
 
@@ -333,11 +312,18 @@ export class APIClient {
 
   // 处理API错误
   private handleAPIError(error: unknown): {content:string, error: boolean} {
-    if (!isErrorWithMessage(error)) throw error;
-
-    const status = error.response?.status || 0;
-    const errorCode = error.response?.data?.error?.code || 'unknown';
-    const message = error.response?.data?.error?.message || error.message;
+    // 错误对象不一定带 message（可能直接是字符串、undefined 或解析失败的对象），
+    // 原来的类型守卫会把这些情况重新抛出，让整轮对话中断。
+    const err = error as {
+      message?: unknown
+      status?: unknown
+      response?: { status?: unknown; data?: { error?: { code?: unknown; message?: unknown } } }
+    }
+    const response = err?.response
+    const status = typeof response?.status === 'number' ? response.status : 0
+    const errorCode = response?.data?.error?.code ?? 'unknown'
+    const rawMessage = response?.data?.error?.message ?? err?.message
+    const message = typeof rawMessage === 'string' ? rawMessage : String(rawMessage ?? '未知错误')
 
     logger.error(`API Error [${status}]: ${errorCode} - ${message}`);
 
@@ -363,14 +349,21 @@ export class APIClient {
 
   // 切换API密钥
   private rotateKey(): void {
-    this.currentKeyIndex = (this.currentKeyIndex + 1) % this.config.keys.length
+    const total = (this.config.keys || []).length
+    if (!total) return
+    this.currentKeyIndex = (this.currentKeyIndex + 1) % total
     logger.debug(`Switched to API key index: ${this.currentKeyIndex}`)
   }
 
   // 测试连接
   public async testConnection(): Promise<boolean> {
+    const keys = (this.config.keys || []).filter(Boolean)
+    if (!keys.length) {
+      logger.warn('API connection test skipped: no key configured')
+      return false
+    }
     try {
-      await this.ctx.http.get(`${trimSlash(this.config.baseURL)}/models`, { headers: this.createHeaders(this.config.keys) })
+      await this.ctx.http.get(`${trimSlash(this.config.baseURL)}/models`, { headers: this.createHeaders(keys) })
       logger.info('API connection test succeeded')
       return true
     } catch (error) {

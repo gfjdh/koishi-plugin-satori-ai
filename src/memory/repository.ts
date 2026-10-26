@@ -78,11 +78,6 @@ export class MemoryRepository {
     return rows.length
   }
 
-  async countDialogues(scopeId: string): Promise<number> {
-    const rows = await this.ctx.database.get('sat_dialogue', { scopeId }, { fields: ['id'] })
-    return rows.length
-  }
-
   /** since 之后的对话数。用数据库 COUNT，避免把整段历史拉进内存。 */
   async countDialoguesSince(scopeId: string, since: Date, kinds?: string[]): Promise<number> {
     const query: any = { scopeId, createdAt: { $gte: since } }
@@ -208,15 +203,6 @@ export class MemoryRepository {
     return rows[0] || null
   }
 
-  /** 子粒度的最早起点（服务端 ORDER BY periodStart ASC LIMIT 1，等价于 MIN(periodStart)） */
-  async getEarliestChildStart(scopeId: string, granularity: Granularity): Promise<Date | null> {
-    const rows = await this.ctx.database.get('sat_memory', { scopeId, granularity }, {
-      sort: { periodStart: 'asc' },
-      limit: 1,
-    })
-    return rows[0]?.periodStart || null
-  }
-
   /** 区间查询：from < periodEnd <= to，走真正的 SQL 条件而不是 JS 侧过滤 */
   async getMemoriesInRange(
     scopeId: string,
@@ -299,13 +285,6 @@ export class MemoryRepository {
       periodEnd: { $gte: since },
     }, {
       sort: { periodEnd: 'desc' },
-    })
-  }
-
-  async listMemories(scopeId: string, limit = 50): Promise<SatMemory[]> {
-    return this.ctx.database.get('sat_memory', { scopeId }, {
-      sort: { periodEnd: 'desc' },
-      limit,
     })
   }
 

@@ -93,8 +93,13 @@ export class ContextBuilder {
 
   /** 当前时间精确到秒，是整段提示里变化最快的内容，只能放在最后。 */
   private buildDateTime(): string {
-    const now = new Date()
-    return `当前日期和时间：${now.toLocaleString()} 时段：${getTimeOfDay(now.getHours())}`
+    const now = this.now()
+    // 与分层记忆的日界线/归档使用同一时区，避免提示里的日期和记忆节点对不上
+    const shifted = new Date(now.getTime() + this.config.timezoneOffset * 3_600_000)
+    const pad = (value: number) => String(value).padStart(2, '0')
+    const date = `${shifted.getUTCFullYear()}/${pad(shifted.getUTCMonth() + 1)}/${pad(shifted.getUTCDate())}`
+    const time = `${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())}`
+    return `当前日期和时间：${date} ${time} 时段：${getTimeOfDay(shifted.getUTCHours())}`
   }
 
   // ---------- 知识 ----------

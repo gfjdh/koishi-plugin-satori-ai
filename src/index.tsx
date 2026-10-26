@@ -166,7 +166,6 @@ export class SAT extends Sat {
       personal_memory: this.config.personal_memory,
       channel_dialogues: this.config.channel_dialogues,
       channel_dialogues_max_length: this.config.channel_dialogues_max_length,
-      remember_min_length: this.config.remember_min_length,
       common_topN: this.config.common_topN,
       dailogues_topN: this.config.dailogues_topN,
       enhanceReasoningProtection: this.config.enhanceReasoningProtection,
@@ -665,7 +664,7 @@ export class SAT extends Sat {
 
     // 添加用户名
     systemPrompt += `\n##用户的名字是：${session.username}`
-    const nickName = user.items['情侣合照']?.metadata?.userNickName
+    const nickName = user?.items?.['情侣合照']?.metadata?.userNickName
     if (nickName) systemPrompt += `, 昵称是：${nickName},称呼用户时请优先使用昵称\n`
 
     // 天气在几小时内不变，放在按查询变化的常识之前

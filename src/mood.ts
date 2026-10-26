@@ -1,6 +1,6 @@
 import { Context, Session, Logger } from 'koishi'
 import { User, Sat } from './types'
-import { ensureUserExists, getUser, updateFavorability, updateUserItems, updateUserP } from './database'
+import { ensureUserExists, updateFavorability, updateUserItems, updateUserP } from './database'
 import { randomInt } from 'crypto'
 
 const logger = new Logger('satori-ai-mood')
@@ -18,26 +18,44 @@ export class MoodManager {
   // 初始化用户心情
   private initUser(userId: string) {
     this.moodMap.set(userId, {
-      mood: this.config.mood_div_1 + this.config.value_of_output_mood,
+      mood: this.defaultMood(),
       lastUpdate: Date.now()
     })
   }
 
-  // 每日重置检查
-  private async checkDailyReset(userId: string) {
+  /** 每日重置值，与配置说明「每天重置为 mood_div_1 + value_of_output_mood」保持一致 */
+  private defaultMood(): number {
+    return this.config.mood_div_1 + this.config.value_of_output_mood
+  }
+
+  private isNewDay(timestamp: number, now: Date = new Date()): boolean {
+    const last = new Date(timestamp)
+    return last.getDate() !== now.getDate()
+      || last.getMonth() !== now.getMonth()
+      || last.getFullYear() !== now.getFullYear()
+  }
+
+  /**
+   * 跨天时把内存中的心情重置为默认值。
+   * 必须同步完成：getMoodLevel/getMoodValue 是同步 getter，不能等数据库。
+   */
+  private resetIfNewDay(userId: string): void {
     const data = this.moodMap.get(userId)
-    if (!data) return
-    const user = await getUser(this.ctx, userId)
-    if (user?.items?.['点心盒']) {
-      delete user.items['点心盒']
-      await updateUserItems(this.ctx, user)
-      this.moodMap.set(userId, { mood: 0, lastUpdate: Date.now() })
+    if (!data) {
+      this.initUser(userId)
+      return
     }
-    const lastDate = new Date(data.lastUpdate)
-    const now = new Date()
-    if ( lastDate.getDate() !== now.getDate() || lastDate.getMonth() !== now.getMonth() || lastDate.getFullYear() !== now.getFullYear() ) {
-      this.moodMap.set(userId, { mood: 0, lastUpdate: Date.now() })
+    if (this.isNewDay(data.lastUpdate)) {
+      this.moodMap.set(userId, { mood: this.defaultMood(), lastUpdate: Date.now() })
     }
+  }
+
+  /** 「点心盒」按道具说明在购买后的下一次对话自动消耗，并把心情清零 */
+  private async consumeSnackBox(user: User): Promise<void> {
+    if (!user?.items?.['点心盒']) return
+    delete user.items['点心盒']
+    await updateUserItems(this.ctx, user)
+    this.moodMap.set(user.userid, { mood: 0, lastUpdate: Date.now() })
   }
 
   // 处理输入内容心情变化
@@ -57,7 +75,7 @@ export class MoodManager {
       default: effect = 0; break
     }
     effect = Math.round(effect) + 1
-    this.applyMoodChange(user, -effect)
+    await this.applyMoodChange(user, -effect)
     return
   }
 
@@ -78,7 +96,7 @@ export class MoodManager {
       default: effect = 0; break
     }
     effect = Math.round(effect) + 1
-    this.applyMoodChange(user, -effect)
+    await this.applyMoodChange(user, -effect)
     return
   }
 
@@ -86,32 +104,23 @@ export class MoodManager {
   public async applyMoodChange(user: User, delta: number): Promise<void> {
     if (!this.config.enable_mood) return
     const userId = user.userid
-    let data = this.moodMap.get(userId)
-    if (!data) {
-      this.initUser(userId)
-      data = this.moodMap.get(userId)
-    }
-
-    // 限制心情范围
-    const newMood = Math.min(this.config.max_mood, data.mood + delta)
-
+    // 先处理跨天重置，再叠加本次变化；否则本次变化会被重置覆盖。
+    this.resetIfNewDay(userId)
+    const data = this.moodMap.get(userId)
     this.moodMap.set(userId, {
-      mood: newMood,
+      mood: Math.min(this.config.max_mood, data.mood + delta),
       lastUpdate: Date.now()
     })
-
-    await this.checkDailyReset(userId)
+    // 点心盒在「下一次对话」时自动消耗并清零，保持原有道具语义
+    await this.consumeSnackBox(user)
     return
   }
 
   // 获取心情等级
   public getMoodLevel(userId: string): string {
     if (!this.config.enable_mood) return 'normal'
+    this.resetIfNewDay(userId)
     const data = this.moodMap.get(userId)
-    if (!data) {
-      this.initUser(userId)
-      return 'normal'
-    }
     if (data.mood == this.config.max_mood) return 'happy'
     if (data.mood <= this.config.mood_div_2) return 'angry'
     if (data.mood <= this.config.mood_div_1) return 'upset'
@@ -121,12 +130,8 @@ export class MoodManager {
   // 获取心情值
   public getMoodValue(userId: string): number {
     if (!this.config.enable_mood) return 0
-    const data = this.moodMap.get(userId)
-    if (!data) {
-      this.initUser(userId)
-      return 0
-    }
-    return data.mood
+    this.resetIfNewDay(userId)
+    return this.moodMap.get(userId).mood
   }
 
   // 生成心情提示
@@ -144,12 +149,12 @@ export class MoodManager {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
     const mood = this.getMoodValue(user.userid)
     if (mood < this.config.max_mood / 2) {
-      updateFavorability(this.ctx, user, -this.config.value_of_output_favorability)
+      await updateFavorability(this.ctx, user, -this.config.value_of_output_favorability)
       return session.text('commands.sat.messages.not_good_mood')
     }
-    this.applyMoodChange(user, -this.config.pocket_money_cost)
+    await this.applyMoodChange(user, -this.config.pocket_money_cost)
     const pocketMoney = randomInt(this.config.min_pocket_money, this.config.max_pocket_money + 1)
-    updateUserP(this.ctx, user, pocketMoney)
+    await updateUserP(this.ctx, user, pocketMoney)
     return session.text('commands.sat.messages.pocket_money', [pocketMoney])
   }
 

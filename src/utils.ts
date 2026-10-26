@@ -261,15 +261,26 @@ export function filterResponse(
 
 // 添加输出屏蔽词
 export function addOutputCensor(session: Session, word: string, baseURL: string): void {
-  const blockWordsPath = path.resolve(baseURL, 'output_censor.txt');
-  if (!fs.existsSync(blockWordsPath)) {
-    fs.mkdirSync(blockWordsPath);
-    fs.writeFileSync(blockWordsPath, word);
+  const trimmed = word?.trim()
+  if (!trimmed) {
+    session.send('屏蔽词不能为空')
+    return
   }
-  let blockWords = fs.readFileSync(blockWordsPath, 'utf-8').split(',')
-  blockWords.push(word);
-  fs.writeFileSync(blockWordsPath, blockWords.join(','));
-  session.send(`添加"${word}"成功`);
+  const blockWordsPath = path.resolve(baseURL, 'output_censor.txt')
+  // 旧版本 bug 会在文件路径上建目录，遇到时不要当文件读写
+  if (fs.existsSync(blockWordsPath) && fs.statSync(blockWordsPath).isDirectory()) {
+    session.send('添加失败：output_censor.txt 位置被同名目录占用，请先删除该目录')
+    return
+  }
+  fs.mkdirSync(path.dirname(blockWordsPath), { recursive: true })
+  const existing = fs.existsSync(blockWordsPath)
+    ? fs.readFileSync(blockWordsPath, 'utf-8').split(',').map(item => item.trim()).filter(Boolean)
+    : []
+  if (!existing.includes(trimmed)) {
+    existing.push(trimmed)
+    fs.writeFileSync(blockWordsPath, existing.join(','), 'utf-8')
+  }
+  session.send(`添加"${trimmed}"成功`)
 }
 
 // 如果用户有通行证，更新用户p点数
@@ -342,7 +353,8 @@ import { puppeteer } from '.'
 export async function wrapInHTML(str: string, width: number = 20): Promise<string> {
   if (!puppeteer) {
     logger.warn('puppeteer未就绪')
-    return '出现错误，请联系管理员'
+    // 不能返回提示字符串：调用方会把它当渲染结果直接发到群里
+    throw new Error('Puppeteer 未就绪')
   }
   // 为了让渲染出的图片每行最多约为 20 个字符，我们使用 ch 单位限制宽度，
   // 并启用 pre-wrap/overflow-wrap/word-break 保留换行并允许中英文自动换行。
@@ -396,6 +408,6 @@ export async function wrapInHTML(str: string, width: number = 20): Promise<strin
     return await Promise.race([renderPromise, timeoutPromise]);
   } catch (error) {
     logger.error(`Puppeteer 渲染失败: ${error}`)
-    return '渲染失败，请联系管理员'
+    throw error
   }
 }

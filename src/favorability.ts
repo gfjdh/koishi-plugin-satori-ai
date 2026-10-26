@@ -43,9 +43,9 @@ export function getFavorabilityLevel(
   user: User,
   config: FavorabilityConfig
 ): FavorabilityLevel {
-  if (user.favorability >= config.favorability_div_3 && user?.items['镇定贴']?.count > 0 && user?.items['镇定贴']?.description && user?.items['镇定贴']?.description == 'on') return '朋友'
-  if (user?.items['奶瓶']?.count > 0 && user?.items['奶瓶']?.description && user?.items['奶瓶']?.description == 'on') return '母子'
-  if (user?.items['订婚戒指']?.count > 0 && user?.items['订婚戒指']?.description && user?.items['订婚戒指']?.description == '已使用') return '夫妻'
+  if (user.favorability >= config.favorability_div_3 && user?.items?.['镇定贴']?.count > 0 && user?.items?.['镇定贴']?.description && user?.items?.['镇定贴']?.description == 'on') return '朋友'
+  if (user?.items?.['奶瓶']?.count > 0 && user?.items?.['奶瓶']?.description && user?.items?.['奶瓶']?.description == 'on') return '母子'
+  if (user?.items?.['订婚戒指']?.count > 0 && user?.items?.['订婚戒指']?.description && user?.items?.['订婚戒指']?.description == '已使用') return '夫妻'
   if (user.favorability < config.favorability_div_1) return '厌恶'
   if (user.favorability < config.favorability_div_2) return '陌生'
   if (user.favorability < config.favorability_div_3) return '朋友'
@@ -61,7 +61,7 @@ export function generateLevelPrompt(
 ): string {
   // 母子的提示词由 p-shop 的道具配置页写入道具 metadata，这里只做兜底
   if (level === '母子') {
-    return `${user?.items['奶瓶']?.metadata?.prompt || DEFAULT_MOTHER_PROMPT}\n`
+    return `${user?.items?.['奶瓶']?.metadata?.prompt || DEFAULT_MOTHER_PROMPT}\n`
   }
   const prompts = {
     '厌恶': config.prompt_0,
@@ -93,9 +93,9 @@ export function generateAuxiliaryPrompt(prompt: string, responseContent: string,
 // 处理辅助结果
 export async function handleAuxiliaryResult(ctx: Context, session: Session, config: FavorabilityConfig, responseContent: string): Promise<string | void> {
   const user = await ensureUserExists(ctx, session.userId, session.username);
-  // 正则匹配responseContent中的第一个数字
-  const regex = /\d+/g
-  const value = parseInt(responseContent.match(regex)[0]) ? parseInt(responseContent.match(regex)[0]) : 5
+  // 正则匹配 responseContent 中的第一个数字；模型偶尔返回非数字，回落到中性分 5
+  const match = (responseContent || '').match(/\d+/)
+  const value = Math.min(9, Math.max(0, match ? parseInt(match[0], 10) : 5))
   // 处理好感度检查
   let favorabilityEffect = value - config.offset_of_fafavorability
   // 应用好感度效果
@@ -125,12 +125,12 @@ export async function inputContentCheck(
   const hasCensor = regex.test(content)
 
   if (hasCensor && config.input_censor_favorability) {
-    moodManager.handleInputMoodChange(user, getFavorabilityLevel(user, config))
+    await moodManager.handleInputMoodChange(user, getFavorabilityLevel(user, config))
     await applyFavorabilityEffect(ctx, user, -1 * config.value_of_input_favorability, session) // 应用好感度效果
     return -1 * config.value_of_input_favorability
   }
   // 正常情况增加1点心情
-  moodManager.applyMoodChange(user, 1)
+  await moodManager.applyMoodChange(user, 1)
   // 如果开启辅助LLM或者当天好感度已达上限则不增加好感度
   if (config.enable_auxiliary_LLM || user.usage > config.max_favorability_perday) return 0
   // 正常情况增加1点好感度
@@ -154,8 +154,11 @@ export async function outputContentCheck(
   if (config.output_censor_favorability) {
     const content = response.content
     const filePath = path.join(config.dataDir, 'output_censor.txt')
-    if (!fs.existsSync(filePath)) { return 0 }
-    const censorWords = fs.readFileSync(filePath, 'utf-8').split(',')
+    // 旧版本 bug 可能在该路径留下目录；空词条也会让 replace('', '**') 命中所有内容
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) { return 0 }
+    const censorWords = fs.readFileSync(filePath, 'utf-8')
+      .split(',').map(word => word.trim()).filter(Boolean)
+    if (!censorWords.length) { return 0 }
     const censoredContent = censorWords.reduce((acc, cur) => acc.replace(cur, '**'), content)
     // 敏感词检测
     const regex = /\*\*/g
@@ -163,7 +166,7 @@ export async function outputContentCheck(
     const moodLevel = moodManager.getMoodLevel(user.userid)
     if (hasCensor) {
       const mood = moodManager.getMoodValue(user.userid)
-      moodManager.handleOutputMoodChange(user, getFavorabilityLevel(user, config))
+      await moodManager.handleOutputMoodChange(user, getFavorabilityLevel(user, config))
       if (mood <= 0) {
         await updateFavorability(ctx, user, -1 * config.value_of_output_favorability)
         return -config.value_of_output_favorability
@@ -194,11 +197,11 @@ export async function applyFavorabilityEffect(
   effect: number,
   session: Session
 ): Promise<void> {
-  if (effect < 0 && user.items['谷底小石']?.count > 0) {
+  if (effect < 0 && user.items?.['谷底小石']?.count > 0) {
     session.send(session.text('commands.sat.messages.rockBottom'))
     return
   }
-  if (effect < 0 && user.items['帽子先生']?.count > 0) {
+  if (effect < 0 && user.items?.['帽子先生']?.count > 0) {
     user.items['帽子先生'].count--
     if (user.items['帽子先生'].count === 0) delete user.items['帽子先生']
     await updateUserItems(ctx, user)

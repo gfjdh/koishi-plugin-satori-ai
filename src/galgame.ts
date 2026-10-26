@@ -49,7 +49,8 @@ export class Galgame {
   const username = session.username || '你';
   const storyText = String(content.text).replace(/\{?_USERNAME_\}?/g, username);
     if (content.isNarration) {
-      const wrappedText = await wrapInHTML(storyText, 25);
+      // 渲染失败时退回纯文本，避免整段剧情发不出去
+      const wrappedText = await wrapInHTML(storyText, 25).catch(() => storyText);
       await session.send(wrappedText);
     } else {
       await session.send(storyText);
@@ -201,6 +202,7 @@ export class Galgame {
   private async updateItemRewards(session: Session, rewards: Record<string, number>) {
     const user: User = await getUser(this.ctx, session.userId);
     if (!user) return;
+    if (!user.items) user.items = {}
 
     for (const [itemName, quantity] of Object.entries(rewards)) {
       if (!user.items[itemName]) {
@@ -231,7 +233,7 @@ export class Galgame {
         .map((event) => event.eventName);
 
       const result = '当前可用的约会事件有：\n' + events.join('\n') + '\n请输入命令：约会 [事件名] 来开始对应的事件。';
-      const wrappedText = await wrapInHTML(result, 25);
+      const wrappedText = await wrapInHTML(result, 25).catch(() => result);
       await session.send(wrappedText);
       return;
     }

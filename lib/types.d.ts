@@ -76,7 +76,6 @@ export interface MemoryConfig {
     personal_memory: boolean;
     channel_dialogues: boolean;
     channel_dialogues_max_length: number;
-    remember_min_length: number;
     common_topN: number;
     dailogues_topN: number;
     enhanceReasoningProtection: boolean;
@@ -108,6 +107,7 @@ export interface APIConfig {
     presence_penalty: number;
     maxRetryTimes?: number;
     retry_delay_time?: number;
+    reasoning_effort?: "low" | "medium" | "high" | "max";
     reasoning_content?: boolean;
     max_output_tokens: number;
 }
@@ -142,15 +142,6 @@ export declare namespace Sat {
         role: string;
         content: string;
     }
-    interface Payload {
-        engine: string;
-        prompt: string;
-        temperature: number;
-        max_tokens?: number;
-        top_p: number;
-        frequency_penalty: number;
-        presence_penalty: number;
-    }
     interface Config {
         baseURL: string;
         key: string[];
@@ -169,7 +160,6 @@ export declare namespace Sat {
         max_tokens: number;
         max_output_tokens: number;
         message_max_length: number;
-        remember_min_length: number;
         temperature: number;
         frequency_penalty: number;
         presence_penalty: number;
@@ -215,6 +205,7 @@ export declare namespace Sat {
         nick_name_block_words: string[];
         reasoner_filter: boolean;
         reasoner_filter_word: string;
+        remove_words: string;
         duplicateDialogueCheck: boolean;
         enable_online_user_check: boolean;
         random_min_tokens: number;
@@ -261,9 +252,6 @@ export declare namespace Sat {
         offset_of_fafavorability: number;
         visible_favorability: boolean;
         enable_user_portrait: boolean;
-        max_portrait_dialogues: number;
-        portrait_usage: number;
-        portrait_min_favorability: number;
         prompt_0: string;
         favorability_div_1: number;
         prompt_1: string;
@@ -279,6 +267,7 @@ export declare namespace Sat {
         warning_admin_id: string;
         maxRetryTimes: number;
         retry_delay_time: number;
+        reasoning_effort: "low" | "medium" | "high" | "max";
         Broadcast_block_channel: string[];
         waiting_time: number;
         enable_game: boolean;
