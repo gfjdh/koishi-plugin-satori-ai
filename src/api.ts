@@ -237,7 +237,10 @@ export class APIClient {
     return {
       model: model,
       messages,
-      temperature: 0.1
+      temperature: 0.1,
+      thinking: {
+        type: "disabled"
+      }
     }
   }
 

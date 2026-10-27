@@ -363,11 +363,12 @@ export class SAT extends Sat {
 
   private async handleSatCommand(session: Session, prompt: string) {
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
-    // 处理输入
-    const processedPrompt = await this.processInput(session, prompt)
-    // 好感度阻断检查
+    // 好感度阻断检查必须放在处理输入之前：processInput 里会给好感度 +1，
+    // 若先加后挡，被 block1 拦下的每条消息仍会涨好感度，几次之后就能自行解封。
     const favorabilityBlock = await this.checkFavorabilityBlock(session)
     if (favorabilityBlock) return favorabilityBlock
+    // 处理输入
+    const processedPrompt = await this.processInput(session, prompt)
     // 前置检查
     const preCheckResult = this.performPreChecks(session, processedPrompt)
     if (preCheckResult) return preCheckResult
@@ -478,6 +479,7 @@ export class SAT extends Sat {
 
   // 对话次数检查
   private async checkUserDialogueCount(session: Session, user: User, adjustment: number = 1): Promise<string | void> {
+    if (!user) return null
     const usage = await updateUserUsage(this.ctx, user, adjustment)
     if (user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on')
       return null
@@ -951,7 +953,9 @@ export class SAT extends Sat {
 
   // 昵称中间件转接
   public async handleNickNameMiddleware(session: Session, prompt: string) {
-    const user = await getUser(this.ctx, session.userId)
+    // 私信不会经过 hasNickName，新用户此时还没有 p_system 记录；
+    // 用 getUser 会拿到 null，随后 checkUserDialogueCount 读 userlevel 直接抛错。
+    const user = await ensureUserExists(this.ctx, session.userId, session.username)
     if (await this.checkUserDialogueCount(session, user, 0)) return null
     if (await this.checkFavorabilityBlock(session)) return null
     return this.handleSatCommand(session, prompt)

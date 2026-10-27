@@ -84,7 +84,6 @@ ${contextMessages}
     const messages: Sat.Msg[] = [
         { role: 'user', content: fullPrompt }
     ]
-    logger.info(`表情包推荐提示词:\n${fullPrompt}`)
 
     // 获取API配置
     const { baseURL, key, model } = this.getAPIConfig(user)
@@ -152,11 +151,11 @@ ${contextMessages}
       messages: messages,
       temperature: 0.6,
       max_tokens: 500, // 增加到500以适应可能的思考过程
+      reasoning_effort: 'low', // 降低推理努力以减少复杂性
     }
 
     try {
         const response = await this.ctx.http.post(url, payload, { headers, timeout: 10000 })
-        logger.info(`LLM响应: ${JSON.stringify(response)}`)
         if (response.choices && response.choices.length > 0) {
             const content = response.choices[0].message?.content
             return content || ''

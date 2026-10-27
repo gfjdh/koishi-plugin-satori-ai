@@ -223,6 +223,7 @@ export declare namespace Sat {
         proactive_quiet_start_hour: number;
         proactive_quiet_end_hour: number;
         proactive_max_idle_hours: number;
+        proactive_min_favorability: number;
         enable_mood: boolean;
         max_mood: number;
         value_of_input_mood: number;

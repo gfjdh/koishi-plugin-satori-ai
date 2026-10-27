@@ -7,6 +7,7 @@
 import { Bot, Context, Logger, Session, Universal } from 'koishi'
 import type { SAT } from './index'
 import type { Sat } from './types'
+import { getUser } from './database'
 import { splitSentences } from './utils'
 
 const logger = new Logger('satori-proactive')
@@ -48,7 +49,10 @@ export class ProactiveManager {
     const min = this.minIdleMs
     const max = this.maxIdleMs
     logger.info(`主动消息已启动：沉默 ${min / 60_000}~${max / 60_000} 分钟后触发，`
-      + `安静时段 ${this.config.proactive_quiet_start_hour}:00-${this.config.proactive_quiet_end_hour}:00`)
+      + `安静时段 ${this.config.proactive_quiet_start_hour}:00-${this.config.proactive_quiet_end_hour}:00`
+      + (this.config.proactive_min_favorability > 0
+        ? `，好感度门槛 ${this.config.proactive_min_favorability}`
+        : ''))
     this.timer = this.ctx.setInterval(() => void this.tick(), 60_000)
   }
 
@@ -121,6 +125,14 @@ export class ProactiveManager {
           continue
         }
 
+        // 好感度门槛：低于阈值的用户这一轮沉默不主动，等其再次发言后重新计时。
+        const threshold = this.config.proactive_min_favorability
+        if (threshold > 0 && !(await this.hasEnoughFavorability(target, threshold))) {
+          target.armed = false
+          logger.debug(`好感度不足 ${threshold}，跳过主动 ${target.key}`)
+          continue
+        }
+
         // 先解除武装再发送：即使发送很慢或失败，也不会在同一分钟重复触发。
         target.armed = false
         try {
@@ -183,6 +195,12 @@ export class ProactiveManager {
         this.targets.delete(key)
       }
     }
+  }
+
+  private async hasEnoughFavorability(target: Target, threshold: number): Promise<boolean> {
+    const user = await getUser(this.ctx, target.userId)
+    if (!user) return false
+    return (user.favorability || 0) >= threshold
   }
 
   private isPrivateSession(session: Session): boolean {

@@ -18,6 +18,7 @@ export declare class ProactiveManager {
     private send;
     /** 清理长期沉默且不会再触发的目标，避免 Map 无限增长 */
     private prune;
+    private hasEnoughFavorability;
     private isPrivateSession;
     private get minIdleMs();
     private get maxIdleMs();

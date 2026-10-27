@@ -257,6 +257,7 @@ export namespace Sat {
     proactive_quiet_start_hour: number
     proactive_quiet_end_hour: number
     proactive_max_idle_hours: number
+    proactive_min_favorability: number
 
     enable_mood: boolean
     max_mood: number
@@ -446,6 +447,7 @@ export namespace Sat {
       proactive_quiet_start_hour: Schema.number().min(0).max(23).step(1).default(23).description('安静时段开始小时（该时段内不发送主动消息）'),
       proactive_quiet_end_hour: Schema.number().min(0).max(23).step(1).default(8).description('安静时段结束小时（跨零点时按夜间处理）'),
       proactive_max_idle_hours: Schema.number().default(24).description('沉默超过多少小时后不再主动（用户再次发言会重新计时）'),
+      proactive_min_favorability: Schema.number().default(1000).description('主动消息所需的最低好感度（低于该值的用户不会收到私信主动消息，默认 0 表示不设门槛）'),
     }).description('主动消息设置（仅私聊）'),
 
     Schema.object({
