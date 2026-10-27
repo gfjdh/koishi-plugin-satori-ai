@@ -25,6 +25,11 @@ import { ProactiveManager } from './proactive'
 const logger = new Logger('satori-ai')
 const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，现在请你参与一下群聊中的话题'
 
+// 对话日志用：标识这条消息由哪个 bot 账号收发
+function botTag(session: Session): string {
+  return `${session.platform}:${session.selfId}`
+}
+
 export let puppeteer: Puppeteer | null = null
 
 export function refreshPuppeteer(ctx: Context) {
@@ -508,7 +513,7 @@ export class SAT extends Sat {
     if (this.config.enable_favorability) {
       await inputContentCheck(this.ctx, censored, session.userId, this.getFavorabilityConfig(), session, this.moodManager)
     }
-    if (this.config.log_ask_response) logger.info(`用户 ${session.username}：${processedPrompt}`)
+    if (this.config.log_ask_response) logger.info(`用户 ${session.username}（${botTag(session)}）：${processedPrompt}`)
     return censored
   }
 
@@ -533,8 +538,8 @@ export class SAT extends Sat {
       logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
       const messages = await this.buildMessages(session, prompt)
       const user = await getUser(this.ctx, session.userId)
-      let response = await this.getChatResponse(user, messages, prompt)
-      if (response.error) response = await this.getChatResponse(user, messages, prompt)
+      let response = await this.getChatResponse(user, messages, prompt, session)
+      if (response.error) response = await this.getChatResponse(user, messages, prompt, session)
       if (response.error) updateUserUsage(this.ctx, user, -1)
       return response
     } finally {
@@ -544,7 +549,7 @@ export class SAT extends Sat {
   }
 
   // 获取聊天回复
-  public async getChatResponse(user: User, messages: Sat.Msg[], prompt: string): Promise<{ content: string; error: boolean; reasoning_content?: string }> {
+  public async getChatResponse(user: User, messages: Sat.Msg[], prompt: string, session?: Session): Promise<{ content: string; error: boolean; reasoning_content?: string }> {
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength && this.config.enable_reasoner_like
@@ -552,10 +557,11 @@ export class SAT extends Sat {
     let response = await this.apiClient.chat(user, messages)
     logger.info(`API 调用耗时: ${Date.now() - startTime}ms`)
     if (this.config.log_ask_response) {
+      const prefix = session ? `Satori AI（${botTag(session)}）` : 'Satori AI'
       if (this.config.enable_favorability && this.config.enable_mood)
-        logger.info(`Satori AI：（心情值：${this.moodManager.getMoodValue(user.userid)}）${response.content}`)
+        logger.info(`${prefix}：（心情值：${this.moodManager.getMoodValue(user.userid)}）${response.content}`)
       else
-        logger.info(`Satori AI：${response.content}`)
+        logger.info(`${prefix}：${response.content}`)
     }
     if (!response.error) {
       const filterStartTime = Date.now()
@@ -605,7 +611,7 @@ export class SAT extends Sat {
     messages.push({ role: 'user', content: '[主动]' })
 
     const user = await getUser(this.ctx, session.userId)
-    const response = await this.getChatResponse(user, messages, '[主动]')
+    const response = await this.getChatResponse(user, messages, '[主动]', session)
     if (response.error) return ''
 
     let content = response.content || ''
