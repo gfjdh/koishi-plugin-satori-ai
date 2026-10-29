@@ -130,6 +130,11 @@ export class Game {
     }
   }
 
+  // 该频道是否有进行中的游戏（私聊中间件据此拦截游戏指令）
+  public hasActiveGame(channelId: string): boolean {
+    return this.channelGames.has(channelId)
+  }
+
   private getGameController(name: string): abstractGame<any> | null {
     if (name === PVP_GAME_KEY) return this.oneTouchPvp
     return this.availableGames.get(name) || null

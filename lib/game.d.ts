@@ -24,6 +24,7 @@ export declare class Game {
     startGame(session: Session, gameName: string, args: string[]): Promise<string>;
     private startOneTouchPvp;
     endGame(session: Session): Promise<string>;
+    hasActiveGame(channelId: string): boolean;
     private getGameController;
     private chat;
     private getGameCd;

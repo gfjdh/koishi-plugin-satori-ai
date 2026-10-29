@@ -29,6 +29,10 @@
  *   ../../node_modules/.bin/tsx scripts/train-onetouch.ts --mode regret
  *   ../../node_modules/.bin/tsx scripts/train-onetouch.ts --mode check --weights .scratch/onetouch.json
  *   ../../node_modules/.bin/tsx scripts/train-onetouch.ts --games 8000 --rounds 2
+ *
+ * 教师/起点可以换成带一步战术特征的手调权重，或上一轮训练结果（迭代蒸馏）：
+ *   --baseline tactical --init tactical
+ *   --baseline-weights .scratch/round1.json --init-weights .scratch/round1.json
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -42,7 +46,9 @@ import {
   writeFeatures,
   featureScore,
   FEATURE_COUNT,
+  HAND_FEATURE_START,
   handcraftedWeights,
+  tacticalWeights,
   totalHp,
 } from '../src/oneTouchEngine'
 
@@ -122,6 +128,12 @@ const config = {
   regretValidation: int('regret-validation', 1000),
   // 手牌 one-hot 共 40 维、没有手调先验，几千个局面就能拟合出纯噪声；默认冻结
   regretFreezeHands: argv['regret-freeze-hands'] !== 'false',
+  // 深搜 Q 的参考权重（教师）与 CEM 起点：handcrafted = 旧手调评估，tactical = 带一步战术特征
+  baseline: (argv.baseline || 'handcrafted') as 'handcrafted' | 'tactical',
+  init: (argv.init || 'handcrafted') as 'handcrafted' | 'tactical',
+  // 直接指定权重文件（迭代蒸馏：用上一轮训练结果当教师/起点）
+  baselineWeights: argv['baseline-weights'] || '',
+  initWeights: argv['init-weights'] || '',
 
   out: argv.out || '.scratch/onetouch-weights.json',
   seed: int('seed', 20261021),
@@ -741,8 +753,22 @@ function evaluatePositions(weights: Weights, samples: PositionSample[]): RegretR
   return { regret: normalized / n, hpRegret: absolute / n, match: matches / n }
 }
 
+function loadWeightsFile(file: string): Weights {
+  const payload = JSON.parse(readFileSync(file, 'utf8'))
+  const weights = Float64Array.from(payload.weights as number[])
+  if (weights.length !== FEATURE_COUNT) {
+    throw new Error(`${file} 的权重维度是 ${weights.length}，与当前 FEATURE_COUNT=${FEATURE_COUNT} 不一致`)
+  }
+  return weights
+}
+
 function runRegret() {
-  const baseline = Float64Array.from(handcraftedWeights())
+  const baseline = config.baselineWeights
+    ? loadWeightsFile(config.baselineWeights)
+    : Float64Array.from(config.baseline === 'tactical' ? tacticalWeights() : handcraftedWeights())
+  const init = config.initWeights
+    ? loadWeightsFile(config.initWeights)
+    : config.init === 'tactical' ? tacticalWeights() : handcraftedWeights()
 
   console.log('  生成训练局面……')
   const train = collectPositions(config.regretPositions, baseline)
@@ -757,15 +783,15 @@ function runRegret() {
     `验证 regret ${baseValidation.hpRegret.toFixed(2)} HP（匹配 ${(baseValidation.match * 100).toFixed(1)}%）`,
   )
 
-  let mean = Float64Array.from(baseline)
+  let mean = Float64Array.from(init)
   let sigma = new Float64Array(FEATURE_COUNT)
   const active = new Uint8Array(FEATURE_COUNT).fill(1)
-  if (config.regretFreezeHands) active.fill(0, 19, 59) // SELF_LEFT .. OPP_RIGHT
+  if (config.regretFreezeHands) active.fill(0, HAND_FEATURE_START, FEATURE_COUNT) // 手牌 one-hot
   for (let i = 0; i < FEATURE_COUNT; i++) {
     sigma[i] = active[i] ? config.regretSigma * Math.max(1, Math.abs(mean[i])) : 0
   }
 
-  let best = Float64Array.from(baseline)
+  let best = Float64Array.from(init)
   let bestValidation = baseValidation.regret
   const started = Date.now()
 
@@ -847,6 +873,9 @@ function main() {
     const file = argv.weights || config.out
     const payload = JSON.parse(readFileSync(file, 'utf8'))
     const weights = Float64Array.from(payload.weights as number[])
+    if (weights.length !== FEATURE_COUNT) {
+      throw new Error(`${file} 的权重维度是 ${weights.length}，与当前 FEATURE_COUNT=${FEATURE_COUNT} 不一致，需要重新训练`)
+    }
     const baseline = Float64Array.from(handcraftedWeights())
     console.log(`校验 ${file}（${weights.length} 维）`)
     console.log('  生成验证局面……')

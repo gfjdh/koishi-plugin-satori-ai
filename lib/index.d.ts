@@ -69,6 +69,7 @@ export declare class SAT extends Sat {
     addGroupCommonSense(session: Session, content: string, groupId: string): Promise<string>;
     private handleUserLevel;
     private handleUserUsage;
+    isGameActive(session: Session): boolean;
     handleRandomMiddleware(session: Session): Promise<string>;
     handleNickNameMiddleware(session: Session, prompt: string): Promise<string>;
     handleChannelMemoryManager(session: Session): Promise<void>;

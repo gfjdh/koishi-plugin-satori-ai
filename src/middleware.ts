@@ -20,6 +20,12 @@ export function createMiddleware(
 
     // 私信处理
     if (config.private && isPrivateSession(session)) {
+      // 游戏进行中：「左 右」「游戏规则」这类输入不是命令，若不拦截会同时触发 AI 对话，
+      // 和游戏回合互相打断。这里直接放行，交给游戏自己的消息监听器处理。
+      if (sat.isGameActive(session)) {
+        sat.proactive.touch(session)
+        return next()
+      }
       return await handlePrivateMessage(sat, session)
     }
 

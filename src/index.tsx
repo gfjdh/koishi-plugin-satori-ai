@@ -945,6 +945,11 @@ export class SAT extends Sat {
     return result
   }
 
+  // 该会话所在频道是否有游戏正在进行（供私聊中间件拦截游戏指令）
+  public isGameActive(session: Session): boolean {
+    return this.game?.hasActiveGame(session.channelId) ?? false
+  }
+
   // 随机中间件转接
   public async handleRandomMiddleware(session: Session) {
     const response = await this.generateResponse(session, randomPrompt)

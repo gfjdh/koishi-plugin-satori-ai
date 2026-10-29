@@ -244,7 +244,15 @@ export function stepState(
 //
 // 评估函数是可离线训练的线性模型： score = w · φ(state)
 // φ 为固定特征向量，w 由 scripts/train-onetouch.ts 自对弈训练得到。
-// 未训练时回退到手调权重（handcraftedWeights），行为与旧版评估基本一致。
+// 未训练时回退到手调权重（handcraftedWeights），行为与旧版评估一致。
+//
+// 特征全部以「总血量 H 的比例」为单位（血量当量 / H），这样同一组权重
+// 在不同难度下含义一致；旧实现里力量/护盾等项固定按 90 总血量换算，
+// 高难度下会系统性高估这些属性。
+//
+// 除静态属性外，评估还包含一步战术特征：双方本回合能打出的最好
+// 「血量交换」、是否能直接击杀、组合技收益。这是旧评估完全缺失的部分
+// （旧评估不看手牌），也是叶节点视野内最关键的信号。
 
 export const BASE_HP = 40
 export const HP_PER_LEVEL = 10
@@ -274,17 +282,29 @@ export const FEATURE = {
   OPP_COUNTER: 16,
   SELF_VULN: 17,
   OPP_VULN: 18,
-  SELF_LEFT: 19, // 19..28 十维 one-hot
-  SELF_RIGHT: 29, // 29..38
-  OPP_LEFT: 39, // 39..48
-  OPP_RIGHT: 49, // 49..58
-  SELF_COMBO_READY: 59,
-  OPP_COMBO_READY: 60,
-  BIAS: 61,
-  TEMPO: 62, // 是否轮到我方行动（叶节点深度固定时是常数，训练时需要它分离先后手）
+  SELF_COMBO_READY: 19,
+  OPP_COMBO_READY: 20,
+  SELF_SWING: 21, // 本回合所有走法里最好的「敌方掉血 - 己方掉血」
+  OPP_SWING: 22,
+  SELF_LETHAL: 23, // 是否有一步能直接击杀
+  OPP_LETHAL: 24,
+  SELF_COMBO_SWING: 25, // 触发组合技的走法里最好的 swing
+  OPP_COMBO_SWING: 26,
+  SELF_SWING_NOW: 27, // 只在轮到自己行动时非零
+  OPP_SWING_NOW: 28,
+  SELF_LETHAL_NOW: 29,
+  OPP_LETHAL_NOW: 30,
+  TEMPO: 31, // 是否轮到我方行动
+  BIAS: 32,
+  SELF_LEFT: 33, // 33..42 十维 one-hot
+  SELF_RIGHT: 43, // 43..52
+  OPP_LEFT: 53, // 53..62
+  OPP_RIGHT: 63, // 63..72
 } as const
 
-export const FEATURE_COUNT = 63
+export const FEATURE_COUNT = 73
+/** 手牌 one-hot 的起始下标（训练时默认冻结这一段） */
+export const HAND_FEATURE_START = FEATURE.SELF_LEFT
 
 function clamp(value: number, min: number, max: number) {
   return value < min ? min : value > max ? max : value
@@ -295,8 +315,123 @@ function handIndex(value: number) {
   return n < 0 ? n + 10 : n
 }
 
+// ——— 一步战术预览（不克隆状态，供特征使用） ———
+
+export interface MoveTactics {
+  swing: number // 敌方掉血 - 己方掉血
+  lethal: number // 该走法是否直接击杀
+  combo: number // 该走法是否触发组合技
+}
+
+/**
+ * 预览单个走法的血量交换（不修改状态）。
+ *
+ * 只关心血量变化，因此不需要真的克隆状态；结算顺序与 applySkillEffect 一致：
+ * 力量反转 → 穿刺 → 破盾 → 流血/力量/易伤 → 治疗/护盾/自身力量 → 普通伤害
+ * → 反击 → 自身流血结算 → 华丽收场。
+ */
+export function previewMove(
+  state: [PlayerState, PlayerState],
+  actor: 0 | 1,
+  move: [number, number],
+): { swing: number; lethal: number; combo: number } {
+  const self = state[actor]
+  const opp = state[1 - actor]
+  if (self.status === playerStatus.Stunned) return { swing: 0, lethal: 0, combo: 0 }
+
+  const [handA, handB] = move
+  const sum = (handA + handB) % 10
+  const writeLeft = handA === self.left
+  const selfLeft = writeLeft ? sum : self.left
+  const selfRight = writeLeft ? self.right : sum
+  const comboEffect = resolveCombo(selfLeft, selfRight)
+  const effect = comboEffect || SKILL_MAP[sum.toString()] || {}
+  const isCombo = !!comboEffect
+
+  let selfStrength = self.strength || 0
+  let oppStrength = opp.strength || 0
+  if (effect.revwersalOfStrength) {
+    const temp = selfStrength
+    selfStrength = oppStrength
+    oppStrength = temp
+  }
+
+  let oppLoss = 0
+  let selfLoss = 0
+
+  // 穿刺伤害（力量取自身力量变化之前的值）
+  if (effect.pierceDamage) oppLoss += Math.max(effect.pierceDamage + selfStrength, 0)
+
+  // 破盾 / 易伤都先于普通伤害结算
+  let oppShield = opp.shield || 0
+  if (effect.destroyShield) oppShield = Math.max(0, oppShield - effect.destroyShield)
+  const oppVulnerable = ((opp.vulnerablility || 0) + (effect.vulnerablility || 0)) > 0
+
+  // 普通伤害（力量取自身力量变化之后的值）
+  if (effect.damage) {
+    const damageStrength = selfStrength + (effect.selfstrengthChange || 0)
+    const times = effect.damageTimes || 1
+    for (let i = 0; i < times; i++) {
+      const blocked = oppShield > 0
+      oppShield = Math.max(0, oppShield - (isCombo ? 2 : 1))
+      if (!blocked) {
+        oppLoss += Math.round(Math.max(0, effect.damage + damageStrength) * (oppVulnerable ? 1.5 : 1))
+      }
+    }
+  }
+
+  // 治疗
+  if (effect.heal) selfLoss -= effect.heal
+
+  // 反击（反击方的力量取本回合力量变化之后的值）
+  if ((opp.counterAttack || 0) > 0 && (effect.damage > 0 || effect.pierceDamage > 0)) {
+    selfLoss += Math.max((opp.counterAttack || 0) + oppStrength + (effect.strengthChange || 0), 0)
+  }
+
+  // 自身流血在回合结束时结算
+  const selfBleed = (self.bleed || 0) + (effect.selfbleed || 0)
+  if (selfBleed > 0) selfLoss += selfBleed
+
+  // 华丽收场：先叠加本次流血，再结算对方全部流血
+  if (effect.magnificentEnd) {
+    const oppBleed = (opp.bleed || 0) + (effect.bleed || 0)
+    oppLoss += oppBleed * (oppBleed + 1) / 2
+  }
+
+  return { swing: oppLoss - selfLoss, lethal: opp.hp - oppLoss <= 0 ? 1 : 0, combo: isCombo ? 1 : 0 }
+}
+
+export function tacticsOf(state: [PlayerState, PlayerState], actor: 0 | 1): {
+  swing: number
+  lethal: number
+  combo: number
+  comboSwing: number
+} {
+  const self = state[actor]
+  const opp = state[1 - actor]
+  if (self.status === playerStatus.Stunned) return { swing: 0, lethal: 0, combo: 0, comboSwing: 0 }
+
+  let swing = -Infinity
+  let lethal = 0
+  let combo = 0
+  let comboSwing = 0
+
+  for (const move of generatePossibleMoves(self, opp)) {
+    const preview = previewMove(state, actor, move)
+    if (preview.swing > swing) swing = preview.swing
+    if (preview.lethal) lethal = 1
+    if (preview.combo) {
+      combo = 1
+      if (preview.swing > comboSwing) comboSwing = preview.swing
+    }
+  }
+
+  return { swing, lethal, combo, comboSwing }
+}
+
 /** 当前手牌是否能在本回合直接凑出组合技 */
 export function canTriggerCombo(self: PlayerState, opp: PlayerState): boolean {
+  if (self.status === playerStatus.Stunned) return false
   const own = [self.left, self.right]
   const targets = [opp.left, opp.right]
   for (let i = 0; i < 2; i++) {
@@ -311,14 +446,12 @@ export function canTriggerCombo(self: PlayerState, opp: PlayerState): boolean {
   return false
 }
 
-function bleedFeature(bleed: number | undefined) {
-  const value = clamp(bleed || 0, 0, 20)
-  return value * value / 100
-}
-
 /**
  * 将局面写成特征向量。perspective 为「我方」下标（0 或 1）。
  * 线上 AI 固定是 1，训练脚本两侧都会用到。
+ *
+ * toMove 给出「下一步轮到谁走」，用于 tempo 与「本回合威胁」交互特征；
+ * 不传时这两类特征为 0。
  */
 export function writeFeatures(
   state: [PlayerState, PlayerState],
@@ -331,42 +464,62 @@ export function writeFeatures(
   const self = state[perspective]
   const opp = state[1 - perspective]
   const H = totalHp(level)
+  const selfTactics = tacticsOf(state, perspective)
+  const oppTactics = tacticsOf(state, (1 - perspective) as 0 | 1)
+  const myTurn = toMove === perspective
 
   out[FEATURE.HP_DIFF] = (self.hp - opp.hp) / H
 
   // 低血量阈值特征与原手调评估一致：跨过阈值就整体扣分
-  out[FEATURE.SELF_LOW_HALF] = self.hp < H / 2 ? 1 : 0
-  out[FEATURE.SELF_LOW_QUARTER] = self.hp < H / 4 ? 1 : 0
-  out[FEATURE.SELF_LOW_EIGHTH] = self.hp < H / 8 ? 1 : 0
-  out[FEATURE.OPP_LOW_HALF] = opp.hp < H / 2 ? 1 : 0
-  out[FEATURE.OPP_LOW_QUARTER] = opp.hp < H / 4 ? 1 : 0
-  out[FEATURE.OPP_LOW_EIGHTH] = opp.hp < H / 8 ? 1 : 0
+  const lowPenalty = Math.round(H / 4) / H
+  out[FEATURE.SELF_LOW_HALF] = self.hp < H / 2 ? lowPenalty : 0
+  out[FEATURE.SELF_LOW_QUARTER] = self.hp < H / 4 ? lowPenalty : 0
+  out[FEATURE.SELF_LOW_EIGHTH] = self.hp < H / 8 ? lowPenalty : 0
+  out[FEATURE.OPP_LOW_HALF] = opp.hp < H / 2 ? lowPenalty : 0
+  out[FEATURE.OPP_LOW_QUARTER] = opp.hp < H / 4 ? lowPenalty : 0
+  out[FEATURE.OPP_LOW_EIGHTH] = opp.hp < H / 8 ? lowPenalty : 0
 
-  out[FEATURE.SELF_STRENGTH] = clamp(self.strength || 0, -20, 20) / 20
-  out[FEATURE.OPP_STRENGTH] = clamp(opp.strength || 0, -20, 20) / 20
-  out[FEATURE.SELF_SHIELD] = clamp(self.shield || 0, 0, 5) / 5
-  out[FEATURE.OPP_SHIELD] = clamp(opp.shield || 0, 0, 5) / 5
-  out[FEATURE.SELF_BLEED_SQ] = bleedFeature(self.bleed)
-  out[FEATURE.OPP_BLEED_SQ] = bleedFeature(opp.bleed)
+  out[FEATURE.SELF_STRENGTH] = clamp(self.strength || 0, -20, 20) * 5 / H
+  out[FEATURE.OPP_STRENGTH] = clamp(opp.strength || 0, -20, 20) * 5 / H
+  out[FEATURE.SELF_SHIELD] = clamp(self.shield || 0, 0, 5) * 8 / H
+  out[FEATURE.OPP_SHIELD] = clamp(opp.shield || 0, 0, 5) * 8 / H
+  out[FEATURE.SELF_BLEED_SQ] = Math.round(clamp(self.bleed || 0, 0, 20) ** 2 / 2.5) / H
+  out[FEATURE.OPP_BLEED_SQ] = Math.round(clamp(opp.bleed || 0, 0, 20) ** 2 / 2.5) / H
 
-  out[FEATURE.SELF_STUN] = self.status === playerStatus.Stunned ? 1 : 0
-  out[FEATURE.OPP_STUN] = opp.status === playerStatus.Stunned ? 1 : 0
+  out[FEATURE.SELF_STUN] = self.status === playerStatus.Stunned ? 10 / H : 0
+  out[FEATURE.OPP_STUN] = opp.status === playerStatus.Stunned ? 10 / H : 0
 
-  out[FEATURE.SELF_COUNTER] = clamp((self.counterAttack || 0) + (self.strength || 0), 0, 20) / 20
-  out[FEATURE.OPP_COUNTER] = clamp((opp.counterAttack || 0) + (opp.strength || 0), 0, 20) / 20
+  // 反击只在有反击层数时才成立（力量只在反击结算时加成）
+  out[FEATURE.SELF_COUNTER] = (self.counterAttack || 0) > 0
+    ? Math.max((self.counterAttack || 0) + (self.strength || 0), 0) / H
+    : 0
+  out[FEATURE.OPP_COUNTER] = (opp.counterAttack || 0) > 0
+    ? Math.max((opp.counterAttack || 0) + (opp.strength || 0), 0) / H
+    : 0
 
-  out[FEATURE.SELF_VULN] = clamp(self.vulnerablility || 0, 0, 5) / 5
-  out[FEATURE.OPP_VULN] = clamp(opp.vulnerablility || 0, 0, 5) / 5
+  out[FEATURE.SELF_VULN] = Math.round(clamp(self.vulnerablility || 0, 0, 5) * 4) / H
+  out[FEATURE.OPP_VULN] = Math.round(clamp(opp.vulnerablility || 0, 0, 5) * 4) / H
+
+  out[FEATURE.SELF_COMBO_READY] = selfTactics.combo
+  out[FEATURE.OPP_COMBO_READY] = oppTactics.combo
+  out[FEATURE.SELF_SWING] = selfTactics.swing / H
+  out[FEATURE.OPP_SWING] = oppTactics.swing / H
+  out[FEATURE.SELF_LETHAL] = selfTactics.lethal
+  out[FEATURE.OPP_LETHAL] = oppTactics.lethal
+  out[FEATURE.SELF_COMBO_SWING] = selfTactics.comboSwing / H
+  out[FEATURE.OPP_COMBO_SWING] = oppTactics.comboSwing / H
+  out[FEATURE.SELF_SWING_NOW] = myTurn ? selfTactics.swing / H : 0
+  out[FEATURE.OPP_SWING_NOW] = myTurn ? 0 : oppTactics.swing / H
+  out[FEATURE.SELF_LETHAL_NOW] = myTurn ? selfTactics.lethal : 0
+  out[FEATURE.OPP_LETHAL_NOW] = myTurn ? 0 : oppTactics.lethal
 
   out[FEATURE.SELF_LEFT + handIndex(self.left)] = 1
   out[FEATURE.SELF_RIGHT + handIndex(self.right)] = 1
   out[FEATURE.OPP_LEFT + handIndex(opp.left)] = 1
   out[FEATURE.OPP_RIGHT + handIndex(opp.right)] = 1
 
-  out[FEATURE.SELF_COMBO_READY] = canTriggerCombo(self, opp) ? 1 : 0
-  out[FEATURE.OPP_COMBO_READY] = canTriggerCombo(opp, self) ? 1 : 0
+  out[FEATURE.TEMPO] = myTurn ? 1 : 0
   out[FEATURE.BIAS] = 1
-  out[FEATURE.TEMPO] = toMove === perspective ? 1 : 0
 }
 
 export function featureScore(features: Float64Array | number[], weights: ArrayLike<number>) {
@@ -394,31 +547,53 @@ export function evaluatePosition(
 }
 
 /**
- * 旧版手调评估在特征空间中的等价权重（以 5 级、总血量 90 为参照）。
- * 用作训练起点和未训练时的回退。
+ * 旧版手调评估在特征空间中的等价权重。
+ * 战术特征权重为 0，因此这组权重逐项等于线上旧评估（按总血量归一化）。
+ * 用作训练起点、回归基线和未训练时的回退。
  */
 export function handcraftedWeights(): number[] {
   const w = new Array(FEATURE_COUNT).fill(0)
-  const scale = totalHp(5) // 90
   w[FEATURE.HP_DIFF] = 1
-  w[FEATURE.SELF_LOW_HALF] = -0.25
-  w[FEATURE.SELF_LOW_QUARTER] = -0.25
-  w[FEATURE.SELF_LOW_EIGHTH] = -0.25
-  w[FEATURE.OPP_LOW_HALF] = 0.25
-  w[FEATURE.OPP_LOW_QUARTER] = 0.25
-  w[FEATURE.OPP_LOW_EIGHTH] = 0.25
-  w[FEATURE.SELF_STRENGTH] = 100 / scale
-  w[FEATURE.OPP_STRENGTH] = -100 / scale
-  w[FEATURE.SELF_SHIELD] = 40 / scale
-  w[FEATURE.OPP_SHIELD] = -40 / scale
-  w[FEATURE.SELF_BLEED_SQ] = -40 / scale
-  w[FEATURE.OPP_BLEED_SQ] = 40 / scale
-  w[FEATURE.SELF_STUN] = -10 / scale
-  w[FEATURE.OPP_STUN] = 10 / scale
-  w[FEATURE.SELF_COUNTER] = 20 / scale
-  w[FEATURE.OPP_COUNTER] = -20 / scale
-  w[FEATURE.SELF_VULN] = -20 / scale
-  w[FEATURE.OPP_VULN] = 20 / scale
+  w[FEATURE.SELF_LOW_HALF] = -1
+  w[FEATURE.SELF_LOW_QUARTER] = -1
+  w[FEATURE.SELF_LOW_EIGHTH] = -1
+  w[FEATURE.OPP_LOW_HALF] = 1
+  w[FEATURE.OPP_LOW_QUARTER] = 1
+  w[FEATURE.OPP_LOW_EIGHTH] = 1
+  w[FEATURE.SELF_STRENGTH] = 1
+  w[FEATURE.OPP_STRENGTH] = -1
+  w[FEATURE.SELF_SHIELD] = 1
+  w[FEATURE.OPP_SHIELD] = -1
+  w[FEATURE.SELF_BLEED_SQ] = -1
+  w[FEATURE.OPP_BLEED_SQ] = 1
+  w[FEATURE.SELF_STUN] = -1
+  w[FEATURE.OPP_STUN] = 1
+  w[FEATURE.SELF_COUNTER] = 1
+  w[FEATURE.OPP_COUNTER] = -1
+  w[FEATURE.SELF_VULN] = -1
+  w[FEATURE.OPP_VULN] = 1
+  return w
+}
+
+/**
+ * 手调的手牌感知权重：在旧评估基础上加入一步战术特征。
+ * 作为训练起点，也可以直接当作「未训练但不瞎」的评估使用。
+ */
+export function tacticalWeights(): number[] {
+  const w = handcraftedWeights()
+  w[FEATURE.SELF_COMBO_READY] = 0.03
+  w[FEATURE.OPP_COMBO_READY] = -0.03
+  w[FEATURE.SELF_SWING] = 0.6
+  w[FEATURE.OPP_SWING] = -0.6
+  w[FEATURE.SELF_LETHAL] = 0.5
+  w[FEATURE.OPP_LETHAL] = -0.5
+  w[FEATURE.SELF_COMBO_SWING] = 0.3
+  w[FEATURE.OPP_COMBO_SWING] = -0.3
+  w[FEATURE.SELF_SWING_NOW] = 0.3
+  w[FEATURE.OPP_SWING_NOW] = -0.3
+  w[FEATURE.SELF_LETHAL_NOW] = 0.3
+  w[FEATURE.OPP_LETHAL_NOW] = -0.3
+  w[FEATURE.TEMPO] = 0.02
   return w
 }
 

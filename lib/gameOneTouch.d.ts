@@ -81,7 +81,6 @@ declare class OneTouchSingleGame extends abstractGameSingleGame {
     private generatePossibleMoves;
     private cloneState;
     private simulateMove;
-    private evaluateState;
     private generateChat;
     private instuction;
     private skillList;

@@ -1,8 +1,15 @@
 import { Session, Logger, Context } from 'koishi'
 import { abstractGame, abstractGameSingleGame, gameResult } from './abstractGame'
 import { winFlag } from './game'
+import { evaluatePosition, handcraftedWeights, isValidWeights } from './oneTouchEngine'
+import { ONETOUCH_EVAL_WEIGHTS } from './oneTouchWeights'
 
 const logger = new Logger('satori-game-onetouch')
+
+// 训练好的评估权重；权重文件损坏或维度不符时回退到手调权重（等价于旧评估）
+const ONETOUCH_WEIGHTS = isValidWeights(ONETOUCH_EVAL_WEIGHTS)
+  ? ONETOUCH_EVAL_WEIGHTS
+  : handcraftedWeights()
 
 export enum playerStatus {
   Normal, // 正常状态
@@ -494,7 +501,8 @@ class OneTouchSingleGame extends abstractGameSingleGame {
   private aiSearch(depth: number, isMaximizing: boolean, currentState: [PlayerState, PlayerState], alpha: number, beta: number): number {
     // 终止条件：达到最大深度或游戏结束
     if (depth === 0 || currentState[0].hp <= 0 || currentState[1].hp <= 0) {
-      return this.evaluateState(currentState);
+      // isMaximizing 表示该节点轮到 AI；叶节点的行动方是另一方
+      return evaluatePosition(currentState, 1, this.level, ONETOUCH_WEIGHTS, isMaximizing ? 1 : 0)
     }
 
     const possibleMoves = this.generatePossibleMoves(currentState[isMaximizing ? 1 : 0], currentState[isMaximizing ? 0 : 1]);
@@ -588,63 +596,21 @@ class OneTouchSingleGame extends abstractGameSingleGame {
     return result
   }
 
-  // 增强版局面评估函数
-  private evaluateState(state: [PlayerState, PlayerState]): number {
-    const ai = state[1]; // AI始终是玩家1
-    const player = state[0];
-    const aiBaseHP = this.baseHP + this.level * this.aiLevelHp
-    const playerBaseHP = this.baseHP + this.level * this.playerLevelHP
+  // 局面评估统一走 oneTouchEngine.evaluatePosition：
+  // 特征包含血量/力量/护盾/流血/眩晕/反击/易伤，以及双方本回合的
+  // 一步战术（最好血量交换、能否直接击杀、组合技收益）和手牌组合技就绪。
+  // 权重由 scripts/train-onetouch.ts 训练，见 oneTouchWeights.ts。
 
-    // 基础分差
-    let score = (ai.hp - player.hp);
-
-    // 低血量惩罚
-    if (ai.hp < aiBaseHP / 2) score -= Math.round((aiBaseHP) / 4);
-    if (player.hp < playerBaseHP / 2) score += Math.round((playerBaseHP) / 4);
-    if (ai.hp < aiBaseHP / 4) score -= Math.round((aiBaseHP) / 4);
-    if (player.hp < playerBaseHP / 4) score += Math.round((playerBaseHP) / 4);
-    if (ai.hp < aiBaseHP / 8) score -= Math.round((aiBaseHP) / 4);
-    if (player.hp < playerBaseHP / 8) score += Math.round((playerBaseHP) / 4);
-
-    // 战斗属性加成
-    score += Math.min(ai.strength * 5, 100);
-    score -= Math.max(player.strength * 5, -100);
-
-    // 防御属性
-    score += ai.shield * 8;
-    score -= player.shield * 8;
-
-    // 异常状态
-    score -= Math.min(Math.round(ai.bleed * ai.bleed / 2.5));
-    score += Math.min(Math.round(player.bleed * player.bleed / 2.5));
-
-    // 眩晕状态
-    if (ai.status === playerStatus.Stunned) score -= 10;
-    if (player.status === playerStatus.Stunned) score += 10;
-
-    // 反击状态
-    if (ai.counterAttack > 0) score += Math.max(ai.counterAttack + (ai.strength || 0), 0);
-    if (player.counterAttack > 0) score -= Math.max(player.counterAttack + (player.strength || 0), 0);
-
-    // 易伤状态
-    if (ai.vulnerablility > 0) score -= Math.round(ai.vulnerablility * 4);
-    if (player.vulnerablility > 0) score += Math.round(player.vulnerablility * 4);
-
-    // 终局奖励
-    if (player.hp <= 0) score += 100000;
-    if (ai.hp <= 0) score -= 1000000;
-
-    return score;
-  }
 
   private generateChat(Score: number): string {
+    // 评估分已归一化为「总血量的比例」，10 点血量约等于 10 / 总血量
     if (this.lastScore < 90000 && Score > 90000) {
       return '我觉得你要输了哦~'
     }
     if (this.lastScore < 0 && Score > 0 && Math.random() > 0.5) {
       return '局势发生变化了呢~'
     }
-    if (Score - this.lastScore > 10 && Math.random() > 0.8)
+    if (Score - this.lastScore > 10 / (this.baseHP + this.level * this.aiLevelHp) && Math.random() > 0.8)
       return '看招！'
   }
 
