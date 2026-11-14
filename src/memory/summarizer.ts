@@ -16,7 +16,7 @@ import { Granularity, SatDialogue, SatMemory } from './schema'
 import { parseLlmJson } from './json'
 import {
   buildSummaryPrompt, buildTopicArchivePrompt, buildTopicBatchPrompt, buildTopicSwitchPrompt,
-  ArchiveDayResult, ArchiveResult, SummaryResult,
+  ArchiveDayResult, ArchiveResult, ROLE_AI, ROLE_USER, SummaryResult,
 } from './prompts'
 import { ProfileManager } from './profile'
 import { redactSensitiveText } from './redact'
@@ -72,6 +72,8 @@ export interface SummarizerConfig {
   topicSwitchCheck: boolean
   timezoneOffset: number
   dayBoundaryHour: number
+  /** 昵称列表；归档时从用户发言里抹掉，避免昵称被当成发言人 */
+  nickNames?: string[]
   /** 每个 scope 每次汇总最多发起多少次辅助模型调用 */
   maxCallsPerTick?: number
   /** scopeId -> 用户；用于让持“地灵殿通行证”的用户走自己的 key */
@@ -111,6 +113,80 @@ export function formatTime(date: Date, timezoneOffsetHours: number): string {
 /** 只到日期的格式，日/周/月等周期节点不需要分钟 */
 export function formatDay(date: Date, timezoneOffsetHours: number): string {
   return formatTime(date, timezoneOffsetHours).slice(0, 10)
+}
+
+// ---------- 归档输入 ----------
+
+export interface DialogueRow {
+  userContent: string
+  aiContent: string
+  username?: string
+  createdAt: Date
+}
+
+/** 压成一行：换行会让用户伪造出新的发言人行，归档只需要语义，不需要原排版 */
+function oneLine(content: string): string {
+  return (content || '').replace(/\s*\r?\n\s*/g, ' ').trim()
+}
+
+/**
+ * 归档时要抹掉的昵称：昵称列表 + 「情侣合照」里存的专属昵称（用户的和 AI 的）。
+ * 长名排前面，避免短名先替换后把长名拆碎。
+ */
+export function collectArchiveNickNames(
+  baseNames: string[],
+  user: Pick<User, 'items'> | null,
+): string[] {
+  const names = [...(baseNames || [])]
+  const metadata = user?.items?.['情侣合照']?.metadata
+  if (metadata) {
+    if (typeof metadata.userNickName === 'string') names.push(metadata.userNickName)
+    if (typeof metadata.botNickName === 'string') names.push(metadata.botNickName)
+  }
+  return [...new Set(names.map(name => (name || '').trim()).filter(Boolean))]
+    .sort((a, b) => b.length - a.length)
+}
+
+/** 整段抹掉昵称：归档只关心内容，发言人的称呼由固定标签承担 */
+function stripNames(content: string, names: string[]): string {
+  if (!names.length) return content
+  let result = content
+  for (const name of names) result = result.split(name).join('')
+  return result
+}
+
+/**
+ * 把对话记录渲染成归档输入。
+ *
+ * 发言人只用固定标签标注，不用昵称：昵称在东方同人语境里常与角色同名，
+ * 用户也可能在消息里用“名字：台词”的格式扮演角色或直接称呼 AI，
+ * 靠识别名字判断身份是穷举不完的。这里让「行首标签」成为唯一判据，
+ * 原话一律放进「」，内容里出现什么名字都不改变发言人。
+ *
+ * 在标签之外再加一层：用户发言里出现的昵称（昵称列表与「情侣合照」里的）
+ * 直接抹掉，免得总结器把它们当成别的发言人写进记忆。
+ *
+ * 一个作用域里出现多个昵称时（按群记忆）才把昵称补在标签后面，
+ * 只用来区分不同的人，不承担身份判断。
+ */
+export function formatDialogueRows(
+  rows: DialogueRow[],
+  timezoneOffset: number,
+  names: string[] = [],
+): string {
+  const userNames = new Set(rows.map(row => (row.username || '').trim()).filter(Boolean))
+  const showName = userNames.size > 1
+  return rows.map((row) => {
+    const time = formatTime(row.createdAt, timezoneOffset)
+    const name = showName ? (row.username || '').trim() : ''
+    const speaker = name ? `${ROLE_USER}（${name}）` : ROLE_USER
+    const content = stripNames(oneLine(row.userContent), names)
+    const lines = [`[${time}] ${speaker}说「${content}」`]
+    // '…' 是关闭模型自发言记忆时的占位，不代表真的说了这句话
+    const reply = row.aiContent && row.aiContent !== '…' ? oneLine(row.aiContent) : ''
+    if (reply) lines.push(`[${time}] ${ROLE_AI}说「${reply}」`)
+    return lines.join('\n')
+  }).join('\n')
 }
 
 // ---------- 周期边界（输入输出都是真实 UTC 时刻，宿主时区无关） ----------
@@ -215,7 +291,7 @@ export class Summarizer {
 
       let shouldSwitch = dialogues.length >= TOPIC_MAX_TURNS
       if (!shouldSwitch) {
-        const text = this.formatDialogues(dialogues)
+        const text = this.formatDialogues(dialogues, user)
         const result = await this.api.auxiliaryChat(
           buildTopicSwitchPrompt(text, formatTime(meta.topicStart, this.tz)),
           user,
@@ -247,7 +323,7 @@ export class Summarizer {
     })
     if (!dialogues.length) return 'empty'
 
-    const text = this.formatDialogues(dialogues)
+    const text = this.formatDialogues(dialogues, user)
     if (this.config.dryRun) {
       logger.info(`[dry-run] topic 归档 scope=${scopeId} 对话=${dialogues.length} 字符=${text.length}`
         + ` 日=${formatTime(cursor, this.tz)}`)
@@ -356,7 +432,7 @@ export class Summarizer {
   ): Promise<ArchiveOutcome> {
     const groups = blocks.map(block => ({
       date: formatTime(block.from, this.tz).slice(0, 10),
-      dialogues: this.formatDialogues(block.dialogues),
+      dialogues: this.formatDialogues(block.dialogues, user),
     }))
     let result = await this.api.auxiliaryChat(buildTopicBatchPrompt(groups), user)
     if (result.error && isRejectedContent(result.content)) {
@@ -741,13 +817,8 @@ export class Summarizer {
 
   // ---------- 工具 ----------
 
-  private formatDialogues(rows: { userContent: string; aiContent: string; username: string; createdAt: Date }[]): string {
-    return rows.map((row) => {
-      const time = formatTime(row.createdAt, this.tz)
-      const user = row.username || '用户'
-      const ai = row.aiContent && row.aiContent !== '…' ? `\nAI：${row.aiContent}` : ''
-      return `[${time}] ${user}：${row.userContent}${ai}`
-    }).join('\n')
+  private formatDialogues(rows: DialogueRow[], user: User | null): string {
+    return formatDialogueRows(rows, this.tz, collectArchiveNickNames(this.config.nickNames || [], user))
   }
 
   private formatChildren(children: SatMemory[]): string {

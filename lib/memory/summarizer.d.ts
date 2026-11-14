@@ -33,6 +33,8 @@ export interface SummarizerConfig {
     topicSwitchCheck: boolean;
     timezoneOffset: number;
     dayBoundaryHour: number;
+    /** 昵称列表；归档时从用户发言里抹掉，避免昵称被当成发言人 */
+    nickNames?: string[];
     /** 每个 scope 每次汇总最多发起多少次辅助模型调用 */
     maxCallsPerTick?: number;
     /** scopeId -> 用户；用于让持“地灵殿通行证”的用户走自己的 key */
@@ -47,6 +49,32 @@ export { isRejectedContent } from './reject';
 export declare function formatTime(date: Date, timezoneOffsetHours: number): string;
 /** 只到日期的格式，日/周/月等周期节点不需要分钟 */
 export declare function formatDay(date: Date, timezoneOffsetHours: number): string;
+export interface DialogueRow {
+    userContent: string;
+    aiContent: string;
+    username?: string;
+    createdAt: Date;
+}
+/**
+ * 归档时要抹掉的昵称：昵称列表 + 「情侣合照」里存的专属昵称（用户的和 AI 的）。
+ * 长名排前面，避免短名先替换后把长名拆碎。
+ */
+export declare function collectArchiveNickNames(baseNames: string[], user: Pick<User, 'items'> | null): string[];
+/**
+ * 把对话记录渲染成归档输入。
+ *
+ * 发言人只用固定标签标注，不用昵称：昵称在东方同人语境里常与角色同名，
+ * 用户也可能在消息里用“名字：台词”的格式扮演角色或直接称呼 AI，
+ * 靠识别名字判断身份是穷举不完的。这里让「行首标签」成为唯一判据，
+ * 原话一律放进「」，内容里出现什么名字都不改变发言人。
+ *
+ * 在标签之外再加一层：用户发言里出现的昵称（昵称列表与「情侣合照」里的）
+ * 直接抹掉，免得总结器把它们当成别的发言人写进记忆。
+ *
+ * 一个作用域里出现多个昵称时（按群记忆）才把昵称补在标签后面，
+ * 只用来区分不同的人，不承担身份判断。
+ */
+export declare function formatDialogueRows(rows: DialogueRow[], timezoneOffset: number, names?: string[]): string;
 /** date 所在自然日的起点：最近一个已过的日界线 */
 export declare function dayStart(date: Date, timezoneOffset: number, boundaryHour: number): Date;
 /** date 所在自然日的终点（下一条日界线） */

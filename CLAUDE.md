@@ -25,6 +25,9 @@ tsc
 
 # Schedule logic test (schedule content lives in ${dataDir}/schedule.json)
 #   node -r esbuild-register external/satori-ai/scripts/test-schedule.ts
+
+# Archive transcript speaker-label test (user/AI roles must not be inferred from names)
+#   node -r esbuild-register external/satori-ai/scripts/test-summarizer-format.ts
 ```
 
 ## Architecture

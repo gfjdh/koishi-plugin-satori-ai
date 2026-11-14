@@ -22,6 +22,8 @@ export interface MemoryServiceConfig extends MemoryConfig {
   short_term_sweep_minutes: number
   memory_timezone_offset: number
   memory_day_boundary_hour: number
+  /** 昵称列表：归档时从用户发言里抹掉，避免昵称被当成发言人 */
+  nick_name_list: string[]
   topic_switch_check: boolean
   summary_heartbeat_minutes: number
   summary_dry_run: boolean
@@ -82,6 +84,7 @@ export class MemoryService {
       topicSwitchCheck: config.topic_switch_check,
       timezoneOffset: config.memory_timezone_offset,
       dayBoundaryHour: config.memory_day_boundary_hour,
+      nickNames: config.nick_name_list,
       maxCallsPerTick: config.summary_max_calls_per_tick,
       resolveUser,
     })

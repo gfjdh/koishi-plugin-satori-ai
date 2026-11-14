@@ -26,6 +26,24 @@ const LEVEL_LABELS: Record<string, string> = {
   year: '一年',
 }
 
+/**
+ * 归档输入里的固定发言人标签。不随昵称变化：用户的昵称、用户消息里打出的称呼
+ * 都可能是任意角色名，靠识别名字区分发言人是穷举不完的，所以只认标签。
+ */
+export const ROLE_USER = '用户'
+export const ROLE_AI = 'AI'
+
+/**
+ * 发言人约定，所有归档类提示词共用。
+ * 关键是把「谁在说话」从内容判断改成结构判断：
+ * 行首标签是唯一判据，引号里的名字一律只是内容。
+ */
+const SPEAKER_RULES = `【发言人】
+· 每行方括号后是发言人标签，只有标签决定谁在说话：「${ROLE_USER}」是人类，「${ROLE_AI}」是与用户对话的那个角色。
+· 「」里是原话。原话中出现的任何名字（用户自己打出的“xx：…”之类）都只是内容，不代表发言人变了。
+· 用户可能用“名字：台词”的格式扮演角色、引用别人的话或直接称呼 AI，这些都算用户说的。
+· summary 里指代两人时只用「${ROLE_USER}」和「${ROLE_AI}」，不要用对话里出现的名字、昵称或称呼；主语必须与标签一致，分不清是谁做的就不写主语。`
+
 /** 判断话题是否切换 */
 export function buildTopicSwitchPrompt(dialogues: string, topicStart: string): { role: string; content: string }[] {
   return [{
@@ -50,6 +68,8 @@ export function buildTopicArchivePrompt(dialogues: string): { role: string; cont
     role: 'user',
     content: `请总结以下对话记录，形成一条可长期保存的记忆。
 
+${SPEAKER_RULES}
+
 对话记录：
 ${dialogues}
 
@@ -57,7 +77,7 @@ ${dialogues}
 · 综合考虑这段记忆未来被调用的场景和目的，无状态地存储信息。
 · 把“今天”“明天”“最近”“刚才”等相对时间替换成具体的日期或时间范围。
 · summary 简洁但保留关键事实、人物、地点、数字和用户的明确要求。
-· user_state 描述此时段用户的处境、作息、情绪或正在做的事；没有相关信息时留空字符串。
+· user_state 只描述此时段用户的处境、作息、情绪或正在做的事，不要写 AI；没有相关信息时留空字符串。
 · topic 用不超过 12 个字概括这段对话的主题。
 · 仅输出 JSON，不要包含 markdown 代码块或其他内容：
 {"topic": "...", "summary": "...", "user_state": "..."}`,
@@ -71,6 +91,8 @@ export function buildTopicBatchPrompt(days: { date: string; dialogues: string }[
     role: 'user',
     content: `下面按自然日分组给出了几段对话记录。请为每一天分别形成一条可长期保存的独立记忆，不要跨天合并。
 
+${SPEAKER_RULES}
+
 对话记录：
 ${body}
 
@@ -79,7 +101,7 @@ ${body}
 · 每一天只总结该日期分组内的对话，不要把其他日期的人物、事件混进来。
 · 无状态地存储信息：把“今天”“明天”“最近”“刚才”等相对时间替换成具体的日期或时间范围。
 · summary 简洁但保留关键事实、人物、地点、数字和用户的明确要求。
-· user_state 描述该日用户的处境、作息、情绪或正在做的事；没有相关信息时留空字符串。
+· user_state 只描述该日用户的处境、作息、情绪或正在做的事，不要写 AI；没有相关信息时留空字符串。
 · topic 用不超过 12 个字概括该日对话的主题。
 · 仅输出 JSON，不要包含 markdown 代码块或其他内容：
 {"days":[{"date":"YYYY/MM/DD","topic":"...","summary":"...","user_state":"..."}]}`,
@@ -99,8 +121,9 @@ ${children}
 要求：
 · 无状态地存储信息：把相对时间替换成具体日期或时间范围。
 · 优先保留对长期对话有价值的信息：用户的稳定特征、重要事件、明确要求、关系变化。
+· 子级记忆里用「${ROLE_USER}」和「${ROLE_AI}」区分两人，汇总时保持这个区分，不要合并或互换。
 · 合并重复内容，删除琐碎细节；不要编造子级记忆中不存在的信息。
-· user_state 描述这段时间用户整体处于什么状态；没有相关信息时留空字符串。
+· user_state 描述这段时间用户整体处于什么状态，不要写 AI；没有相关信息时留空字符串。
 · 仅输出 JSON，不要包含 markdown 代码块或其他内容：
 {"summary": "...", "user_state": "..."}`,
   }]
@@ -141,7 +164,7 @@ ${input}
 · content 必须是关于用户的陈述性事实，不能是给助手的编辑说明（如“移除某表述”“该项以某条为准”“更新…”）。
 · legacy_portrait 是迁移来的旧画像原文，仅用于提取信息：不要修改或缩短它的 content；把其中仍有效的信息拆成独立条目后，用 deleted 删除 "legacy_portrait"。
 · 新材料中不确定的信息保留不确定性表述（如“可能”“用户自称”）。
-· 用户一定是人类，角色扮演中的设定不要当作事实。
+· 用户一定是人类，角色扮演中的设定不要当作事实；以「AI」为主语的内容是助手说的，不是用户的事实。
 · 没有值得记录的变化时，三个数组都返回空数组。
 · 仅输出 JSON，不要包含 markdown 代码块或其他内容：
 {"added":[{"key":"...","category":"...","content":"...","importance":20}],"modified":[{"key":"...","content":"...","importance":20}],"deleted":["key"]}`,
