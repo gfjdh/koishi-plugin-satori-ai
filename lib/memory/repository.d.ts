@@ -2,7 +2,14 @@ import { Context } from 'koishi';
 import { Granularity, ProfileData, SatDialogue, SatKnowledge, SatMemory, SatMeta, SatProfile } from './schema';
 export declare class MemoryRepository {
     private ctx;
+    /**
+     * SQLite 的同一个连接不支持并发或嵌套事务（会报
+     * "cannot start a transaction within a transaction"）。群消息批量写入
+     * 和归档提交都可能同时发生，所以所有 transact 统一走这条串行链。
+     */
+    private txChain;
     constructor(ctx: Context);
+    private transact;
     createDialogue(row: Omit<SatDialogue, 'id'>): Promise<void>;
     /**
      * 批量写入对话。minato 的 create 只接受单行，这里包在一个事务里，
@@ -16,6 +23,8 @@ export declare class MemoryRepository {
     }): Promise<SatDialogue[]>;
     /** after < createdAt < before 的最后一条对话时间，用于跳过当天剩余部分 */
     getLastDialogueInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<Date | null>;
+    /** 某个用户在某个 scope 里的最后一条发言时间（群聊「省流」的起点） */
+    getLastDialogueByUser(scopeId: string, userId: string, kinds?: string[]): Promise<Date | null>;
     countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number>;
     /** after < createdAt < before 的对话数，用于判断一个已关闭的日块是否归档干净 */
     countDialoguesInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<number>;

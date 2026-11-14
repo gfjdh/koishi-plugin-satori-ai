@@ -6,7 +6,8 @@ import { promises as fs } from 'fs'
 import { pathToFileURL } from 'url'
 import { EmojiManager } from './emoji'
 import { APIClient } from './api'
-import { MemoryService, MemoryServiceConfig } from './memory'
+import { GroupDigest, MemoryService, MemoryServiceConfig } from './memory'
+import { isGroupSession } from './memory/group'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
 import { createMiddleware } from './middleware'
@@ -295,15 +296,19 @@ export class SAT extends Sat {
       .alias('查看画像')
       .action(async ({ }, userId) => this.memoryService.getProfileById(userId))
 
-    ctx.command('sat.memory.view [userId:text]', '查看分层记忆（与系统提示注入内容一致）', { authority: 4 })
+    ctx.command('sat.memory.view [target:text]', '查看分层记忆（与系统提示注入内容一致）：填群号或用户 id，不填为当前用户', { authority: 4 })
       .alias('查看记忆')
-      .action(async ({ session }, userId) => {
-        // 「group」表示查看当前群的群聊记忆
-        const target = userId === 'group'
+      .action(async ({ session }, target) => {
+        if (!target) return this.memoryService.view(this.memoryService.getScopeId(session))
+        // 「group」表示当前群的群聊记忆；否则先按群号匹配，匹配不到再当作用户 id
+        const scopeId = target === 'group'
           ? this.memoryService.getGroupScopeId(session.channelId)
-          : (userId || this.memoryService.getScopeId(session))
-        return this.memoryService.view(target)
+          : await this.memoryService.resolveViewScope(target)
+        return this.memoryService.view(scopeId)
       })
+
+    ctx.command('省流', '省流：总结你上次在群里发言之后群里聊了什么', { authority: 1 })
+      .action(async ({ session }) => this.handleDigest(session))
 
     ctx.command('sat.memory.migrate', '重新迁移旧版记忆文件', { authority: 4 })
       .option('force', '-f')
@@ -1019,6 +1024,58 @@ export class SAT extends Sat {
     // 群聊记忆：群友发言进群 scope 的原始消息缓冲（只对机器人参与过的群生效）
     this.memoryService.recordGroupMessage(session, censored)
     return null
+  }
+
+  // 省流：总结用户上次在本群发言以来的群记忆
+  private async handleDigest(session: Session) {
+    if (!isGroupSession(session)) return '「省流」只能在群里用。'
+    const user = await ensureUserExists(this.ctx, session.userId, session.username)
+    if (this.config.enable_favorability && user
+      && user.favorability < this.config.favorability_div_2) {
+      return `你的好感度不够，无法使用「省流」功能。`
+    }
+
+    const digest = await this.memoryService.buildGroupDigest(session)
+    if (!digest) return '这段时间群里没什么可省流的。'
+
+    const card = await this.renderDigestCard(digest)
+    if (card) {
+      // render 返回的是 h.image(...).toString()，直接发送即可
+      await session.send(card)
+      return
+    }
+    // puppeteer 不可用时退回文字，不让指令整个失败
+    return digest.summary
+  }
+
+  private async renderDigestCard(digest: GroupDigest): Promise<string | null> {
+    if (!this.puppeteer) return null
+    const escape = (text: string) => text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+    const html = `<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  html, body { margin: 0; padding: 0; background: #f3eef6; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; color: #2d2433; }
+  .card { width: 520px; box-sizing: border-box; padding: 22px 24px; background: #fff; border-radius: 16px; border: 1px solid #e6dced; }
+  .title { font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #5b3f6e; margin-bottom: 6px; }
+  .meta { font-size: 12px; color: #9a8ca3; margin-bottom: 14px; }
+  .body { font-size: 16px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+  .footer { margin-top: 16px; font-size: 12px; color: #b3a7ba; text-align: right; }
+</style></head><body><div class="card">
+  <div class="title">省流</div>
+  <div class="meta">${escape(digest.range)} · 参考 ${digest.nodeCount} 条记忆 / ${digest.messageCount} 条消息</div>
+  <div class="body">${escape(digest.summary)}</div>
+  <div class="footer">古明地觉</div>
+</div></body></html>`
+    try {
+      return await this.puppeteer.render(html)
+    } catch (error) {
+      logger.warn(`省流图片渲染失败：${error}`)
+      return null
+    }
   }
 
   public async dispose(): Promise<void> {

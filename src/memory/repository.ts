@@ -7,7 +7,21 @@ import {
 import { GROUP_BOT_KIND, GROUP_KINDS, GROUP_MEMBER_KIND } from './group'
 
 export class MemoryRepository {
+  /**
+   * SQLite 的同一个连接不支持并发或嵌套事务（会报
+   * "cannot start a transaction within a transaction"）。群消息批量写入
+   * 和归档提交都可能同时发生，所以所有 transact 统一走这条串行链。
+   */
+  private txChain: Promise<unknown> = Promise.resolve()
+
   constructor(private ctx: Context) {}
+
+  private transact<T>(callback: (db: any) => Promise<T>): Promise<T> {
+    const run = this.txChain.then(() => this.ctx.database.transact(callback))
+    // 失败也要让后面的排队任务继续，不能把链条挂死
+    this.txChain = run.then(() => undefined, () => undefined)
+    return run
+  }
 
   // ---------- 原始对话 ----------
 
@@ -21,7 +35,7 @@ export class MemoryRepository {
    */
   async createDialogueBatch(rows: Omit<SatDialogue, 'id'>[]): Promise<void> {
     if (!rows.length) return
-    await this.ctx.database.transact(async (db) => {
+    await this.transact(async (db) => {
       for (const row of rows) await db.create('sat_dialogue', row)
     })
   }
@@ -50,6 +64,18 @@ export class MemoryRepository {
     kinds?: string[],
   ): Promise<Date | null> {
     const query: any = { scopeId, createdAt: { $gt: after, $lt: before } }
+    if (kinds?.length) query.kind = { $in: kinds }
+    const [row] = await this.ctx.database.get('sat_dialogue', query, {
+      sort: { createdAt: 'desc' },
+      limit: 1,
+      fields: ['createdAt'],
+    })
+    return row ? new Date(row.createdAt) : null
+  }
+
+  /** 某个用户在某个 scope 里的最后一条发言时间（群聊「省流」的起点） */
+  async getLastDialogueByUser(scopeId: string, userId: string, kinds?: string[]): Promise<Date | null> {
+    const query: any = { scopeId, userId }
     if (kinds?.length) query.kind = { $in: kinds }
     const [row] = await this.ctx.database.get('sat_dialogue', query, {
       sort: { createdAt: 'desc' },
@@ -268,7 +294,7 @@ export class MemoryRepository {
     scopeId: string,
     topicStart: Date,
   ): Promise<void> {
-    await this.ctx.database.transact(async (db) => {
+    await this.transact(async (db) => {
       await db.create('sat_memory', memory)
       await db.set('sat_meta', { scopeId }, { topicStart })
     })
@@ -283,7 +309,7 @@ export class MemoryRepository {
     scopeId: string,
     topicStart: Date,
   ): Promise<void> {
-    await this.ctx.database.transact(async (db) => {
+    await this.transact(async (db) => {
       for (const memory of memories) await db.create('sat_memory', memory)
       await db.set('sat_meta', { scopeId }, { topicStart })
     })

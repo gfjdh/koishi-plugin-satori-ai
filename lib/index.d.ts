@@ -75,6 +75,8 @@ export declare class SAT extends Sat {
     private getSelfDialogueName;
     handleNickNameMiddleware(session: Session, prompt: string): Promise<string>;
     handleChannelMemoryManager(session: Session): Promise<void>;
+    private handleDigest;
+    private renderDigestCard;
     dispose(): Promise<void>;
 }
 export default SAT;

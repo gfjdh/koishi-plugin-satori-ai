@@ -34,6 +34,12 @@ tsc
 
 # Group memory drain test (cursor advances per block, tail not archived early)
 #   node -r esbuild-register external/satori-ai/scripts/test-group-drain.ts
+
+# Group "省流" digest test (coarse-first selection, 200-char clamp)
+#   node -r esbuild-register external/satori-ai/scripts/test-group-digest.ts
+
+# Repository transaction serialization test (SQLite rejects concurrent transactions)
+#   node -r esbuild-register external/satori-ai/scripts/test-repository-transact.ts
 ```
 
 ## Architecture
@@ -68,6 +74,7 @@ The `SAT` class extends Koishi's `Service` and acts as the main orchestrator. It
 | `summarizer.ts` | Topic switch detection and layered summaries (group scopes use structural time blocks) |
 | `group.ts` | Group-chat time-block segmentation and extractive compression; no LLM call |
 | `group-recorder.ts` | Buffers and batch-writes group messages for groups the bot participates in |
+| `group-digest.ts` | "省流" digest: coarse-first memory selection and 200-char summary input |
 | `heartbeat.ts` | Background scheduler for summarization |
 | `profile.ts` | Incremental user profile, driven by daily summaries (replaces the old user portrait module) |
 | `retrieval.ts` | BM25 retrieval for recall |

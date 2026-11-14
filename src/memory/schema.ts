@@ -105,7 +105,7 @@ export function extendMemoryDatabase(ctx: Context) {
     createdAt: 'timestamp',
   }, {
     autoInc: true,
-    indexes: [['scopeId', 'createdAt'], ['scopeId', 'kind'], ['kind', 'createdAt']],
+    indexes: [['scopeId', 'createdAt'], ['scopeId', 'kind'], ['scopeId', 'userId', 'createdAt'], ['kind', 'createdAt']],
   })
 
   ctx.model.extend('sat_memory', {

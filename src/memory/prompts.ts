@@ -291,3 +291,24 @@ ${input}
 {"added":[{"key":"...","category":"...","content":"...","importance":20}],"modified":[{"key":"...","content":"...","importance":20}],"deleted":["key"]}`,
   }]
 }
+
+/**
+ * 群聊「省流」：用觉的第一人称把一段时间里群里发生的事讲给提问的人。
+ * 输出是纯文本，不要 JSON。
+ */
+export function buildGroupDigestPrompt(materials: string, range: string): { role: string; content: string }[] {
+  return [{
+    role: 'user',
+    content: `你是古明地觉。有人在群里让你「省流」，想知道 ${range} 到现在群里都聊了什么。
+
+材料：
+${materials}
+
+要求：
+· 用你自己的口吻直接对他说，像在聊天，不要写成报告、列表或标题。
+· 只讲材料里出现过的内容，不要编造；材料没提到的事不要提。
+· 突出群里在聊什么、有没有提到他、有没有和他相关的事。
+· 200 字以内，一段话，不要分点，不要用 markdown。
+· 直接输出概要正文，不要任何前缀、解释或引号。`,
+  }]
+}

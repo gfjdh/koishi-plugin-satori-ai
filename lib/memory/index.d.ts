@@ -33,9 +33,17 @@ export interface TurnResponse {
     content: string;
     error: boolean;
 }
+/** 群聊「省流」的结果 */
+export interface GroupDigest {
+    summary: string;
+    range: string;
+    nodeCount: number;
+    messageCount: number;
+}
 export declare class MemoryService {
     private ctx;
     private config;
+    private api;
     private repo;
     private shortTerm;
     private profile;
@@ -56,6 +64,11 @@ export declare class MemoryService {
     }): string;
     /** 群记忆的 scopeId；命令与运维查看用 */
     getGroupScopeId(channelId: string): string;
+    /**
+     * 查看记忆时的 scope 解析：先按群号匹配（`sat_meta` 里有 `g:<id>` 才算群），
+     * 匹配不到再当成用户 id。这样不用非要在对应的群里执行指令。
+     */
+    resolveViewScope(input: string): Promise<string>;
     getChannelMemory(channelId: string): import("../types").MemoryEntry[];
     getChannelContext(channelId: string): import("../types").MemoryEntry[];
     getChannelDialogue(session: Session): string;
@@ -69,6 +82,17 @@ export declare class MemoryService {
     recordProactive(session: Session, content: string): void;
     /** 群友发言进群聊记忆缓冲（只对机器人参与过的群生效） */
     recordGroupMessage(session: Session, content: string): void;
+    /**
+     * 汇总「用户上次在本群发言到现在」的群记忆。
+     *
+     * 选材粗粒度优先：年 → 季 → 月 → 周 → 日 → 话题。每取完一级就把游标
+     * 推到该级最后一个节点的末尾，下一级只补最近的空档，因此同一时段不会
+     * 同时出现粗、细两份。最早那个节点可以起点早于用户上次发言——粗粒度
+     * 记忆本来就是整段整段的。最后剩下还没归档的消息直接给原文。
+     *
+     * 从没在本群说过话时按最近 24 小时算。
+     */
+    buildGroupDigest(session: Session): Promise<GroupDigest | null>;
     getPromptContext(session: Session, query: string): Promise<PromptContext>;
     addCommonSense(content: string): Promise<void>;
     addGroupCommonSense(content: string, channelId: string): Promise<void>;

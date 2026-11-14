@@ -13,9 +13,13 @@ import { extendMemoryDatabase } from './schema'
 import { ShortTermMemory } from './short-term'
 import { Summarizer } from './summarizer'
 import { GroupRecorder } from './group-recorder'
-import { groupScopeId, isGroupScope } from './group'
+import { GROUP_KINDS, groupScopeId, isGroupScope } from './group'
 import {
-  GROUP_CATEGORY_LABELS, GROUP_CATEGORY_ORDER, buildGroupProfilePrompt,
+  DIGEST_MAX_RAW_MESSAGES, clampDigest, formatDigestMaterials, selectDigestNodes,
+} from './group-digest'
+import { formatTime } from './summarizer'
+import {
+  GROUP_CATEGORY_LABELS, GROUP_CATEGORY_ORDER, buildGroupDigestPrompt, buildGroupProfilePrompt,
 } from './prompts'
 
 const logger = new Logger('satori-memory')
@@ -53,6 +57,14 @@ export interface TurnResponse {
   error: boolean
 }
 
+/** 群聊「省流」的结果 */
+export interface GroupDigest {
+  summary: string
+  range: string
+  nodeCount: number
+  messageCount: number
+}
+
 export class MemoryService {
   private repo: MemoryRepository
   private shortTerm: ShortTermMemory
@@ -68,7 +80,7 @@ export class MemoryService {
   constructor(
     private ctx: Context,
     private config: MemoryServiceConfig,
-    api: APIClient,
+    private api: APIClient,
   ) {
     extendMemoryDatabase(ctx)
 
@@ -186,6 +198,18 @@ export class MemoryService {
     return groupScopeId(channelId)
   }
 
+  /**
+   * 查看记忆时的 scope 解析：先按群号匹配（`sat_meta` 里有 `g:<id>` 才算群），
+   * 匹配不到再当成用户 id。这样不用非要在对应的群里执行指令。
+   */
+  async resolveViewScope(input: string): Promise<string> {
+    const value = (input || '').trim()
+    if (!value) return value
+    if (isGroupScope(value)) return value
+    if (await this.repo.getMeta(groupScopeId(value))) return groupScopeId(value)
+    return value
+  }
+
   // ---------- 短期记忆 ----------
 
   getChannelMemory(channelId: string) {
@@ -265,6 +289,52 @@ export class MemoryService {
   /** 群友发言进群聊记忆缓冲（只对机器人参与过的群生效） */
   recordGroupMessage(session: Session, content: string): void {
     this.groupRecorder.record(session, content)
+  }
+
+  // ---------- 群聊省流 ----------
+
+  /**
+   * 汇总「用户上次在本群发言到现在」的群记忆。
+   *
+   * 选材粗粒度优先：年 → 季 → 月 → 周 → 日 → 话题。每取完一级就把游标
+   * 推到该级最后一个节点的末尾，下一级只补最近的空档，因此同一时段不会
+   * 同时出现粗、细两份。最早那个节点可以起点早于用户上次发言——粗粒度
+   * 记忆本来就是整段整段的。最后剩下还没归档的消息直接给原文。
+   *
+   * 从没在本群说过话时按最近 24 小时算。
+   */
+  async buildGroupDigest(session: Session): Promise<GroupDigest | null> {
+    const channelId = session.channelId
+    if (!channelId) return null
+    const scopeId = groupScopeId(channelId)
+    const now = new Date()
+    const last = await this.repo.getLastDialogueByUser(scopeId, session.userId, GROUP_KINDS)
+    const from = last || new Date(now.getTime() - 24 * 3_600_000)
+
+    const { nodes, cursor } = await selectDigestNodes(
+      from,
+      now,
+      (level, after, to) => this.repo.getMemoriesInRange(scopeId, level, after, to),
+    )
+
+    const raw = await this.repo.getDialoguesAfter(scopeId, cursor, {
+      kinds: GROUP_KINDS,
+      limit: DIGEST_MAX_RAW_MESSAGES,
+    })
+    if (!nodes.length && !raw.length) return null
+
+    const tz = this.config.memory_timezone_offset
+    const range = `${formatTime(from, tz)} ~ ${formatTime(now, tz)}`
+    const materials = formatDigestMaterials(nodes, raw, tz)
+    const result = await this.api.auxiliaryChat(buildGroupDigestPrompt(materials, range), null)
+    if (result.error) {
+      logger.warn(`省流失败 scope=${scopeId}: ${result.content}`)
+      return null
+    }
+
+    const summary = clampDigest(result.content || '')
+    if (!summary) return null
+    return { summary, range, nodeCount: nodes.length, messageCount: raw.length }
   }
 
   // ---------- 系统提示 ----------
