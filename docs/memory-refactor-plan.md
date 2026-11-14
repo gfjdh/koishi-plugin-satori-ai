@@ -478,7 +478,7 @@ export function startHeartbeat(ctx: Context, service: MemoryService) {
 | `recalled` | `searchMemories(session, 'user')` | BM25 召回的历史记忆 |
 | `profile` | `getUserPortrait(session)` | 增量画像 |
 
-**token 预算**：新增 `memory_context_max_chars`(默认 8000)。金字塔注入的是每一级父周期内的**全部**节点（而不是每级一条），完整覆盖通常需要 5–8k 字符。超预算时先整体移除召回，再让每层只留最新一条，最后从最粗的层级（历年 → 今年各季 → …）整段丢弃；仍然超限时硬截断，始终优先保留最近的内容。
+**token 预算**：新增 `memory_context_max_chars`(默认 8000)。金字塔注入的是每一级父周期内的**全部**节点（而不是每级一条），完整覆盖通常需要 5–8k 字符。超预算时先整体移除召回，再让每层只留最新一条，最后从最粗的层级（历年 → 今年各季 → …）整段丢弃；仍然超限时硬截断（保留开头）。前两步始终优先保留最近的内容。段落本身由粗到细排列、段内按时间正序排列，以便最大化提示前缀缓存的命中（2026-11-07 调整）。
 
 ---
 

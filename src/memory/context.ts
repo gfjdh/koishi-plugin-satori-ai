@@ -38,7 +38,11 @@ export interface ContextConfig {
   now?: () => Date
 }
 
-/** 一个金字塔段落：同一粒度下按时间倒序的多条记忆 */
+/**
+ * 一个金字塔段落：同一粒度下的多条记忆。
+ * `entries` 按时间倒序保存（[0] 最新），预算裁剪从末尾丢弃最旧的一条；
+ * 渲染时再翻转成时间正序，让新增的记忆追加在末尾而不是顶到段落开头。
+ */
 interface PyramidSection {
   header: string
   entries: string[]
@@ -189,13 +193,15 @@ export class ContextBuilder {
       for (const row of ordered) ids.add(row.id)
     }
 
-    // 由近到远排列：预算不足时优先保留靠前的段落，硬截断也会先丢掉最旧的内容
-    add('### 尚未总结为日的话题', 'topic', topics)
-    add('### 本周每日总结', 'day', days)
-    add('### 本月各周总结', 'week', weeks)
-    add('### 本季各月总结', 'month', months)
-    add('### 今年各季总结', 'season', seasons)
+    // 由粗到细排列。前缀缓存按字节比对，最稳定的内容必须放在最前面：
+    // 年/季/月这些上层节点写完就不再变，话题和每日总结则在持续追加，
+    // 把它们放在末尾，新增内容才不会顶掉前面整段已经缓存的前缀。
     add('### 历年总结', 'year', years)
+    add('### 今年各季总结', 'season', seasons)
+    add('### 本季各月总结', 'month', months)
+    add('### 本月各周总结', 'week', weeks)
+    add('### 本周每日总结', 'day', days)
+    add('### 尚未总结为日的话题', 'topic', topics)
 
     return { sections, ids }
   }
@@ -213,7 +219,8 @@ export class ContextBuilder {
   private renderPyramid(sections: PyramidSection[]): string {
     return sections
       .filter(section => section.entries.length)
-      .map(section => `${section.header}\n${section.entries.join('\n')}`)
+      // 段内按时间正序输出：新节点追加在末尾，前面已经渲染过的内容逐字节不变
+      .map(section => `${section.header}\n${section.entries.slice().reverse().join('\n')}`)
       .join('\n\n')
   }
 
@@ -255,10 +262,10 @@ export class ContextBuilder {
   // ---------- 预算 ----------
 
   /**
-   * 超出预算时按“越近越优先”的顺序削减：
+   * 超出预算时按“越近越优先”的顺序削减（sections 已由粗到细排列，索引 0 最粗）：
    * ① 每层先只保留最新的一条（尽量维持每一级的覆盖）；
-   * ② 再从最粗的层级开始整段丢弃：历年 → 今年各季 → 本季各月 → 本月各周 → 本周每日；
-   * ③ 仍超限时硬截断，保留开头（最新的话题）。
+   * ② 再从最粗的层级开始整段丢弃：历年 → 今年各季 → 本季各月 → 本月各周 → 本周每日 → 未归档话题；
+   * ③ 仍超限时硬截断，保留开头的粗粒度汇总（它们同时是最稳定的缓存前缀）。
    * 召回最先整体移除。常识、群常识、群聊环境与画像保持完整（它们通常很短且高频有用）。
    */
   private applyBudget(context: PromptContext, sections: PyramidSection[]): PromptContext {
@@ -278,8 +285,8 @@ export class ContextBuilder {
     context.recalled = ''
     if (total() <= max) return context
 
-    // ① 每层保留最新一条
-    for (let i = sections.length - 1; i >= 0; i--) {
+    // ① 每层保留最新一条（entries 是时间倒序，pop 丢的是最旧的一条）
+    for (let i = 0; i < sections.length; i++) {
       while (sections[i].entries.length > 1 && total() > max) {
         sections[i].entries.pop()
         rerender()
@@ -287,8 +294,8 @@ export class ContextBuilder {
       if (total() <= max) return context
     }
 
-    // ② 从最粗（数组末尾）开始整段丢弃
-    for (let i = sections.length - 1; i >= 0; i--) {
+    // ② 从最粗（数组开头）开始整段丢弃
+    for (let i = 0; i < sections.length; i++) {
       while (sections[i].entries.length && total() > max) {
         sections[i].entries.pop()
         rerender()

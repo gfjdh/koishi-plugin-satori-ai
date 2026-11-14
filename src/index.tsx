@@ -669,7 +669,9 @@ export class SAT extends Sat {
   // 只要前面有一个字节不同，后面的内容就全部失效。因此这里严格按
   // “变化频率从低到高”排列，而不是按语义上的“先参考信息后人格”：
   //   1. 人格、格式、思考要求：每次请求逐字节相同（跨用户也相同）
-  //   2. 画像、金字塔、衣着、好感度/心情、用户名、天气：同一用户若干轮内不变
+  //   2. 画像、金字塔、衣着、好感度、用户名、天气：同一用户若干轮内不变；
+  //      心情是这一段里变化最快的，放到段末
+
   //   3. 常识、群常识：半静态，但检索结果会随消息变化
   //   4. 对话统计、群聊环境、召回、当前时间：每轮必变，只能放在最后
   private async buildSystemPrompt(session: Session, prompt: string, queryHint?: string): Promise<string> {
@@ -715,14 +717,12 @@ export class SAT extends Sat {
       if (clothes) systemPrompt += `\n##你当前的穿着(你可以根据穿着进行对应的行为)：${clothes}\n`
     }
 
-    // 添加好感度提示
+    // 添加好感度提示（按天变化，比心情稳定）
     if (this.config.enable_favorability) {
       const favorabilityLevel = getFavorabilityLevel(user, this.getFavorabilityConfig())
       if (this.config.enable_mood) {
         if ((moodLevel == 'normal' || moodLevel == 'happy') || favorabilityLevel == '厌恶')
           systemPrompt += '\n##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
-        const moodPrompt = this.moodManager.generateMoodPrompt(user.userid)
-        systemPrompt += `\n##${moodPrompt}\n` // 添加心情提示
       } else {
         systemPrompt += '\n##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
       }
@@ -735,6 +735,12 @@ export class SAT extends Sat {
 
     // 天气在几小时内不变，放在按查询变化的常识之前
     if (weatherPrompt) systemPrompt += `\n##${weatherPrompt}\n`
+
+    // 心情随表情和小时衰减变化，是半静态段里最不稳定的：放到金字塔、衣着、
+    // 好感度、用户名、天气之后，它变化时不会连带把前面已经缓存的前缀打掉
+    if (this.config.enable_favorability && this.config.enable_mood) {
+      systemPrompt += `\n##${this.moodManager.generateMoodPrompt(user.userid)}\n`
+    }
 
     // ---------- 3. 半静态：随检索查询变化 ----------
     if (memoryContext.common) systemPrompt += '\n##' + memoryContext.common
