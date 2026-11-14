@@ -77,13 +77,16 @@ export interface MemoryEntry {
 }
 export interface ChannelMemory {
   dialogues: MemoryEntry[]
-  updatedAt: number
+  /** 最后一次真实用户对话的时间戳。主动消息不刷新它，TTL 以它为准 */
+  lastActivityAt: number
 }
 export interface MemoryConfig {
   dataDir: string
   bracket_filter: boolean
   memory_filter: string
   message_max_length: number
+  /** 短期记忆空闲多久后清空（分钟），0 表示关闭 */
+  short_term_ttl_minutes: number
   memory_block_words: string[]
   enable_self_memory: boolean
   personal_memory: boolean
@@ -188,6 +191,8 @@ export namespace Sat {
     max_tokens: number
     max_output_tokens: number
     message_max_length: number
+    short_term_ttl_minutes: number
+    short_term_sweep_minutes: number
     temperature: number
     frequency_penalty: number
     presence_penalty: number
@@ -385,6 +390,8 @@ export namespace Sat {
       personal_memory: Schema.boolean().default(true).description('是否启用按人记忆（否则将群内所有人视为同一个用户）'),
       channel_dialogues: Schema.boolean().default(true).description('是否获取群聊内最近对话（包括不对bot说的）'),
       channel_dialogues_max_length: Schema.number().default(20).description('群聊内最近对话最大长度(条数)'),
+      short_term_ttl_minutes: Schema.number().min(0).default(60).description('短期记忆空闲多少分钟后自动清空（0 = 关闭）。只清用户与 bot 的对话记忆，群聊环境不受影响'),
+      short_term_sweep_minutes: Schema.number().min(1).default(5).description('短期记忆清理的扫描间隔（分钟）'),
       bracket_filter: Schema.boolean().default(false).description('是否启用括号过滤，开启后在写入短期记忆时会过滤掉括号内的内容，用于缓解复读问题'),
       memory_filter: Schema.string().role('textarea').default('示例1-示例2').description('短期记忆过滤词，使用“-”分隔，含有过滤词的那一句不会被记忆，用于缓解复读问题'),
       dataDir: Schema.string().default("./data/satori_ai").description('聊天记录保存位置（长期记忆）'),

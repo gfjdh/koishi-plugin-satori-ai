@@ -4,6 +4,9 @@ import { MemoryConfig } from '../types';
 import { PromptContext } from './context';
 export interface MemoryServiceConfig extends MemoryConfig {
     enable_layered_memory: boolean;
+    /** 短期记忆空闲多久后清空（分钟），0 = 关闭 */
+    short_term_ttl_minutes: number;
+    short_term_sweep_minutes: number;
     memory_timezone_offset: number;
     memory_day_boundary_hour: number;
     topic_switch_check: boolean;
@@ -37,9 +40,11 @@ export declare class MemoryService {
     private contextBuilder;
     private heartbeat;
     private migrator;
+    private sweepDisposers;
     constructor(ctx: Context, config: MemoryServiceConfig, api: APIClient);
     start(): void;
     stop(): void;
+    private startShortTermSweep;
     getScopeId(session: {
         userId?: string;
         channelId?: string;

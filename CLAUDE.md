@@ -16,6 +16,9 @@ tsc
 
 # Runtime bundle lib/index.js is built by the workspace root:
 #   npx yakumo build satori-ai
+
+# Short-term memory TTL logic test (run from the workspace root)
+#   node -r esbuild-register external/satori-ai/scripts/test-short-term.ts
 ```
 
 ## Architecture

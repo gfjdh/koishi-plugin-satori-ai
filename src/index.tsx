@@ -171,6 +171,8 @@ export class SAT extends Sat {
       bracket_filter: this.config.bracket_filter,
       memory_filter: this.config.memory_filter,
       message_max_length: this.config.message_max_length,
+      short_term_ttl_minutes: this.config.short_term_ttl_minutes,
+      short_term_sweep_minutes: this.config.short_term_sweep_minutes,
       memory_block_words: this.config.memory_block_words,
       enable_self_memory: this.config.enable_self_memory,
       personal_memory: this.config.personal_memory,
@@ -778,7 +780,7 @@ export class SAT extends Sat {
   }
 
   // 处理回复
-  private async formatResponse(session: Session, response: string, auxiliaryResult: string | void, reasoningContent?: string) {
+  private async formatResponse(session: Session, response: string, auxiliaryResult: string | void, reasoningContent?: string, recordSelfReply = false) {
     const user = await getUser(this.ctx, session.userId)
     if (!response) return session.text('commands.sat.messages.no-response')
 
@@ -843,6 +845,11 @@ export class SAT extends Sat {
       this.addUserToWarnList(session, auxiliaryResult)
     }
     if (replyPointing) { response = `@${session.username} ` + response }
+    // 群聊随机插话要像其他群友一样留痕：后续对话的群聊环境里能看到「觉刚说过什么」。
+    // 记录的是最终发出去的文字（含饰品/心情后缀），与群友看到的完全一致。
+    if (recordSelfReply) {
+      this.memoryService.updateChannelDialogue(session, response, this.getSelfDialogueName())
+    }
     if (this.ctx.puppeteer && !this.puppeteerReady()) {
       logger.info('Puppeteer 未就绪，正在重新初始化 Puppeteer...')
       this.setPuppeteer(this.ctx.puppeteer)
@@ -959,7 +966,13 @@ export class SAT extends Sat {
   // 随机中间件转接
   public async handleRandomMiddleware(session: Session) {
     const response = await this.generateResponse(session, randomPrompt)
-    return await this.formatResponse(session, response.content, null)
+    return await this.formatResponse(session, response.content, null, undefined, !response.error)
+  }
+
+  /** 群聊环境里代表 bot 自己的名字：昵称列表第一个加「（你）」，让模型能分辨这是自己的发言 */
+  private getSelfDialogueName(): string {
+    const name = this.config.nick_name_list?.find(item => item && item.trim())
+    return `${(name || '觉').trim()}（你）`
   }
 
   // 昵称中间件转接

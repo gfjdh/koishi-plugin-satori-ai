@@ -64,13 +64,16 @@ export interface MemoryEntry {
 }
 export interface ChannelMemory {
     dialogues: MemoryEntry[];
-    updatedAt: number;
+    /** 最后一次真实用户对话的时间戳。主动消息不刷新它，TTL 以它为准 */
+    lastActivityAt: number;
 }
 export interface MemoryConfig {
     dataDir: string;
     bracket_filter: boolean;
     memory_filter: string;
     message_max_length: number;
+    /** 短期记忆空闲多久后清空（分钟），0 表示关闭 */
+    short_term_ttl_minutes: number;
     memory_block_words: string[];
     enable_self_memory: boolean;
     personal_memory: boolean;
@@ -160,6 +163,8 @@ export declare namespace Sat {
         max_tokens: number;
         max_output_tokens: number;
         message_max_length: number;
+        short_term_ttl_minutes: number;
+        short_term_sweep_minutes: number;
         temperature: number;
         frequency_penalty: number;
         presence_penalty: number;

@@ -17,6 +17,9 @@ const logger = new Logger('satori-memory')
 
 export interface MemoryServiceConfig extends MemoryConfig {
   enable_layered_memory: boolean
+  /** 短期记忆空闲多久后清空（分钟），0 = 关闭 */
+  short_term_ttl_minutes: number
+  short_term_sweep_minutes: number
   memory_timezone_offset: number
   memory_day_boundary_hour: number
   topic_switch_check: boolean
@@ -50,6 +53,7 @@ export class MemoryService {
   private contextBuilder: ContextBuilder
   private heartbeat: Heartbeat
   private migrator: Migrator
+  private sweepDisposers: (() => void)[] = []
 
   constructor(
     private ctx: Context,
@@ -59,7 +63,9 @@ export class MemoryService {
     extendMemoryDatabase(ctx)
 
     this.repo = new MemoryRepository(ctx)
-    this.shortTerm = new ShortTermMemory(ctx)
+    this.shortTerm = new ShortTermMemory(ctx, {
+      ttlMs: Math.max(0, config.short_term_ttl_minutes) * 60_000,
+    })
     this.profile = new ProfileManager(ctx, this.repo, api, {
       enabled: config.profile_enabled,
       dryRun: config.summary_dry_run,
@@ -104,6 +110,8 @@ export class MemoryService {
   }
 
   start(): void {
+    // 短期记忆 TTL 与分层记忆无关，关闭分层记忆时同样生效
+    this.startShortTermSweep()
     if (!this.config.enable_layered_memory) {
       logger.info('分层记忆已关闭：仅保留短期记忆与知识库，不落库、不汇总')
       return
@@ -112,7 +120,25 @@ export class MemoryService {
   }
 
   stop(): void {
+    for (const dispose of this.sweepDisposers) {
+      try { dispose() } catch { /* ignore */ }
+    }
+    this.sweepDisposers = []
     this.heartbeat.stop()
+  }
+
+  private startShortTermSweep(): void {
+    const ttlMinutes = Math.max(0, this.config.short_term_ttl_minutes)
+    if (ttlMinutes <= 0) {
+      logger.info('短期记忆 TTL 已关闭：对话记忆不会按时自动清空')
+      return
+    }
+    const sweepMinutes = Math.max(1, this.config.short_term_sweep_minutes)
+    this.sweepDisposers.push(this.ctx.setInterval(() => {
+      const removed = this.shortTerm.sweep()
+      if (removed) logger.info(`短期记忆已清理 ${removed} 个空闲超过 ${ttlMinutes} 分钟的作用域（剩余 ${this.shortTerm.getScopeCount()}）`)
+    }, sweepMinutes * 60_000))
+    logger.info(`短期记忆 TTL 已启用：空闲 ${ttlMinutes} 分钟清空，每 ${sweepMinutes} 分钟扫描一次`)
   }
 
   // ---------- 作用域 ----------

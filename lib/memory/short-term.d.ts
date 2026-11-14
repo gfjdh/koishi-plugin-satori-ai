@@ -1,10 +1,24 @@
 import { Context, Session } from 'koishi';
 import { MemoryConfig, MemoryEntry } from '../types';
+export interface ShortTermOptions {
+    /** 对话记忆空闲多久后清空（毫秒）；<= 0 表示关闭 */
+    ttlMs: number;
+    /** 可注入时钟，便于验证过期逻辑；生产环境不传 */
+    now?: () => Date;
+}
 export declare class ShortTermMemory {
     private ctx;
+    private options;
     private channelMemories;
     private channelDialogues;
-    constructor(ctx: Context);
+    constructor(ctx: Context, options?: ShortTermOptions);
+    private nowMs;
+    /** 过期判断以「最后一次真实用户对话」为准；主动消息不续期 */
+    private isExpired;
+    /** 清理所有过期作用域，返回清掉的数量。读取路径也会懒清理，这里兜住再也没人读的键 */
+    sweep(): number;
+    /** 当前作用域数量，供启动/运维日志使用 */
+    getScopeCount(): number;
     private bracketFilter;
     private memoryFilter;
     /** 记录一轮用户↔bot 对话到短期记忆 */

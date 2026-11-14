@@ -71,6 +71,8 @@ export declare class SAT extends Sat {
     private handleUserUsage;
     isGameActive(session: Session): boolean;
     handleRandomMiddleware(session: Session): Promise<string>;
+    /** 群聊环境里代表 bot 自己的名字：昵称列表第一个加「（你）」，让模型能分辨这是自己的发言 */
+    private getSelfDialogueName;
     handleNickNameMiddleware(session: Session, prompt: string): Promise<string>;
     handleChannelMemoryManager(session: Session): Promise<void>;
     dispose(): Promise<void>;
