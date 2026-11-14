@@ -1,7 +1,7 @@
 // src/middleware.ts
 import { Context, Session, Next, Logger } from 'koishi'
 import { } from '@koishijs/censor'
-import { SAT } from './index'
+import type { SAT } from './index'
 import { probabilisticCheck } from './utils'
 import { FavorabilityConfig, MiddlewareConfig } from './types'
 import { ensureUserExists } from './database'
@@ -36,6 +36,9 @@ export function createMiddleware(
 
     // 随机触发处理
     if (shouldRandomTrigger(session, config)) {
+      // 触发插话的这条消息也要先进群聊环境：否则模型看不到引出它的话题，
+      // 事后群聊记录里也只有 bot 的发言，像是凭空接话。
+      await sat.handleChannelMemoryManager(session)
       return await sat.handleRandomMiddleware(session)
     }
     

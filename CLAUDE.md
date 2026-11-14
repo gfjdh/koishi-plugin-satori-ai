@@ -19,6 +19,9 @@ tsc
 
 # Short-term memory TTL logic test (run from the workspace root)
 #   node -r esbuild-register external/satori-ai/scripts/test-short-term.ts
+
+# Random-trigger middleware ordering test (run from the workspace root)
+#   node -r esbuild-register external/satori-ai/scripts/test-random-middleware.ts
 ```
 
 ## Architecture

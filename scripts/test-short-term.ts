@@ -102,4 +102,15 @@ mem7.updateChannelDialogue(session('u1', 'c7'), '刚看到一本新书', '觉大
 const selfLine = mem7.getChannelDialogue(session('u1', 'c7'), config)
 assert(selfLine.includes('"觉大人（你）" 说: 刚看到一本新书'), '自发发言按群友格式记录在群聊环境')
 
+// ---------- 场景 8：随机插话的群聊记录顺序 = 触发消息 → bot 发言 ----------
+fakeNow = 0
+const mem8 = new ShortTermMemory({} as any, { ttlMs: minutes(60), now })
+mem8.updateChannelDialogue(session('u1', 'c8', '群友'), '今天在整理藏书', '群友', config)
+mem8.updateChannelDialogue(session('u1', 'c8'), '藏书又乱了', '觉大人（你）', config)
+const ordered = mem8.getChannelDialogue(session('u1', 'c8'), config)
+assert(
+  ordered.indexOf('"群友" 说: 今天在整理藏书') < ordered.indexOf('"觉大人（你）" 说: 藏书又乱了'),
+  '群聊记录里触发消息排在 bot 发言之前',
+)
+
 console.log('ALL PASS')
