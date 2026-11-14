@@ -40,6 +40,17 @@ export interface ProfileConfig {
   contextEntries: number
   /** 只对最近 N 天内结束的日节点更新画像；<=0 表示不限制 */
   updateWindowDays?: number
+  /** 提示词构造器；默认个人画像，群画像传入自己的版本 */
+  buildPrompt?: (existing: ProfileEntry[], input: string) => { role: string, content: string }[]
+  /** 类别展示顺序与名称；默认个人画像的六类 */
+  categoryLabels?: Record<string, string>
+  categoryOrder?: string[]
+  /** 注入系统提示时的标题 */
+  contextTitle?: string
+  /** 命令输出里的主体名（“用户”/“群”） */
+  subjectLabel?: string
+  /** 记忆里状态字段的名称（“用户状态”/“群状态”） */
+  stateLabel?: string
 }
 
 export class ProfileManager {
@@ -112,9 +123,10 @@ export class ProfileManager {
       return 'skipped'
     }
 
+    const stateLabel = this.config.stateLabel || '用户状态'
     const input = [
       summary ? `【总结】\n${summary}` : '',
-      ...memories.map(memory => `【记忆】${memory.content}${memory.userState ? `（用户状态：${memory.userState}）` : ''}`),
+      ...memories.map(memory => `【记忆】${memory.content}${memory.userState ? `（${stateLabel}：${memory.userState}）` : ''}`),
     ].filter(Boolean).join('\n\n')
 
     if (!input) return 'skipped'
@@ -170,9 +182,10 @@ export class ProfileManager {
   ): Promise<ProfileOutcome> {
     const entries = existing?.entries || []
     const redact = this.redactScopes.has(scopeId)
+    const buildPrompt = this.config.buildPrompt || buildProfilePrompt
 
     let result = await this.api.auxiliaryChat(
-      buildProfilePrompt(...this.promptInput(entries, input, redact)), user,
+      buildPrompt(...this.promptInput(entries, input, redact)), user,
     )
 
     if (result.error && isRejectedContent(result.content)) {
@@ -185,7 +198,7 @@ export class ProfileManager {
       this.redactScopes.add(scopeId)
       logger.warn(`画像更新被内容审核拒绝，改用脱敏输入重试 scope=${scopeId}`)
       result = await this.api.auxiliaryChat(
-        buildProfilePrompt(...this.promptInput(entries, input, true)), user,
+        buildPrompt(...this.promptInput(entries, input, true)), user,
       )
       if (result.error) {
         if (isRejectedContent(result.content)) {
@@ -250,22 +263,25 @@ export class ProfileManager {
       .slice(0, this.config.contextEntries)
 
     const grouped = new Map<string, string[]>()
+    const labels = this.config.categoryLabels || CATEGORY_LABELS
+    const order = this.config.categoryOrder || CATEGORY_ORDER
     for (const entry of selected) {
-      const category = CATEGORY_LABELS[entry.category] ? entry.category : 'fact'
+      const category = labels[entry.category] ? entry.category : 'fact'
       const list = grouped.get(category) || []
       list.push(entry.content)
       grouped.set(category, list)
     }
 
     const lines: string[] = []
-    for (const category of CATEGORY_ORDER) {
+    for (const category of order) {
       const list = grouped.get(category)
       if (!list?.length) continue
-      lines.push(`${CATEGORY_LABELS[category]}：`)
+      lines.push(`${labels[category]}：`)
       for (const content of list) lines.push(`· ${content}`)
     }
 
-    return `以下是当前用户的补充信息：{\n${lines.join('\n')}\n}\n`
+    const title = this.config.contextTitle || '以下是当前用户的补充信息：'
+    return `${title}{\n${lines.join('\n')}\n}\n`
   }
 
   async has(scopeId: string): Promise<boolean> {
@@ -277,9 +293,11 @@ export class ProfileManager {
     if (!this.config.enabled) return '当前未启用用户画像功能'
     const profile = await this.repo.getProfile(scopeId)
     const entries = profile?.data?.entries || []
-    if (!entries.length) return `用户${scopeId}没有画像`
+    const labels = this.config.categoryLabels || CATEGORY_LABELS
+    const subject = this.config.subjectLabel || '用户'
+    if (!entries.length) return `${subject}${scopeId}没有画像`
     const lines = entries.map(entry =>
-      `- [${CATEGORY_LABELS[entry.category] || entry.category}] ${entry.content}`)
-    return `以下是用户${scopeId}的画像：{\n${lines.join('\n')}\n}`
+      `- [${labels[entry.category] || entry.category}] ${entry.content}`)
+    return `以下是${subject}${scopeId}的画像：{\n${lines.join('\n')}\n}`
   }
 }

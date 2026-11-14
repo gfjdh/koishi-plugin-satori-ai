@@ -11,6 +11,8 @@ export interface MemoryServiceConfig extends MemoryConfig {
     memory_day_boundary_hour: number;
     /** 昵称列表：归档时从用户发言里抹掉，避免昵称被当成发言人 */
     nick_name_list: string[];
+    /** 是否启用群聊记忆（按群建立独立的时间块金字塔，与按人记忆并存） */
+    enable_group_memory: boolean;
     topic_switch_check: boolean;
     summary_heartbeat_minutes: number;
     summary_dry_run: boolean;
@@ -20,7 +22,6 @@ export interface MemoryServiceConfig extends MemoryConfig {
     summary_concurrency: number;
     memory_active_window_days: number;
     memory_retention_days: number;
-    memory_context_max_chars: number;
     memory_recall_topN: number;
     dialogue_stats_enabled: boolean;
     profile_enabled: boolean;
@@ -38,6 +39,8 @@ export declare class MemoryService {
     private repo;
     private shortTerm;
     private profile;
+    private groupProfile;
+    private groupRecorder;
     private summarizer;
     private contextBuilder;
     private heartbeat;
@@ -51,6 +54,8 @@ export declare class MemoryService {
         userId?: string;
         channelId?: string;
     }): string;
+    /** 群记忆的 scopeId；命令与运维查看用 */
+    getGroupScopeId(channelId: string): string;
     getChannelMemory(channelId: string): import("../types").MemoryEntry[];
     getChannelContext(channelId: string): import("../types").MemoryEntry[];
     getChannelDialogue(session: Session): string;
@@ -62,6 +67,8 @@ export declare class MemoryService {
     private isBlocked;
     /** 主动消息只进短期记忆，不写 sat_dialogue，避免污染对话统计与长期归档 */
     recordProactive(session: Session, content: string): void;
+    /** 群友发言进群聊记忆缓冲（只对机器人参与过的群生效） */
+    recordGroupMessage(session: Session, content: string): void;
     getPromptContext(session: Session, query: string): Promise<PromptContext>;
     addCommonSense(content: string): Promise<void>;
     addGroupCommonSense(content: string, channelId: string): Promise<void>;

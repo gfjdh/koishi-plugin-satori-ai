@@ -187,6 +187,7 @@ export declare namespace Sat {
         enable_schedule: boolean;
         schedule_inject_below_entries: number;
         enable_layered_memory: boolean;
+        enable_group_memory: boolean;
         memory_timezone_offset: number;
         memory_day_boundary_hour: number;
         topic_switch_check: boolean;
@@ -197,7 +198,6 @@ export declare namespace Sat {
         summary_concurrency: number;
         memory_active_window_days: number;
         memory_retention_days: number;
-        memory_context_max_chars: number;
         memory_recall_topN: number;
         dialogue_stats_enabled: boolean;
         profile_enabled: boolean;

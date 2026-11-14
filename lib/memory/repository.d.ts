@@ -28,6 +28,11 @@ export declare class MemoryRepository {
     }>;
     /** 只清理普通对话，legacy 迁移数据保留（一次性数据，量有界） */
     pruneDialogues(before: Date): Promise<number>;
+    /**
+     * 清理过期的群聊原始消息。群消息只是归档素材，归档后就失去价值，
+     * 保留期比按人对话短得多（默认 30 天），否则每年会多出几百万行。
+     */
+    pruneGroupDialogues(before: Date): Promise<number>;
     getMeta(scopeId: string): Promise<SatMeta | null>;
     ensureMeta(scopeId: string, at?: Date): Promise<SatMeta>;
     touchMeta(scopeId: string, at?: Date): Promise<void>;

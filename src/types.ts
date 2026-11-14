@@ -218,6 +218,7 @@ export namespace Sat {
 
     // 分层记忆
     enable_layered_memory: boolean
+    enable_group_memory: boolean
     memory_timezone_offset: number
     memory_day_boundary_hour: number
     topic_switch_check: boolean
@@ -228,7 +229,6 @@ export namespace Sat {
     summary_concurrency: number
     memory_active_window_days: number
     memory_retention_days: number
-    memory_context_max_chars: number
     memory_recall_topN: number
     dialogue_stats_enabled: boolean
     profile_enabled: boolean
@@ -407,6 +407,7 @@ export namespace Sat {
 
     Schema.object({
       enable_layered_memory: Schema.boolean().default(true).description('是否启用分层长期记忆（话题→日→周→月→季→年的自动归档）。关闭后仅保留短期记忆与常识库'),
+      enable_group_memory: Schema.boolean().default(false).description('是否启用群聊记忆：按群建立独立的时间块金字塔与群画像，与按人记忆并存。只记录机器人回过话的群'),
       memory_timezone_offset: Schema.number().default(8).description('分层记忆使用的时区偏移（小时），用于计算日界线'),
       memory_day_boundary_hour: Schema.number().min(0).max(23).step(1).default(4).description('日界线小时，默认凌晨 4 点'),
       topic_switch_check: Schema.boolean().default(true).description('是否用辅助模型判断话题切换'),
@@ -417,7 +418,6 @@ export namespace Sat {
       memory_active_window_days: Schema.number().default(7).description('只对最近多少天内活跃过的用户/群做汇总'),
       memory_retention_days: Schema.number().default(180).description('原始对话保留天数'),
       memory_recall_topN: Schema.number().default(5).description('关键词召回的历史记忆条数'),
-      memory_context_max_chars: Schema.number().default(8000).description('分层记忆注入系统提示的最大字符数：默认覆盖所有年份/今年各季/本季各月/本月各周/本周每日与未归日话题，超出时按“越近越优先”截断'),
       dialogue_stats_enabled: Schema.boolean().default(true).description('是否注入近期对话时间与频率统计（最近一天/一周/一月及距上次对话的时间）'),
       summary_dry_run: Schema.boolean().default(false).description('调试用：只记录将要执行的汇总，不调用模型、不写库'),
       profile_enabled: Schema.boolean().default(true).description('是否启用增量用户画像（由日总结驱动更新）'),

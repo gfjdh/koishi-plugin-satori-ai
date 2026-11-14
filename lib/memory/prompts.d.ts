@@ -12,6 +12,19 @@ export interface SummaryResult {
     summary?: string;
     user_state?: string;
 }
+/** 群聊时间块归档的结果。group_state 复用 sat_memory.userState 字段存放 */
+export interface GroupArchiveResult {
+    topic?: string;
+    summary?: string;
+    group_state?: string;
+}
+export interface GroupSummaryResult {
+    summary?: string;
+    group_state?: string;
+}
+/** 群画像的类别。与个人画像分开：这里描述的是「群」，不是某个用户 */
+export declare const GROUP_CATEGORY_LABELS: Record<string, string>;
+export declare const GROUP_CATEGORY_ORDER: string[];
 /**
  * 归档输入里的固定发言人标签。不随昵称变化：用户的昵称、用户消息里打出的称呼
  * 都可能是任意角色名，靠识别名字区分发言人是穷举不完的，所以只认标签。
@@ -43,6 +56,21 @@ export declare function buildSummaryPrompt(level: string, children: string): {
 }[];
 /** 增量更新用户画像 */
 export declare function buildProfilePrompt(existing: ProfileEntry[], input: string): {
+    role: string;
+    content: string;
+}[];
+/** 把一个时间块内的群聊记录归档为一条 topic 记忆 */
+export declare function buildGroupArchivePrompt(messages: string): {
+    role: string;
+    content: string;
+}[];
+/** 把子级群记忆汇总为父级群记忆 */
+export declare function buildGroupSummaryPrompt(level: string, children: string): {
+    role: string;
+    content: string;
+}[];
+/** 增量更新群画像 */
+export declare function buildGroupProfilePrompt(existing: ProfileEntry[], input: string): {
     role: string;
     content: string;
 }[];

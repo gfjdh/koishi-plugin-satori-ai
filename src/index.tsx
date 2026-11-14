@@ -183,6 +183,7 @@ export class SAT extends Sat {
       dailogues_topN: this.config.dailogues_topN,
       enhanceReasoningProtection: this.config.enhanceReasoningProtection,
       enable_layered_memory: this.config.enable_layered_memory,
+      enable_group_memory: this.config.enable_group_memory,
       memory_timezone_offset: this.config.memory_timezone_offset,
       memory_day_boundary_hour: this.config.memory_day_boundary_hour,
       nick_name_list: this.config.nick_name_list,
@@ -194,7 +195,6 @@ export class SAT extends Sat {
       summary_concurrency: this.config.summary_concurrency,
       memory_active_window_days: this.config.memory_active_window_days,
       memory_retention_days: this.config.memory_retention_days,
-      memory_context_max_chars: this.config.memory_context_max_chars,
       memory_recall_topN: this.config.memory_recall_topN,
       dialogue_stats_enabled: this.config.dialogue_stats_enabled,
       profile_enabled: this.config.profile_enabled && this.config.enable_user_portrait,
@@ -297,8 +297,13 @@ export class SAT extends Sat {
 
     ctx.command('sat.memory.view [userId:text]', '查看分层记忆（与系统提示注入内容一致）', { authority: 4 })
       .alias('查看记忆')
-      .action(async ({ session }, userId) =>
-        this.memoryService.view(userId || this.memoryService.getScopeId(session)))
+      .action(async ({ session }, userId) => {
+        // 「group」表示查看当前群的群聊记忆
+        const target = userId === 'group'
+          ? this.memoryService.getGroupScopeId(session.channelId)
+          : (userId || this.memoryService.getScopeId(session))
+        return this.memoryService.view(target)
+      })
 
     ctx.command('sat.memory.migrate', '重新迁移旧版记忆文件', { authority: 4 })
       .option('force', '-f')
@@ -693,7 +698,8 @@ export class SAT extends Sat {
         if (this.config.no_system_prompt) systemPrompt += '\n#如果你明白以上内容，请回复“<p>已明确对话要求</p>”'
       }
       systemPrompt += this.getThinkingPrompt(user, prompt)
-      // 每轮变化的部分放最后
+      // 每轮变化的部分放最后；群画像很短，插话时也能带上
+      if (memoryContext.groupProfile) systemPrompt += '\n##' + memoryContext.groupProfile
       if (memoryContext.ambient) systemPrompt += '\n##' + memoryContext.ambient
       systemPrompt += '\n##' + memoryContext.datetime
       return systemPrompt
@@ -714,7 +720,11 @@ export class SAT extends Sat {
 
     if ((moodLevel == 'normal' || moodLevel == 'happy') && memoryContext.profile)
       systemPrompt += '\n##' + memoryContext.profile
+    // 群画像与个人画像并列：一个描述「这个人」，一个描述「这个群」
+    if ((moodLevel == 'normal' || moodLevel == 'happy') && memoryContext.groupProfile)
+      systemPrompt += '\n##' + memoryContext.groupProfile
     if (memoryContext.pyramid) systemPrompt += '\n##' + memoryContext.pyramid + '\n'
+    if (memoryContext.groupPyramid) systemPrompt += '\n##' + memoryContext.groupPyramid + '\n'
 
     if (user?.items?.['觉的衣柜']?.count && (moodLevel == 'normal' || moodLevel == 'happy')) {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
@@ -1006,6 +1016,8 @@ export class SAT extends Sat {
     let censored = processedPrompt
     if (this.ctx.censor) censored = await this.ctx.censor.transform(processedPrompt, session)
     this.memoryService.updateChannelDialogue(session, censored, session.username)
+    // 群聊记忆：群友发言进群 scope 的原始消息缓冲（只对机器人参与过的群生效）
+    this.memoryService.recordGroupMessage(session, censored)
     return null
   }
 

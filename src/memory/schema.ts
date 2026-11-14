@@ -9,7 +9,8 @@ export interface SatDialogue {
   scopeId: string      // userId（按人记忆）或 channelId（按群记忆）
   userId: string
   username: string
-  kind: string         // 'turn' 用户↔bot；'ambient' 群聊环境消息；'legacy' 旧文件迁移
+  kind: string         // 'turn' 用户↔bot；'legacy' 旧文件迁移；
+                       // 'ambient' 群友发言 / 'ambient-bot' 机器人在群里的发言（群 scope，scopeId 前缀 g:）
   userContent: string
   aiContent: string
   createdAt: Date
@@ -104,7 +105,7 @@ export function extendMemoryDatabase(ctx: Context) {
     createdAt: 'timestamp',
   }, {
     autoInc: true,
-    indexes: [['scopeId', 'createdAt'], ['scopeId', 'kind']],
+    indexes: [['scopeId', 'createdAt'], ['scopeId', 'kind'], ['kind', 'createdAt']],
   })
 
   ctx.model.extend('sat_memory', {

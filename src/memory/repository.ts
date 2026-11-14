@@ -4,6 +4,7 @@ import { Context, $ } from 'koishi'
 import {
   GLOBAL_SCOPE, Granularity, ProfileData, SatDialogue, SatKnowledge, SatMemory, SatMeta, SatProfile,
 } from './schema'
+import { GROUP_BOT_KIND, GROUP_KINDS, GROUP_MEMBER_KIND } from './group'
 
 export class MemoryRepository {
   constructor(private ctx: Context) {}
@@ -109,9 +110,23 @@ export class MemoryRepository {
   /** 只清理普通对话，legacy 迁移数据保留（一次性数据，量有界） */
   async pruneDialogues(before: Date): Promise<number> {
     const rows = await this.ctx.database.get('sat_dialogue', {
-      kind: { $in: ['turn', 'ambient'] },
+      kind: { $in: ['turn', GROUP_MEMBER_KIND, GROUP_BOT_KIND] },
       createdAt: { $lt: before },
     })
+    if (!rows.length) return 0
+    await this.ctx.database.remove('sat_dialogue', { id: { $in: rows.map(row => row.id) } })
+    return rows.length
+  }
+
+  /**
+   * 清理过期的群聊原始消息。群消息只是归档素材，归档后就失去价值，
+   * 保留期比按人对话短得多（默认 30 天），否则每年会多出几百万行。
+   */
+  async pruneGroupDialogues(before: Date): Promise<number> {
+    const rows = await this.ctx.database.get('sat_dialogue', {
+      kind: { $in: GROUP_KINDS },
+      createdAt: { $lt: before },
+    }, { fields: ['id'], limit: 5000 })
     if (!rows.length) return 0
     await this.ctx.database.remove('sat_dialogue', { id: { $in: rows.map(row => row.id) } })
     return rows.length

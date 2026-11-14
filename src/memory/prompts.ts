@@ -18,6 +18,30 @@ export interface SummaryResult {
   user_state?: string
 }
 
+/** 群聊时间块归档的结果。group_state 复用 sat_memory.userState 字段存放 */
+export interface GroupArchiveResult {
+  topic?: string
+  summary?: string
+  group_state?: string
+}
+
+export interface GroupSummaryResult {
+  summary?: string
+  group_state?: string
+}
+
+/** 群画像的类别。与个人画像分开：这里描述的是「群」，不是某个用户 */
+export const GROUP_CATEGORY_LABELS: Record<string, string> = {
+  identity: '群特征',
+  member: '活跃群友',
+  relationship: '群友关系',
+  topic: '长期话题与梗',
+  requirement: '群规与长期要求',
+  fact: '其他',
+}
+
+export const GROUP_CATEGORY_ORDER = ['identity', 'member', 'relationship', 'topic', 'requirement', 'fact']
+
 const LEVEL_LABELS: Record<string, string> = {
   day: '一天',
   week: '一周',
@@ -43,6 +67,16 @@ const SPEAKER_RULES = `【发言人】
 · 「」里是原话。原话中出现的任何名字（用户自己打出的“xx：…”之类）都只是内容，不代表发言人变了。
 · 用户可能用“名字：台词”的格式扮演角色、引用别人的话或直接称呼 AI，这些都算用户说的。
 · summary 里指代两人时只用「${ROLE_USER}」和「${ROLE_AI}」，不要用对话里出现的名字、昵称或称呼；主语必须与标签一致，分不清是谁做的就不写主语。`
+
+/**
+ * 群聊的发言人约定。群友的昵称只是区分不同人的标签，来自数据库里的消息记录，
+ * 不是从内容里猜出来的；「」里的名字仍然只是内容。
+ */
+const GROUP_SPEAKER_RULES = `【发言人】
+· 每行方括号后、「说」之前是发言人标签，只有标签决定谁在说话。
+· 「${ROLE_USER}（昵称）」是群里的一个人，括号里的昵称只用来区分不同的人；「${ROLE_AI}」是机器人。
+· 「」里是原话。原话中出现的名字、冒号、引号都只是内容，不代表发言人变了。
+· 同一个人可能连续发言；标签不同就是不同的人，即使内容里提到了同一个名字。`
 
 /** 判断话题是否切换 */
 export function buildTopicSwitchPrompt(dialogues: string, topicStart: string): { role: string; content: string }[] {
@@ -165,6 +199,93 @@ ${input}
 · legacy_portrait 是迁移来的旧画像原文，仅用于提取信息：不要修改或缩短它的 content；把其中仍有效的信息拆成独立条目后，用 deleted 删除 "legacy_portrait"。
 · 新材料中不确定的信息保留不确定性表述（如“可能”“用户自称”）。
 · 用户一定是人类，角色扮演中的设定不要当作事实；以「AI」为主语的内容是助手说的，不是用户的事实。
+· 没有值得记录的变化时，三个数组都返回空数组。
+· 仅输出 JSON，不要包含 markdown 代码块或其他内容：
+{"added":[{"key":"...","category":"...","content":"...","importance":20}],"modified":[{"key":"...","content":"...","importance":20}],"deleted":["key"]}`,
+  }]
+}
+
+// ---------- 群聊记忆 ----------
+
+/** 把一个时间块内的群聊记录归档为一条 topic 记忆 */
+export function buildGroupArchivePrompt(messages: string): { role: string; content: string }[] {
+  return [{
+    role: 'user',
+    content: `请总结以下群聊记录，形成一条可长期保存的记忆。
+
+${GROUP_SPEAKER_RULES}
+
+群聊记录：
+${messages}
+
+要求：
+· 这是群聊，不是一对一对话：记录谁说了什么、谁和谁在互动、群里在聊什么。
+· 无状态地存储信息：把“今天”“刚才”“最近”等相对时间替换成具体的日期或时间范围。
+· summary 简洁但保留关键事实、人物、事件、决定和群友的明确要求。
+· group_state 只描述这段时间群里的整体状态（气氛、正在追的话题、发生的事），没有相关信息时留空字符串。
+· topic 用不超过 12 个字概括这段群聊的主题。
+· 仅输出 JSON，不要包含 markdown 代码块或其他内容：
+{"topic": "...", "summary": "...", "group_state": "..."}`,
+  }]
+}
+
+/** 把子级群记忆汇总为父级群记忆 */
+export function buildGroupSummaryPrompt(level: string, children: string): { role: string; content: string }[] {
+  const label = LEVEL_LABELS[level] || level
+  return [{
+    role: 'user',
+    content: `请把以下群聊记忆汇总成对${label}的整体总结。
+
+子级记忆：
+${children}
+
+要求：
+· 这是群聊记忆，不是单个用户的画像：保留群里的重要事件、长期话题、群友之间的关系变化。
+· 无状态地存储信息：把相对时间替换成具体日期或时间范围。
+· 提到群友时用昵称，不要把不同的人合并成一个人；提到机器人时写「${ROLE_AI}」。
+· 合并重复内容，删除琐碎细节；不要编造子级记忆中不存在的信息。
+· group_state 描述这段时间群里的整体状态（气氛、长期话题、发生的事），没有相关信息时留空字符串。
+· 仅输出 JSON，不要包含 markdown 代码块或其他内容：
+{"summary": "...", "group_state": "..."}`,
+  }]
+}
+
+const GROUP_CATEGORY_HELP = `类别（category）只能是以下六种之一：
+· identity：群特征（群的性质、氛围、活跃时段、主要话题）
+· member：活跃群友特征（昵称、说话习惯、身份、喜好）
+· relationship：群友关系（谁和谁关系好、怎么称呼、互动模式）
+· topic：长期话题与梗
+· requirement：群规或群友对机器人的长期要求
+· fact：其他值得长期记住的群内事实`
+
+/** 增量更新群画像 */
+export function buildGroupProfilePrompt(existing: ProfileEntry[], input: string): { role: string; content: string }[] {
+  const existingText = existing.length
+    ? existing.map(entry => `- [${entry.key}] (${entry.category}, 重要度${entry.importance}) ${entry.content}`).join('\n')
+    : '（暂无）'
+
+  return [{
+    role: 'user',
+    content: `你是一个群聊画像整理助手。请根据新材料增量更新这个群的画像。
+
+${GROUP_CATEGORY_HELP}
+
+已有画像：
+${existingText}
+
+新材料（近期群聊的总结与记忆）：
+${input}
+
+要求：
+· 只输出增量，不要重复已有条目里已经包含的信息。
+· key 使用简短稳定的标识：群友用 "member:昵称"，长期话题用 "topic:主题"，同一语义必须始终使用同一个 key。
+· importance 为 0-50 的整数：越稳定、越重要越高；临时信息给较低分值。
+· modified 中的 key 必须已经存在于已有画像或本次 added 中。
+· deleted 是要整条删除的条目的 key 字符串数组。要删除某条只能放进 deleted，绝不能通过改写 content 来表达删除或修改意图。
+· content 必须是关于这个群的陈述性事实，不能是给助手的编辑说明（如“移除某表述”“该项以某条为准”）。
+· 只记录跨天仍然成立的稳定特征，不记录单次事件或临时话题。
+· 群友之间可能用多个昵称互相称呼，同一人尽量合并；不确定是不是同一人时保留不确定性表述。
+· 不要记录任何人的真实姓名、住址、联系方式、账号密码等隐私信息。
 · 没有值得记录的变化时，三个数组都返回空数组。
 · 仅输出 JSON，不要包含 markdown 代码块或其他内容：
 {"added":[{"key":"...","category":"...","content":"...","importance":20}],"modified":[{"key":"...","content":"...","importance":20}],"deleted":["key"]}`,

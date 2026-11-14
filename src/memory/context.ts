@@ -5,10 +5,11 @@ import { getTimeOfDay } from '../utils'
 import { MemoryRepository } from './repository'
 import { ProfileManager } from './profile'
 import { Granularity, SatKnowledge, SatMemory } from './schema'
-import { rankDocuments, RetrievalDocument, truncate } from './retrieval'
+import { rankDocuments, RetrievalDocument } from './retrieval'
 import { ShortTermMemory } from './short-term'
 import { buildDialogueStats } from './stats'
 import { formatDay, formatTime, periodStart } from './summarizer'
+import { groupScopeId, isGroupScope, isGroupSession } from './group'
 
 export interface PromptContext {
   common: string
@@ -20,6 +21,10 @@ export interface PromptContext {
   pyramid: string
   recalled: string
   profile: string
+  /** 群聊记忆金字塔：与按人记忆并存，预算约为个人金字塔的一半 */
+  groupPyramid: string
+  /** 群画像：群特征、活跃群友、群友关系等 */
+  groupProfile: string
 }
 
 export interface ContextConfig {
@@ -28,12 +33,13 @@ export interface ContextConfig {
   dialogueTopN: number
   recallTopN: number
   retentionDays: number
-  contextMaxChars: number
   timezoneOffset: number
   /** 日界线小时，必须与汇总侧一致（periodStart/periodEnd 的边界） */
   dayBoundaryHour?: number
   dialogueStatsEnabled: boolean
   memoryConfig: any
+  /** 是否启用群聊记忆注入（与群记忆开关一致） */
+  groupEnabled?: boolean
   /** 可注入时钟，便于验证周期覆盖；生产环境不传 */
   now?: () => Date
 }
@@ -59,18 +65,27 @@ export class ContextBuilder {
     private shortTerm: ShortTermMemory,
     private profile: ProfileManager,
     private config: ContextConfig,
+    private groupProfileManager?: ProfileManager,
   ) {}
 
   async build(session: Session, query: string): Promise<PromptContext> {
     const scopeId = this.config.memoryConfig.personal_memory ? session.userId : session.channelId
+    const groupScope = this.groupScopeFor(session)
 
     const emptyPyramid: PyramidResult = { sections: [], ids: new Set() }
-    const [common, group, stats, pyramid, profile] = await Promise.all([
+    const [common, group, stats, pyramid, profile, groupPyramid, groupProfile] = await Promise.all([
       this.buildKnowledge('common', '*', query, this.config.commonTopN),
       this.buildKnowledge('group', session.channelId, query, this.config.commonTopN),
       this.config.dialogueStatsEnabled ? buildDialogueStats(this.repo, scopeId) : Promise.resolve(''),
       this.config.enabled ? this.buildPyramid(scopeId) : Promise.resolve(emptyPyramid),
       this.profile.getContext(scopeId),
+      // 群记忆与按人记忆并存：群 scope 走独立的一棵金字塔，最高只注入最近一年
+      groupScope && this.config.enabled
+        ? this.buildPyramid(groupScope, true)
+        : Promise.resolve(emptyPyramid),
+      groupScope && this.groupProfileManager
+        ? this.groupProfileManager.getContext(groupScope)
+        : Promise.resolve(''),
     ])
 
     // 召回依赖金字塔已经选中的节点，避免同一段记忆被注入两次
@@ -79,12 +94,21 @@ export class ContextBuilder {
       : ''
 
     const ambient = this.shortTerm.getChannelDialogue(session, this.config.memoryConfig)
-    return this.applyBudget({
+    return {
       common, group, ambient, stats,
       datetime: this.buildDateTime(),
       pyramid: this.renderPyramid(pyramid.sections),
       recalled, profile,
-    }, pyramid.sections)
+      groupPyramid: this.renderPyramid(groupPyramid.sections),
+      groupProfile,
+    }
+  }
+
+  /** 群记忆只在群聊会话里注入；私聊没有「群」可言 */
+  private groupScopeFor(session: Session): string {
+    if (!this.config.groupEnabled) return ''
+    if (!isGroupSession(session)) return ''
+    return groupScopeId(session.channelId)
   }
 
   private now(): Date {
@@ -152,7 +176,7 @@ export class ContextBuilder {
    * 父周期尚未闭合时它本身没有节点，下一级正好补上这一段，因此时间轴上不会出现空洞。
    * 归属判定与汇总侧一致：子节点落在 (父起点, 父终点]，即 periodEnd - 1ms 所在周期。
    */
-  private async buildPyramid(scopeId: string): Promise<PyramidResult> {
+  private async buildPyramid(scopeId: string, latestYearOnly = false): Promise<PyramidResult> {
     const now = this.now()
     const tz = this.config.timezoneOffset
     const boundary = this.boundaryHour
@@ -164,8 +188,13 @@ export class ContextBuilder {
     const monthStart = periodStart('month', now, tz, boundary)
     const weekStart = periodStart('week', now, tz, boundary)
 
+    // 群记忆不需要往年：只取最新一条年节点，避免多年前的群聊占上下文
+    const yearsPromise = latestYearOnly
+      ? this.repo.getLatestMemory(scopeId, 'year').then(node => (node ? [node] : []))
+      : this.repo.getMemoriesInRange(scopeId, 'year', null, now)
+
     const [years, seasons, months, weeks, days, latestDay] = await Promise.all([
-      this.repo.getMemoriesInRange(scopeId, 'year', null, now),
+      yearsPromise,
       this.repo.getMemoriesInRange(scopeId, 'season', yearStart, now),
       this.repo.getMemoriesInRange(scopeId, 'month', seasonStart, now),
       this.repo.getMemoriesInRange(scopeId, 'week', monthStart, now),
@@ -196,7 +225,7 @@ export class ContextBuilder {
     // 由粗到细排列。前缀缓存按字节比对，最稳定的内容必须放在最前面：
     // 年/季/月这些上层节点写完就不再变，话题和每日总结则在持续追加，
     // 把它们放在末尾，新增内容才不会顶掉前面整段已经缓存的前缀。
-    add('### 历年总结', 'year', years)
+    add(latestYearOnly ? '### 最近一年总结' : '### 历年总结', 'year', years)
     add('### 今年各季总结', 'season', seasons)
     add('### 本季各月总结', 'month', months)
     add('### 本月各周总结', 'week', weeks)
@@ -227,7 +256,7 @@ export class ContextBuilder {
   /** 运维命令用：返回与注入系统提示完全一致的金字塔文本 */
   async buildMemoryView(scopeId: string): Promise<string> {
     if (!this.config.enabled) return ''
-    const { sections } = await this.buildPyramid(scopeId)
+    const { sections } = await this.buildPyramid(scopeId, isGroupScope(scopeId))
     return this.renderPyramid(sections)
   }
 
@@ -257,54 +286,5 @@ export class ContextBuilder {
       return `[${time}] ${doc.content}`
     })
     return `以下是较久之前用户说过的话和对话时间：{\n${lines.join('\n')}\n}\n`
-  }
-
-  // ---------- 预算 ----------
-
-  /**
-   * 超出预算时按“越近越优先”的顺序削减（sections 已由粗到细排列，索引 0 最粗）：
-   * ① 每层先只保留最新的一条（尽量维持每一级的覆盖）；
-   * ② 再从最粗的层级开始整段丢弃：历年 → 今年各季 → 本季各月 → 本月各周 → 本周每日 → 未归档话题；
-   * ③ 仍超限时硬截断，保留开头的粗粒度汇总（它们同时是最稳定的缓存前缀）。
-   * 召回最先整体移除。常识、群常识、群聊环境与画像保持完整（它们通常很短且高频有用）。
-   */
-  private applyBudget(context: PromptContext, sections: PyramidSection[]): PromptContext {
-    const max = this.config.contextMaxChars
-    if (max <= 0) return context
-
-    const otherLength = () =>
-      context.common.length + context.group.length + context.ambient.length
-      + context.stats.length + context.datetime.length + context.recalled.length
-      + context.profile.length
-    const total = () => otherLength() + context.pyramid.length
-    const rerender = () => { context.pyramid = this.renderPyramid(sections) }
-
-    if (total() <= max) return context
-
-    // 先整体移除召回
-    context.recalled = ''
-    if (total() <= max) return context
-
-    // ① 每层保留最新一条（entries 是时间倒序，pop 丢的是最旧的一条）
-    for (let i = 0; i < sections.length; i++) {
-      while (sections[i].entries.length > 1 && total() > max) {
-        sections[i].entries.pop()
-        rerender()
-      }
-      if (total() <= max) return context
-    }
-
-    // ② 从最粗（数组开头）开始整段丢弃
-    for (let i = 0; i < sections.length; i++) {
-      while (sections[i].entries.length && total() > max) {
-        sections[i].entries.pop()
-        rerender()
-      }
-      if (total() <= max) return context
-    }
-
-    // ③ 仍然超限：按剩余长度硬截断，保留最新的内容
-    context.pyramid = truncate(context.pyramid, Math.max(0, max - otherLength()))
-    return context
   }
 }

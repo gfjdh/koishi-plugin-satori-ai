@@ -12,6 +12,10 @@ export interface PromptContext {
     pyramid: string;
     recalled: string;
     profile: string;
+    /** 群聊记忆金字塔：与按人记忆并存，预算约为个人金字塔的一半 */
+    groupPyramid: string;
+    /** 群画像：群特征、活跃群友、群友关系等 */
+    groupProfile: string;
 }
 export interface ContextConfig {
     enabled: boolean;
@@ -19,12 +23,13 @@ export interface ContextConfig {
     dialogueTopN: number;
     recallTopN: number;
     retentionDays: number;
-    contextMaxChars: number;
     timezoneOffset: number;
     /** 日界线小时，必须与汇总侧一致（periodStart/periodEnd 的边界） */
     dayBoundaryHour?: number;
     dialogueStatsEnabled: boolean;
     memoryConfig: any;
+    /** 是否启用群聊记忆注入（与群记忆开关一致） */
+    groupEnabled?: boolean;
     /** 可注入时钟，便于验证周期覆盖；生产环境不传 */
     now?: () => Date;
 }
@@ -33,8 +38,11 @@ export declare class ContextBuilder {
     private shortTerm;
     private profile;
     private config;
-    constructor(repo: MemoryRepository, shortTerm: ShortTermMemory, profile: ProfileManager, config: ContextConfig);
+    private groupProfileManager?;
+    constructor(repo: MemoryRepository, shortTerm: ShortTermMemory, profile: ProfileManager, config: ContextConfig, groupProfileManager?: ProfileManager);
     build(session: Session, query: string): Promise<PromptContext>;
+    /** 群记忆只在群聊会话里注入；私聊没有「群」可言 */
+    private groupScopeFor;
     private now;
     private get boundaryHour();
     /** 当前时间精确到秒，是整段提示里变化最快的内容，只能放在最后。 */
@@ -62,12 +70,4 @@ export declare class ContextBuilder {
     /** 运维命令用：返回与注入系统提示完全一致的金字塔文本 */
     buildMemoryView(scopeId: string): Promise<string>;
     private buildRecall;
-    /**
-     * 超出预算时按“越近越优先”的顺序削减（sections 已由粗到细排列，索引 0 最粗）：
-     * ① 每层先只保留最新的一条（尽量维持每一级的覆盖）；
-     * ② 再从最粗的层级开始整段丢弃：历年 → 今年各季 → 本季各月 → 本月各周 → 本周每日 → 未归档话题；
-     * ③ 仍超限时硬截断，保留开头的粗粒度汇总（它们同时是最稳定的缓存前缀）。
-     * 召回最先整体移除。常识、群常识、群聊环境与画像保持完整（它们通常很短且高频有用）。
-     */
-    private applyBudget;
 }

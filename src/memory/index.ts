@@ -12,6 +12,11 @@ import { MemoryRepository } from './repository'
 import { extendMemoryDatabase } from './schema'
 import { ShortTermMemory } from './short-term'
 import { Summarizer } from './summarizer'
+import { GroupRecorder } from './group-recorder'
+import { groupScopeId, isGroupScope } from './group'
+import {
+  GROUP_CATEGORY_LABELS, GROUP_CATEGORY_ORDER, buildGroupProfilePrompt,
+} from './prompts'
 
 const logger = new Logger('satori-memory')
 
@@ -24,6 +29,8 @@ export interface MemoryServiceConfig extends MemoryConfig {
   memory_day_boundary_hour: number
   /** 昵称列表：归档时从用户发言里抹掉，避免昵称被当成发言人 */
   nick_name_list: string[]
+  /** 是否启用群聊记忆（按群建立独立的时间块金字塔，与按人记忆并存） */
+  enable_group_memory: boolean
   topic_switch_check: boolean
   summary_heartbeat_minutes: number
   summary_dry_run: boolean
@@ -33,7 +40,6 @@ export interface MemoryServiceConfig extends MemoryConfig {
   summary_concurrency: number
   memory_active_window_days: number
   memory_retention_days: number
-  memory_context_max_chars: number
   memory_recall_topN: number
   dialogue_stats_enabled: boolean
   profile_enabled: boolean
@@ -51,6 +57,8 @@ export class MemoryService {
   private repo: MemoryRepository
   private shortTerm: ShortTermMemory
   private profile: ProfileManager
+  private groupProfile: ProfileManager
+  private groupRecorder: GroupRecorder
   private summarizer: Summarizer
   private contextBuilder: ContextBuilder
   private heartbeat: Heartbeat
@@ -75,6 +83,24 @@ export class MemoryService {
       contextEntries: config.profile_context_entries,
       updateWindowDays: config.profile_update_window_days,
     })
+    // 群画像与个人画像走同一套增量合并，只是提示词、类别和标题不同
+    this.groupProfile = new ProfileManager(ctx, this.repo, api, {
+      enabled: config.enable_group_memory && config.profile_enabled,
+      dryRun: config.summary_dry_run,
+      maxEntries: config.profile_max_entries,
+      contextEntries: config.profile_context_entries,
+      updateWindowDays: config.profile_update_window_days,
+      buildPrompt: buildGroupProfilePrompt,
+      categoryLabels: GROUP_CATEGORY_LABELS,
+      categoryOrder: GROUP_CATEGORY_ORDER,
+      contextTitle: '以下是这个群的补充信息：',
+      subjectLabel: '群',
+      stateLabel: '群状态',
+    })
+    this.groupRecorder = new GroupRecorder(ctx, this.repo, {
+      enabled: config.enable_group_memory,
+      activeWindowDays: config.memory_active_window_days,
+    })
     // 按人记忆时 scopeId 就是 userId；群级记忆无法唯一定位用户，保持默认辅助模型
     const resolveUser = config.personal_memory
       ? (scopeId: string) => getUser(ctx, scopeId)
@@ -87,6 +113,7 @@ export class MemoryService {
       nickNames: config.nick_name_list,
       maxCallsPerTick: config.summary_max_calls_per_tick,
       resolveUser,
+      groupProfile: this.groupProfile,
     })
     this.contextBuilder = new ContextBuilder(this.repo, this.shortTerm, this.profile, {
       enabled: config.enable_layered_memory,
@@ -94,12 +121,12 @@ export class MemoryService {
       dialogueTopN: config.dailogues_topN,
       recallTopN: config.memory_recall_topN,
       retentionDays: config.memory_retention_days,
-      contextMaxChars: config.memory_context_max_chars,
       timezoneOffset: config.memory_timezone_offset,
       dayBoundaryHour: config.memory_day_boundary_hour,
       dialogueStatsEnabled: config.dialogue_stats_enabled,
       memoryConfig: config,
-    })
+      groupEnabled: config.enable_group_memory,
+    }, this.groupProfile)
     this.heartbeat = new Heartbeat(ctx, this.repo, this.summarizer, {
       intervalMinutes: config.summary_heartbeat_minutes,
       maxScopesPerTick: config.summary_max_scopes_per_tick,
@@ -119,6 +146,7 @@ export class MemoryService {
       logger.info('分层记忆已关闭：仅保留短期记忆与知识库，不落库、不汇总')
       return
     }
+    this.groupRecorder.start()
     this.heartbeat.start()
   }
 
@@ -127,6 +155,7 @@ export class MemoryService {
       try { dispose() } catch { /* ignore */ }
     }
     this.sweepDisposers = []
+    this.groupRecorder.stop()
     this.heartbeat.stop()
   }
 
@@ -150,6 +179,11 @@ export class MemoryService {
     return this.config.personal_memory
       ? (session.userId || session.channelId)
       : (session.channelId || session.userId)
+  }
+
+  /** 群记忆的 scopeId；命令与运维查看用 */
+  getGroupScopeId(channelId: string): string {
+    return groupScopeId(channelId)
   }
 
   // ---------- 短期记忆 ----------
@@ -211,6 +245,9 @@ export class MemoryService {
       return
     }
 
+    // 群聊记忆：机器人自己的发言也进群 scope，群聊记录才是完整的
+    if (response?.content) this.groupRecorder.recordBot(session, response.content)
+
     // 不阻塞回复：话题切换判断放到后台
     void this.summarizer.maybeSwitchTopic(scopeId)
   }
@@ -223,6 +260,11 @@ export class MemoryService {
   /** 主动消息只进短期记忆，不写 sat_dialogue，避免污染对话统计与长期归档 */
   recordProactive(session: Session, content: string): void {
     this.shortTerm.recordAssistant(session, content, this.config, this.getScopeId(session))
+  }
+
+  /** 群友发言进群聊记忆缓冲（只对机器人参与过的群生效） */
+  recordGroupMessage(session: Session, content: string): void {
+    this.groupRecorder.record(session, content)
   }
 
   // ---------- 系统提示 ----------
@@ -248,7 +290,9 @@ export class MemoryService {
   }
 
   async getProfileById(scopeId: string): Promise<string> {
-    return this.profile.formatById(scopeId)
+    return isGroupScope(scopeId)
+      ? this.groupProfile.formatById(scopeId)
+      : this.profile.formatById(scopeId)
   }
 
   // ---------- 迁移与运维 ----------

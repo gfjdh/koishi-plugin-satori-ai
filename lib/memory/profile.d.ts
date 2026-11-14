@@ -2,7 +2,7 @@ import { Context } from 'koishi';
 import { APIClient } from '../api';
 import { User } from '../types';
 import { MemoryRepository } from './repository';
-import { SatMemory } from './schema';
+import { ProfileEntry, SatMemory } from './schema';
 /** 画像输入被内容审核拒绝后该 scope 的冷却：重试同一段文本不会有不同结果。
  *  不永久放弃，是因为地灵殿通行证一旦充值恢复，辅助线路换了 provider，
  *  审核策略可能完全不同，那时应该重新尝试。 */
@@ -17,6 +17,20 @@ export interface ProfileConfig {
     contextEntries: number;
     /** 只对最近 N 天内结束的日节点更新画像；<=0 表示不限制 */
     updateWindowDays?: number;
+    /** 提示词构造器；默认个人画像，群画像传入自己的版本 */
+    buildPrompt?: (existing: ProfileEntry[], input: string) => {
+        role: string;
+        content: string;
+    }[];
+    /** 类别展示顺序与名称；默认个人画像的六类 */
+    categoryLabels?: Record<string, string>;
+    categoryOrder?: string[];
+    /** 注入系统提示时的标题 */
+    contextTitle?: string;
+    /** 命令输出里的主体名（“用户”/“群”） */
+    subjectLabel?: string;
+    /** 记忆里状态字段的名称（“用户状态”/“群状态”） */
+    stateLabel?: string;
 }
 export declare class ProfileManager {
     private ctx;

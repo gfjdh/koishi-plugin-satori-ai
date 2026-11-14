@@ -15,9 +15,15 @@ import { MemoryRepository } from './repository'
 import { Granularity, SatDialogue, SatMemory } from './schema'
 import { parseLlmJson } from './json'
 import {
-  buildSummaryPrompt, buildTopicArchivePrompt, buildTopicBatchPrompt, buildTopicSwitchPrompt,
-  ArchiveDayResult, ArchiveResult, ROLE_AI, ROLE_USER, SummaryResult,
+  buildGroupArchivePrompt, buildGroupSummaryPrompt, buildSummaryPrompt,
+  buildTopicArchivePrompt, buildTopicBatchPrompt, buildTopicSwitchPrompt,
+  ArchiveDayResult, ArchiveResult, GroupArchiveResult, GroupSummaryResult,
+  ROLE_AI, ROLE_USER, SummaryResult,
 } from './prompts'
+import {
+  GROUP_BOT_KIND, GROUP_KINDS, GROUP_MAX_MESSAGES, compressGroupRows, isGroupScope, selectGroupBlock,
+} from './group'
+import { oneLine } from './text'
 import { ProfileManager } from './profile'
 import { redactSensitiveText } from './redact'
 import { isRejectedContent } from './reject'
@@ -78,6 +84,8 @@ export interface SummarizerConfig {
   maxCallsPerTick?: number
   /** scopeId -> 用户；用于让持“地灵殿通行证”的用户走自己的 key */
   resolveUser?: (scopeId: string) => Promise<User | null>
+  /** 群画像。群 scope 的日总结驱动它，而不是个人画像 */
+  groupProfile?: ProfileManager
 }
 
 interface CallBudget {
@@ -122,11 +130,6 @@ export interface DialogueRow {
   aiContent: string
   username?: string
   createdAt: Date
-}
-
-/** 压成一行：换行会让用户伪造出新的发言人行，归档只需要语义，不需要原排版 */
-function oneLine(content: string): string {
-  return (content || '').replace(/\s*\r?\n\s*/g, ' ').trim()
 }
 
 /**
@@ -186,6 +189,24 @@ export function formatDialogueRows(
     const reply = row.aiContent && row.aiContent !== '…' ? oneLine(row.aiContent) : ''
     if (reply) lines.push(`[${time}] ${ROLE_AI}说「${reply}」`)
     return lines.join('\n')
+  }).join('\n')
+}
+
+/**
+ * 群聊时间块的归档输入。
+ *
+ * 发言人由消息的 kind 决定，不从内容里猜：`ambient-bot` 是机器人，
+ * 其余是群友，昵称只用来区分不同的人。群友之间本来就互相称呼，
+ * 这里不做昵称抹除，否则「A 说 B 怎么样」会被删成残句。
+ */
+export function formatGroupRows(rows: SatDialogue[], timezoneOffset: number): string {
+  return rows.map((row) => {
+    const time = formatTime(row.createdAt, timezoneOffset)
+    const name = (row.username || '').trim()
+    const speaker = row.kind === GROUP_BOT_KIND
+      ? ROLE_AI
+      : (name ? `${ROLE_USER}（${name}）` : ROLE_USER)
+    return `[${time}] ${speaker}说「${oneLine(row.userContent)}」`
   }).join('\n')
 }
 
@@ -279,6 +300,8 @@ export class Summarizer {
    */
   async maybeSwitchTopic(scopeId: string): Promise<void> {
     if (!this.config.topicSwitchCheck) return
+    // 群聊按时间块归档，热路径上不做任何模型调用
+    if (isGroupScope(scopeId)) return
     return this.runExclusive(scopeId, async () => {
       const user = await this.lookupUser(scopeId)
       const meta = await this.repo.ensureMeta(scopeId)
@@ -519,6 +542,7 @@ export class Summarizer {
    * - 进行中的当天沿用旧语义：话题超过 24 小时才兜底归档。
    */
   private async drainTopics(scopeId: string, user: User | null, budget: CallBudget): Promise<boolean> {
+    if (isGroupScope(scopeId)) return this.drainGroupBlocks(scopeId, budget)
     if (this.config.dryRun) {
       const meta = await this.repo.ensureMeta(scopeId)
       const [next] = await this.repo.getDialoguesAfter(scopeId, meta.topicStart, {
@@ -601,6 +625,152 @@ export class Summarizer {
     return false
   }
 
+  // ---------- 群聊时间块 ----------
+
+  /**
+   * 群聊的归档游标推进：块尾之后 1ms。
+   * 群里同一毫秒可能有多条消息，用 `$gt` 时不能停在块尾的时间戳上，
+   * 否则会把同一毫秒里排在后面的消息漏掉。
+   */
+  private async groupNextCursor(
+    scopeId: string,
+    block: SatDialogue[],
+    dayEnd: Date,
+  ): Promise<Date> {
+    const last = block[block.length - 1]
+    let next = new Date(new Date(last.createdAt).getTime() + 1)
+    // 这一天已经结束且没有剩余消息时直接推到日界线，day 级据此判定该日已归档完整
+    if (dayEnd.getTime() <= Date.now()) {
+      const remaining = await this.repo.countDialoguesInRange(scopeId, next, dayEnd, GROUP_KINDS)
+      if (!remaining) next = dayEnd
+    }
+    return next
+  }
+
+  /**
+   * 按时间块消费群聊积压。每块一次模型调用，热路径上没有任何判断调用。
+   * 未闭合的块（还在沉默阈值内）留到下一轮心跳。
+   */
+  private async drainGroupBlocks(scopeId: string, budget: CallBudget): Promise<boolean> {
+    if (this.config.dryRun) {
+      const meta = await this.repo.ensureMeta(scopeId)
+      const [next] = await this.repo.getDialoguesAfter(scopeId, meta.topicStart, {
+        kinds: GROUP_KINDS, limit: 1,
+      })
+      if (next) {
+        logger.info(`[dry-run] 将归档群聊 scope=${scopeId} 起点=${formatTime(next.createdAt, this.tz)}`)
+      }
+      return false
+    }
+
+    while (budget.calls > 0) {
+      const meta = await this.repo.ensureMeta(scopeId)
+      const cursor = new Date(meta.topicStart)
+      const dayEnd = nextDayStart(cursor, this.tz, this.boundaryHour)
+
+      // 跨过整段没有消息的日期
+      const [next] = await this.repo.getDialoguesAfter(scopeId, cursor, {
+        kinds: GROUP_KINDS, limit: 1,
+      })
+      if (!next) {
+        const todayStart = dayStart(new Date(), this.tz, this.boundaryHour)
+        if (todayStart.getTime() > cursor.getTime()) {
+          await this.repo.setTopicStart(scopeId, todayStart)
+        }
+        return true
+      }
+      const nextDay = dayStart(new Date(next.createdAt), this.tz, this.boundaryHour)
+      if (nextDay.getTime() > cursor.getTime()) {
+        await this.repo.setTopicStart(scopeId, nextDay)
+        continue
+      }
+
+      // 多取一条用来判断块尾之后是否还有消息
+      const rows = await this.repo.getDialoguesAfter(scopeId, cursor, {
+        kinds: GROUP_KINDS,
+        limit: GROUP_MAX_MESSAGES + 1,
+        before: dayEnd,
+      })
+      const { block, closed } = selectGroupBlock(rows, dayEnd, new Date())
+      if (!block.length) return false
+      if (!closed) return true
+
+      const key = `${scopeId}:${block[0].id}`
+      const nextCursor = await this.groupNextCursor(scopeId, block, dayEnd)
+      const outcome = await this.archiveGroupBlock(scopeId, block, nextCursor)
+      budget.calls -= 1
+      if (outcome === 'ok' || outcome === 'empty') {
+        this.topicFailures.delete(key)
+        continue
+      }
+
+      // 与按人记忆同一套容错：审核拒绝立即跳过，其他错误连续失败到阈值再跳过，
+      // 避免一个坏块把整个群的归档永久堵住。
+      const failures = (this.topicFailures.get(key) || 0) + 1
+      if (outcome === 'rejected' || failures >= TOPIC_SKIP_AFTER_FAILURES) {
+        await this.repo.setTopicStart(scopeId, nextCursor)
+        this.topicFailures.delete(key)
+        logger.warn(`群聊时间块跳过 scope=${scopeId} 起点=${formatTime(block[0].createdAt, this.tz)}`
+          + ` 原因=${outcome === 'rejected' ? '内容被模型审核拒绝' : `连续失败 ${failures} 次`}`)
+        continue
+      }
+      this.topicFailures.set(key, failures)
+      return false
+    }
+    return false
+  }
+
+  /** 一个时间块归档为一条 topic 记忆 */
+  private async archiveGroupBlock(
+    scopeId: string,
+    rows: SatDialogue[],
+    nextCursor: Date,
+  ): Promise<ArchiveOutcome> {
+    const compact = compressGroupRows(rows)
+    if (!compact.length) {
+      // 全是被过滤掉的短句或长文：不花调用，直接把游标推过去
+      await this.repo.setTopicStart(scopeId, nextCursor)
+      logger.debug(`群聊时间块没有可归档内容 scope=${scopeId} 消息=${rows.length}`)
+      return 'empty'
+    }
+
+    const text = formatGroupRows(compact, this.tz)
+    let result = await this.api.auxiliaryChat(buildGroupArchivePrompt(text), null)
+    if (result.error && isRejectedContent(result.content)) {
+      logger.warn(`群聊归档被内容审核拒绝，改用脱敏输入重试 scope=${scopeId}`)
+      result = await this.api.auxiliaryChat(buildGroupArchivePrompt(redactSensitiveText(text)), null)
+    }
+    if (result.error) {
+      logger.warn(`群聊归档失败 scope=${scopeId}: ${result.content}`)
+      return isRejectedContent(result.content) ? 'rejected' : 'failed'
+    }
+
+    const parsed = parseLlmJson<GroupArchiveResult>(result.content)
+    const summary = parsed?.summary?.trim()
+    if (!summary) {
+      logger.warn(`群聊归档解析失败 scope=${scopeId}: ${result.content?.slice(0, 200)}`)
+      return 'failed'
+    }
+
+    const first = rows[0]
+    const last = rows[rows.length - 1]
+    await this.repo.commitTopicArchive({
+      scopeId,
+      granularity: 'topic',
+      topic: (parsed.topic || '').trim(),
+      content: summary,
+      userState: (parsed.group_state || '').trim(),
+      periodStart: new Date(first.createdAt),
+      periodEnd: new Date(last.createdAt),
+      sourceCount: rows.length,
+      createdAt: new Date(),
+    }, scopeId, nextCursor)
+
+    logger.info(`群聊时间块归档完成 scope=${scopeId} 消息=${rows.length} 压缩后=${compact.length}`
+      + ` 起=${formatTime(first.createdAt, this.tz)} 止=${formatTime(last.createdAt, this.tz)}`)
+    return 'ok'
+  }
+
   // ---------- 分层汇总 ----------
 
   async summarizeScope(scopeId: string): Promise<void> {
@@ -627,15 +797,21 @@ export class Summarizer {
     })
   }
 
+  /** 群 scope 用群画像，按人 scope 用个人画像；群画像未启用时返回 null */
+  private profileFor(scopeId: string): ProfileManager | null {
+    return isGroupScope(scopeId) ? (this.config.groupProfile ?? null) : this.profile
+  }
+
   /** 用金字塔里的高层汇总做一次性画像回填 */
   private async backfillProfile(scopeId: string, user: User | null, budget: CallBudget): Promise<void> {
     if (this.config.dryRun) return
-    if (!this.profile.isEnabled() || budget.calls <= 0) return
-    if (await this.profile.isBackfilled(scopeId)) return
+    const profile = this.profileFor(scopeId)
+    if (!profile?.isEnabled() || budget.calls <= 0) return
+    if (await profile.isBackfilled(scopeId)) return
     // 被内容审核拒绝过的 scope 在冷却期内不再发起回填，也不打日志
-    if (this.profile.isCoolingDown(scopeId)) return
+    if (profile.isCoolingDown(scopeId)) return
 
-    const windowStart = this.profile.windowStart()
+    const windowStart = profile.windowStart()
     // 窗口不限制时没有「被跳过的旧历史」，不需要回填
     if (!windowStart) return
 
@@ -644,7 +820,7 @@ export class Summarizer {
 
     logger.info(`画像历史回填 scope=${scopeId} 选材=${sections[0].label}`)
     budget.calls -= 1
-    await this.profile.backfill(scopeId, sections, user)
+    await profile.backfill(scopeId, sections, isGroupScope(scopeId) ? null : user)
   }
 
   /**
@@ -677,6 +853,8 @@ export class Summarizer {
   private async buildLevels(scopeId: string, user: User | null, budget: CallBudget): Promise<boolean> {
     const meta = await this.repo.ensureMeta(scopeId)
     const frontier = new Date(meta.topicStart)
+    const group = isGroupScope(scopeId)
+    const profile = this.profileFor(scopeId)
 
     for (const level of LEVEL_ORDER) {
       let nodes = 0
@@ -730,7 +908,7 @@ export class Summarizer {
         const single = children.length === 1
         // 历史回填的旧日节点不更新画像：既省下大量模型调用，也避免把
         // 几个月前的信息当成用户近况反复写回。
-        const profileUpdate = level === 'day' && this.profile.shouldUpdate(end)
+        const profileUpdate = level === 'day' && !!profile?.shouldUpdate(end)
 
         if (single) {
           if (this.config.dryRun) {
@@ -738,10 +916,10 @@ export class Summarizer {
             return false
           }
           // 单子节点内容一致，直接晋升，不必再花一次模型调用
-          if (profileUpdate) {
+          if (profileUpdate && profile) {
             if (budget.calls <= 0) return false
             budget.calls -= 1
-            await this.profile.summarize(scopeId, children[0].content, children, user, end)
+            await profile.summarize(scopeId, children[0].content, children, group ? null : user, end)
           }
           await this.repo.createMemory({
             scopeId,
@@ -768,21 +946,24 @@ export class Summarizer {
           logger.warn(`${level} 子记忆过多，只汇总前 ${MAX_CHILDREN_PER_SUMMARY} 条 scope=${scopeId}`
             + ` 实际=${children.length}`)
         }
-        const text = this.formatChildren(input)
+        const text = this.formatChildren(input, group)
 
         if (this.config.dryRun) {
           logger.info(`[dry-run] ${level} 汇总 scope=${scopeId} 周期=${range} 子记忆=${children.length}`)
           return false
         }
 
-        const result = await this.api.auxiliaryChat(buildSummaryPrompt(level, text), user)
+        const result = await this.api.auxiliaryChat(
+          group ? buildGroupSummaryPrompt(level, text) : buildSummaryPrompt(level, text),
+          group ? null : user,
+        )
         budget.calls -= 1
         if (result.error) {
           logger.warn(`${level} 汇总失败 scope=${scopeId}: ${result.content}`)
           return false
         }
 
-        const parsed = parseLlmJson<SummaryResult>(result.content)
+        const parsed = parseLlmJson<SummaryResult & GroupSummaryResult>(result.content)
         const summary = parsed?.summary?.trim()
         if (!summary) {
           logger.warn(`${level} 汇总解析失败 scope=${scopeId}: ${result.content?.slice(0, 200)}`)
@@ -794,7 +975,7 @@ export class Summarizer {
           granularity: level,
           topic: '',
           content: summary,
-          userState: (parsed.user_state || '').trim(),
+          userState: ((group ? parsed.group_state : parsed.user_state) || '').trim(),
           periodStart: start,
           periodEnd: end,
           sourceCount: children.length,
@@ -803,9 +984,9 @@ export class Summarizer {
         logger.info(`${level} 汇总完成 scope=${scopeId} 周期=${range} 子记忆=${children.length}`)
         nodes += 1
 
-        if (profileUpdate) {
+        if (profileUpdate && profile) {
           budget.calls -= 1
-          await this.profile.summarize(scopeId, summary, children, user, end)
+          await profile.summarize(scopeId, summary, children, group ? null : user, end)
         }
       }
       // 没追平（预算耗尽 / 节点上限 / 异常数据）就停在这里，绝不带着
@@ -821,18 +1002,21 @@ export class Summarizer {
     return formatDialogueRows(rows, this.tz, collectArchiveNickNames(this.config.nickNames || [], user))
   }
 
-  private formatChildren(children: SatMemory[]): string {
+  private formatChildren(children: SatMemory[], group = false): string {
+    const stateLabel = group ? '群状态' : '用户状态'
     return children.map((child) => {
       const range = `${formatTime(child.periodStart, this.tz)}`
         + ` ~ ${formatTime(child.periodEnd, this.tz)}`
       const topic = child.topic ? `（${child.topic}）` : ''
-      const state = child.userState ? `\n用户状态：${child.userState}` : ''
+      const state = child.userState ? `\n${stateLabel}：${child.userState}` : ''
       return `[${range}]${topic} ${child.content}${state}`
     }).join('\n\n')
   }
 
   /** 解析失败不应让后台归档整体失败，退回默认辅助模型即可。 */
   private async lookupUser(scopeId: string): Promise<User | null> {
+    // 群 scope 没有对应的「持票用户」，辅助调用一律走默认线路
+    if (isGroupScope(scopeId)) return null
     if (!this.config.resolveUser) return null
     try {
       return await this.config.resolveUser(scopeId)

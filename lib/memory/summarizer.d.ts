@@ -2,6 +2,7 @@ import { Context } from 'koishi';
 import { APIClient } from '../api';
 import { User } from '../types';
 import { MemoryRepository } from './repository';
+import { SatDialogue } from './schema';
 import { ProfileManager } from './profile';
 export declare const TOPIC_MIN_TURNS = 5;
 export declare const TOPIC_MAX_TURNS = 20;
@@ -39,6 +40,8 @@ export interface SummarizerConfig {
     maxCallsPerTick?: number;
     /** scopeId -> 用户；用于让持“地灵殿通行证”的用户走自己的 key */
     resolveUser?: (scopeId: string) => Promise<User | null>;
+    /** 群画像。群 scope 的日总结驱动它，而不是个人画像 */
+    groupProfile?: ProfileManager;
 }
 /** 单次归档尝试的结果：ok 成功；empty 没有可归档内容；rejected 内容被模型审核拒绝；failed 其他失败 */
 export type ArchiveOutcome = 'ok' | 'empty' | 'rejected' | 'failed';
@@ -75,6 +78,14 @@ export declare function collectArchiveNickNames(baseNames: string[], user: Pick<
  * 只用来区分不同的人，不承担身份判断。
  */
 export declare function formatDialogueRows(rows: DialogueRow[], timezoneOffset: number, names?: string[]): string;
+/**
+ * 群聊时间块的归档输入。
+ *
+ * 发言人由消息的 kind 决定，不从内容里猜：`ambient-bot` 是机器人，
+ * 其余是群友，昵称只用来区分不同的人。群友之间本来就互相称呼，
+ * 这里不做昵称抹除，否则「A 说 B 怎么样」会被删成残句。
+ */
+export declare function formatGroupRows(rows: SatDialogue[], timezoneOffset: number): string;
 /** date 所在自然日的起点：最近一个已过的日界线 */
 export declare function dayStart(date: Date, timezoneOffset: number, boundaryHour: number): Date;
 /** date 所在自然日的终点（下一条日界线） */
@@ -134,7 +145,22 @@ export declare class Summarizer {
      * - 进行中的当天沿用旧语义：话题超过 24 小时才兜底归档。
      */
     private drainTopics;
+    /**
+     * 群聊的归档游标推进：块尾之后 1ms。
+     * 群里同一毫秒可能有多条消息，用 `$gt` 时不能停在块尾的时间戳上，
+     * 否则会把同一毫秒里排在后面的消息漏掉。
+     */
+    private groupNextCursor;
+    /**
+     * 按时间块消费群聊积压。每块一次模型调用，热路径上没有任何判断调用。
+     * 未闭合的块（还在沉默阈值内）留到下一轮心跳。
+     */
+    private drainGroupBlocks;
+    /** 一个时间块归档为一条 topic 记忆 */
+    private archiveGroupBlock;
     summarizeScope(scopeId: string): Promise<void>;
+    /** 群 scope 用群画像，按人 scope 用个人画像；群画像未启用时返回 null */
+    private profileFor;
     /** 用金字塔里的高层汇总做一次性画像回填 */
     private backfillProfile;
     /**

@@ -28,6 +28,12 @@ tsc
 
 # Archive transcript speaker-label test (user/AI roles must not be inferred from names)
 #   node -r esbuild-register external/satori-ai/scripts/test-summarizer-format.ts
+
+# Group memory time-block test (structural chunking; no per-message LLM call)
+#   node -r esbuild-register external/satori-ai/scripts/test-group-blocks.ts
+
+# Group memory drain test (cursor advances per block, tail not archived early)
+#   node -r esbuild-register external/satori-ai/scripts/test-group-drain.ts
 ```
 
 ## Architecture
@@ -59,7 +65,9 @@ The `SAT` class extends Koishi's `Service` and acts as the main orchestrator. It
 | `repository.ts` | All reads/writes of `sat_*` tables |
 | `short-term.ts` | In-memory channel memories and recent channel dialogues |
 | `context.ts` | Builds the memory section of the system prompt |
-| `summarizer.ts` | Topic switch detection and layered summaries |
+| `summarizer.ts` | Topic switch detection and layered summaries (group scopes use structural time blocks) |
+| `group.ts` | Group-chat time-block segmentation and extractive compression; no LLM call |
+| `group-recorder.ts` | Buffers and batch-writes group messages for groups the bot participates in |
 | `heartbeat.ts` | Background scheduler for summarization |
 | `profile.ts` | Incremental user profile, driven by daily summaries (replaces the old user portrait module) |
 | `retrieval.ts` | BM25 retrieval for recall |
