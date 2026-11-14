@@ -75,13 +75,10 @@ export declare function buildGroupProfilePrompt(existing: ProfileEntry[], input:
     content: string;
 }[];
 /**
- * 群聊「省流」：用觉的第一人称把一段时间里群里发生的事讲给提问的人。
- * 输出是纯文本，不要 JSON。
+ * 群聊「省流」的任务输入。
+ * 人格、用户画像、好感度等由正常对话的系统提示负责，这里只给群聊材料和任务要求。
  */
-export declare function buildGroupDigestPrompt(materials: string, range: string, requester?: {
-    name?: string;
-    id?: string;
-}): {
+export declare function buildGroupDigestTask(materials: string, range: string): {
     role: string;
     content: string;
 }[];

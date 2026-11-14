@@ -59,6 +59,13 @@ interface PyramidResult {
   ids: Set<number>
 }
 
+export interface PromptBuildOptions {
+  /** 不注入金字塔（个人与群）。省流这类一次性任务只要画像和当前材料 */
+  skipPyramid?: boolean
+  /** 不注入关键词召回 */
+  skipRecall?: boolean
+}
+
 export class ContextBuilder {
   constructor(
     private repo: MemoryRepository,
@@ -68,19 +75,24 @@ export class ContextBuilder {
     private groupProfileManager?: ProfileManager,
   ) {}
 
-  async build(session: Session, query: string): Promise<PromptContext> {
+  async build(
+    session: Session,
+    query: string,
+    options: PromptBuildOptions = {},
+  ): Promise<PromptContext> {
     const scopeId = this.config.memoryConfig.personal_memory ? session.userId : session.channelId
     const groupScope = this.groupScopeFor(session)
+    const pyramidEnabled = this.config.enabled && !options.skipPyramid
 
     const emptyPyramid: PyramidResult = { sections: [], ids: new Set() }
     const [common, group, stats, pyramid, profile, groupPyramid, groupProfile] = await Promise.all([
       this.buildKnowledge('common', '*', query, this.config.commonTopN),
       this.buildKnowledge('group', session.channelId, query, this.config.commonTopN),
       this.config.dialogueStatsEnabled ? buildDialogueStats(this.repo, scopeId) : Promise.resolve(''),
-      this.config.enabled ? this.buildPyramid(scopeId) : Promise.resolve(emptyPyramid),
+      pyramidEnabled ? this.buildPyramid(scopeId) : Promise.resolve(emptyPyramid),
       this.profile.getContext(scopeId),
       // 群记忆与按人记忆并存：群 scope 走独立的一棵金字塔，最高只注入最近一年
-      groupScope && this.config.enabled
+      pyramidEnabled && groupScope
         ? this.buildPyramid(groupScope, true)
         : Promise.resolve(emptyPyramid),
       groupScope && this.groupProfileManager
@@ -89,7 +101,7 @@ export class ContextBuilder {
     ])
 
     // 召回依赖金字塔已经选中的节点，避免同一段记忆被注入两次
-    const recalled = this.config.enabled
+    const recalled = this.config.enabled && !options.skipRecall
       ? await this.buildRecall(scopeId, query, pyramid.ids)
       : ''
 

@@ -7,7 +7,7 @@
 import {
   DIGEST_MAX_CHARS, clampDigest, formatDigestMaterials, selectDigestNodes,
 } from '../src/memory/group-digest'
-import { buildGroupDigestPrompt } from '../src/memory/prompts'
+import { buildGroupDigestTask } from '../src/memory/prompts'
 import { Granularity, SatDialogue, SatMemory } from '../src/memory/schema'
 
 const assert = (cond: any, message: string) => {
@@ -138,7 +138,7 @@ async function main() {
     assert(text.includes('【日总结 2026/11/13 04:00 ~ 2026/11/14 04:00】'), '记忆节点带粒度与时间范围')
     assert(text.includes('【尚未归档的原始消息】'), '未归档部分单独标注')
     assert(text.includes('用户（灵梦/提问者）说「有人玩过吗」'), '提问者的发言被标出来')
-    assert(text.includes('我说「我玩过」'), '机器人发言用「我」而不是 AI')
+    assert(text.includes('你说「我玩过」'), '机器人发言用「你」而不是 AI')
     assert(text.includes('用户（魔理沙）说「我也玩过」'), '其他人的发言不标提问者')
   }
 
@@ -155,14 +155,13 @@ async function main() {
     assert(clampDigest(short) === short, '不超过上限时原样返回')
   }
 
-  // ---------- 场景 6：提示词明确提问者和「我」 ----------
+  // ---------- 场景 6：任务提示词只给材料和任务要求 ----------
   {
-    const prompt = buildGroupDigestPrompt('材料', '时间范围', { name: '灵梦', id: 'u1' })
-      .map(item => item.content).join('\n')
-    assert(prompt.includes('提问的人：灵梦（id u1）'), '提示词写明提问的人')
-    assert(prompt.includes('标了「提问者」的发言'), '提示词说明提问者标记')
-    assert(prompt.includes('不要把别人的话当成他说的'), '提示词禁止张冠李戴')
-    assert(prompt.includes('不要自称 AI'), '提示词禁止自称 AI')
+    const prompt = buildGroupDigestTask('材料', '时间范围').map(item => item.content).join('\n')
+    assert(prompt.includes('现在是「省流」任务'), '提示词说明这是省流任务')
+    assert(prompt.includes('材料里的「你」是你自己说过的话'), '提示词说明机器人用「你」')
+    assert(prompt.includes('标了「提问者」的是我'), '提示词说明提问者标记')
+    assert(prompt.includes('200 字以内'), '提示词限制 200 字')
   }
 
   console.log('\n全部通过')

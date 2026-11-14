@@ -1,7 +1,7 @@
 import { Context, Session } from 'koishi';
 import { APIClient } from '../api';
 import { MemoryConfig } from '../types';
-import { PromptContext } from './context';
+import { PromptBuildOptions, PromptContext } from './context';
 export interface MemoryServiceConfig extends MemoryConfig {
     enable_layered_memory: boolean;
     /** 短期记忆空闲多久后清空（分钟），0 = 关闭 */
@@ -33,9 +33,9 @@ export interface TurnResponse {
     content: string;
     error: boolean;
 }
-/** 群聊「省流」的结果 */
-export interface GroupDigest {
-    summary: string;
+/** 群聊「省流」的选材结果。生成由调用方走正常对话链路 */
+export interface GroupDigestContext {
+    materials: string;
     range: string;
     nodeCount: number;
     messageCount: number;
@@ -92,8 +92,8 @@ export declare class MemoryService {
      *
      * 从没在本群说过话时按最近 24 小时算。
      */
-    buildGroupDigest(session: Session): Promise<GroupDigest | null>;
-    getPromptContext(session: Session, query: string): Promise<PromptContext>;
+    buildGroupDigestContext(session: Session): Promise<GroupDigestContext | null>;
+    getPromptContext(session: Session, query: string, options?: PromptBuildOptions): Promise<PromptContext>;
     addCommonSense(content: string): Promise<void>;
     addGroupCommonSense(content: string, channelId: string): Promise<void>;
     hasProfile(scopeId: string): Promise<boolean>;

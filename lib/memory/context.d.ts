@@ -33,6 +33,12 @@ export interface ContextConfig {
     /** 可注入时钟，便于验证周期覆盖；生产环境不传 */
     now?: () => Date;
 }
+export interface PromptBuildOptions {
+    /** 不注入金字塔（个人与群）。省流这类一次性任务只要画像和当前材料 */
+    skipPyramid?: boolean;
+    /** 不注入关键词召回 */
+    skipRecall?: boolean;
+}
 export declare class ContextBuilder {
     private repo;
     private shortTerm;
@@ -40,7 +46,7 @@ export declare class ContextBuilder {
     private config;
     private groupProfileManager?;
     constructor(repo: MemoryRepository, shortTerm: ShortTermMemory, profile: ProfileManager, config: ContextConfig, groupProfileManager?: ProfileManager);
-    build(session: Session, query: string): Promise<PromptContext>;
+    build(session: Session, query: string, options?: PromptBuildOptions): Promise<PromptContext>;
     /** 群记忆只在群聊会话里注入；私聊没有「群」可言 */
     private groupScopeFor;
     private now;

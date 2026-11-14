@@ -6,8 +6,11 @@ import { promises as fs } from 'fs'
 import { pathToFileURL } from 'url'
 import { EmojiManager } from './emoji'
 import { APIClient } from './api'
-import { GroupDigest, MemoryService, MemoryServiceConfig } from './memory'
+import { GroupDigestContext, MemoryService, MemoryServiceConfig } from './memory'
 import { isGroupSession } from './memory/group'
+import { PromptBuildOptions } from './memory/context'
+import { buildGroupDigestTask } from './memory/prompts'
+import { clampDigest } from './memory/group-digest'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
 import { createMiddleware } from './middleware'
@@ -648,7 +651,7 @@ export class SAT extends Sat {
   }
 
   // 构建消息
-  private async buildMessages(session: Session, prompt: string) {
+  private async buildMessages(session: Session, prompt: string, options: PromptBuildOptions = {}) {
     const messages: Sat.Msg[] = []
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
@@ -660,10 +663,10 @@ export class SAT extends Sat {
     const example = useNoReasoner ? exampleWithoutReasoner : (this.config.enhanceReasoningProtection ? exampleWithTag : exampleWithoutTag)
     // 添加人格设定
     if (this.config.no_system_prompt) {
-      messages.push({ role: 'user', content: await this.buildSystemPrompt(session, prompt) })
+      messages.push({ role: 'user', content: await this.buildSystemPrompt(session, prompt, undefined, options) })
       messages.push({ role: 'assistant', content: example })
     } else {
-      messages.push({ role: 'system', content: await this.buildSystemPrompt(session, prompt) })
+      messages.push({ role: 'system', content: await this.buildSystemPrompt(session, prompt, undefined, options) })
     }
     // 添加上下文记忆
     if (prompt != randomPrompt) {
@@ -688,8 +691,13 @@ export class SAT extends Sat {
 
   //   3. 常识、群常识：半静态，但检索结果会随消息变化
   //   4. 对话统计、群聊环境、召回、当前时间：每轮必变，只能放在最后
-  private async buildSystemPrompt(session: Session, prompt: string, queryHint?: string): Promise<string> {
-    const memoryContext = await this.memoryService.getPromptContext(session, queryHint || prompt)
+  private async buildSystemPrompt(
+    session: Session,
+    prompt: string,
+    queryHint?: string,
+    options: PromptBuildOptions = {},
+  ): Promise<string> {
+    const memoryContext = await this.memoryService.getPromptContext(session, queryHint || prompt, options)
     const weatherPrompt = await this.weatherManager.buildWeatherPrompt(session)
     const user = await getUser(this.ctx, session.userId)
     const moodLevel = this.moodManager.getMoodLevel(user.userid)
@@ -1026,7 +1034,7 @@ export class SAT extends Sat {
     return null
   }
 
-  // 省流：总结用户上次在本群发言以来的群记忆
+  // 省流：走正常对话的系统提示（人格/画像/好感度），但不注入金字塔与召回，也不留记忆
   private async handleDigest(session: Session) {
     if (!isGroupSession(session)) return '「省流」只能在群里用。'
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
@@ -1035,20 +1043,31 @@ export class SAT extends Sat {
       return `你的好感度不够，无法使用「省流」功能。`
     }
 
-    const digest = await this.memoryService.buildGroupDigest(session)
-    if (!digest) return '这段时间群里没什么可省流的。'
+    const context = await this.memoryService.buildGroupDigestContext(session)
+    if (!context) return '这段时间群里没什么可省流的。'
 
-    const card = await this.renderDigestCard(digest)
+    // 人格、用户画像、好感度、心情等都在，只是不注入个人/群金字塔和记忆召回
+    const task = buildGroupDigestTask(context.materials, context.range)[0].content
+    const messages = await this.buildMessages(session, task, { skipPyramid: true, skipRecall: true })
+    const response = await this.getChatResponse(user, messages, task, session)
+    if (response.error) return '省流生成失败了，稍后再试。'
+
+    const summary = clampDigest(response.content)
+    if (!summary) return '省流生成失败了，稍后再试。'
+
+    const card = await this.renderDigestCard({ ...context, summary })
     if (card) {
       // render 返回的是 h.image(...).toString()，直接发送即可
       await session.send(card)
       return
     }
     // puppeteer 不可用时退回文字，不让指令整个失败
-    return digest.summary
+    return summary
   }
 
-  private async renderDigestCard(digest: GroupDigest): Promise<string | null> {
+  private async renderDigestCard(
+    digest: GroupDigestContext & { summary: string },
+  ): Promise<string | null> {
     if (!this.puppeteer) return null
     const escape = (text: string) => text
       .replace(/&/g, '&amp;')

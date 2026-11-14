@@ -71,9 +71,9 @@ export function formatDigestMaterials(
     parts.push(`【${label} ${range}】${topic}${node.content}${state}`)
   }
   if (rows.length) {
-    // 省流是觉自己在说话：机器人发言标成「我」，提问者的发言单独标出来
+    // 材料是给模型看的：机器人（也就是模型自己）的发言用「你」，提问者的发言单独标出来
     parts.push(`【尚未归档的原始消息】\n${formatGroupRows(rows, timezoneOffset, {
-      botLabel: '我',
+      botLabel: '你',
       requesterId: options.requesterId,
     })}`)
   }

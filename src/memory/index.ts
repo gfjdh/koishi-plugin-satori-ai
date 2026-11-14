@@ -4,7 +4,7 @@ import { Context, Logger, Session } from 'koishi'
 import { APIClient } from '../api'
 import { getUser } from '../database'
 import { MemoryConfig } from '../types'
-import { ContextBuilder, PromptContext } from './context'
+import { ContextBuilder, PromptBuildOptions, PromptContext } from './context'
 import { Heartbeat } from './heartbeat'
 import { Migrator } from './migrate'
 import { ProfileManager } from './profile'
@@ -15,11 +15,11 @@ import { Summarizer } from './summarizer'
 import { GroupRecorder } from './group-recorder'
 import { GROUP_KINDS, groupScopeId, isGroupScope } from './group'
 import {
-  DIGEST_MAX_RAW_MESSAGES, clampDigest, formatDigestMaterials, selectDigestNodes,
+  DIGEST_MAX_RAW_MESSAGES, formatDigestMaterials, selectDigestNodes,
 } from './group-digest'
 import { formatTime } from './summarizer'
 import {
-  GROUP_CATEGORY_LABELS, GROUP_CATEGORY_ORDER, buildGroupDigestPrompt, buildGroupProfilePrompt,
+  GROUP_CATEGORY_LABELS, GROUP_CATEGORY_ORDER, buildGroupProfilePrompt,
 } from './prompts'
 
 const logger = new Logger('satori-memory')
@@ -57,9 +57,9 @@ export interface TurnResponse {
   error: boolean
 }
 
-/** 群聊「省流」的结果 */
-export interface GroupDigest {
-  summary: string
+/** 群聊「省流」的选材结果。生成由调用方走正常对话链路 */
+export interface GroupDigestContext {
+  materials: string
   range: string
   nodeCount: number
   messageCount: number
@@ -303,7 +303,7 @@ export class MemoryService {
    *
    * 从没在本群说过话时按最近 24 小时算。
    */
-  async buildGroupDigest(session: Session): Promise<GroupDigest | null> {
+  async buildGroupDigestContext(session: Session): Promise<GroupDigestContext | null> {
     const channelId = session.channelId
     if (!channelId) return null
     const scopeId = groupScopeId(channelId)
@@ -324,26 +324,22 @@ export class MemoryService {
     if (!nodes.length && !raw.length) return null
 
     const tz = this.config.memory_timezone_offset
-    const range = `${formatTime(from, tz)} ~ ${formatTime(now, tz)}`
-    const requester = { name: session.username, id: session.userId }
-    const materials = formatDigestMaterials(nodes, raw, tz, { requesterId: session.userId })
-    const result = await this.api.auxiliaryChat(
-      buildGroupDigestPrompt(materials, range, requester), null,
-    )
-    if (result.error) {
-      logger.warn(`省流失败 scope=${scopeId}: ${result.content}`)
-      return null
+    return {
+      materials: formatDigestMaterials(nodes, raw, tz, { requesterId: session.userId }),
+      range: `${formatTime(from, tz)} ~ ${formatTime(now, tz)}`,
+      nodeCount: nodes.length,
+      messageCount: raw.length,
     }
-
-    const summary = clampDigest(result.content || '')
-    if (!summary) return null
-    return { summary, range, nodeCount: nodes.length, messageCount: raw.length }
   }
 
   // ---------- 系统提示 ----------
 
-  async getPromptContext(session: Session, query: string): Promise<PromptContext> {
-    return this.contextBuilder.build(session, query)
+  async getPromptContext(
+    session: Session,
+    query: string,
+    options?: PromptBuildOptions,
+  ): Promise<PromptContext> {
+    return this.contextBuilder.build(session, query, options)
   }
 
   // ---------- 知识 ----------
