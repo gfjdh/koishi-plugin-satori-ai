@@ -78,6 +78,12 @@ export declare function collectArchiveNickNames(baseNames: string[], user: Pick<
  * 只用来区分不同的人，不承担身份判断。
  */
 export declare function formatDialogueRows(rows: DialogueRow[], timezoneOffset: number, names?: string[]): string;
+export interface GroupRowFormatOptions {
+    /** 机器人发言的标签：归档用默认的「AI」，省流材料用「我」 */
+    botLabel?: string;
+    /** 提问者的 userId；他的发言会额外标注，避免模型把别人的话当成他说的 */
+    requesterId?: string;
+}
 /**
  * 群聊时间块的归档输入。
  *
@@ -85,7 +91,7 @@ export declare function formatDialogueRows(rows: DialogueRow[], timezoneOffset: 
  * 其余是群友，昵称只用来区分不同的人。群友之间本来就互相称呼，
  * 这里不做昵称抹除，否则「A 说 B 怎么样」会被删成残句。
  */
-export declare function formatGroupRows(rows: SatDialogue[], timezoneOffset: number): string;
+export declare function formatGroupRows(rows: SatDialogue[], timezoneOffset: number, options?: GroupRowFormatOptions): string;
 /** date 所在自然日的起点：最近一个已过的日界线 */
 export declare function dayStart(date: Date, timezoneOffset: number, boundaryHour: number): Date;
 /** date 所在自然日的终点（下一条日界线） */

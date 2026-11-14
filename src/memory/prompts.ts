@@ -296,16 +296,27 @@ ${input}
  * 群聊「省流」：用觉的第一人称把一段时间里群里发生的事讲给提问的人。
  * 输出是纯文本，不要 JSON。
  */
-export function buildGroupDigestPrompt(materials: string, range: string): { role: string; content: string }[] {
+export function buildGroupDigestPrompt(
+  materials: string,
+  range: string,
+  requester: { name?: string; id?: string } = {},
+): { role: string; content: string }[] {
+  const who = requester.name
+    ? `${requester.name}${requester.id ? `（id ${requester.id}）` : ''}`
+    : (requester.id || '群里的人')
   return [{
     role: 'user',
-    content: `你是古明地觉。有人在群里让你「省流」，想知道 ${range} 到现在群里都聊了什么。
+    content: `你是古明地觉。群里有人让你「省流」，想知道 ${range} 到现在群里都聊了什么。
+
+提问的人：${who}
 
 材料：
 ${materials}
 
 要求：
-· 用你自己的口吻直接对他说，像在聊天，不要写成报告、列表或标题。
+· 用你自己的口吻直接对提问的人说，像在聊天，不要写成报告、列表或标题。
+· 材料里标了「提问者」的发言就是提问的人说的；没标的是别人。不要把别人的话当成他说的，也不要把他的话记到别人头上。
+· 材料里的「我」和「AI」都指你自己；说你自己时用「我」，不要自称 AI、机器人或助手。
 · 只讲材料里出现过的内容，不要编造；材料没提到的事不要提。
 · 突出群里在聊什么、有没有提到他、有没有和他相关的事。
 · 200 字以内，一段话，不要分点，不要用 markdown。

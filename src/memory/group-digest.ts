@@ -51,10 +51,16 @@ export async function selectDigestNodes(
   return { nodes, cursor }
 }
 
+export interface DigestFormatOptions {
+  /** 提问者 userId：原始消息里标出他的发言，避免张冠李戴 */
+  requesterId?: string
+}
+
 export function formatDigestMaterials(
   nodes: SatMemory[],
   rows: SatDialogue[],
   timezoneOffset: number,
+  options: DigestFormatOptions = {},
 ): string {
   const parts: string[] = []
   for (const node of nodes) {
@@ -65,7 +71,11 @@ export function formatDigestMaterials(
     parts.push(`【${label} ${range}】${topic}${node.content}${state}`)
   }
   if (rows.length) {
-    parts.push(`【尚未归档的原始消息】\n${formatGroupRows(rows, timezoneOffset)}`)
+    // 省流是觉自己在说话：机器人发言标成「我」，提问者的发言单独标出来
+    parts.push(`【尚未归档的原始消息】\n${formatGroupRows(rows, timezoneOffset, {
+      botLabel: '我',
+      requesterId: options.requesterId,
+    })}`)
   }
   return parts.join('\n\n')
 }

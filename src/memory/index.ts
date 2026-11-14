@@ -325,8 +325,11 @@ export class MemoryService {
 
     const tz = this.config.memory_timezone_offset
     const range = `${formatTime(from, tz)} ~ ${formatTime(now, tz)}`
-    const materials = formatDigestMaterials(nodes, raw, tz)
-    const result = await this.api.auxiliaryChat(buildGroupDigestPrompt(materials, range), null)
+    const requester = { name: session.username, id: session.userId }
+    const materials = formatDigestMaterials(nodes, raw, tz, { requesterId: session.userId })
+    const result = await this.api.auxiliaryChat(
+      buildGroupDigestPrompt(materials, range, requester), null,
+    )
     if (result.error) {
       logger.warn(`省流失败 scope=${scopeId}: ${result.content}`)
       return null

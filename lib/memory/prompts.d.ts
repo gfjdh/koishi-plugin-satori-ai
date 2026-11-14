@@ -78,7 +78,10 @@ export declare function buildGroupProfilePrompt(existing: ProfileEntry[], input:
  * 群聊「省流」：用觉的第一人称把一段时间里群里发生的事讲给提问的人。
  * 输出是纯文本，不要 JSON。
  */
-export declare function buildGroupDigestPrompt(materials: string, range: string): {
+export declare function buildGroupDigestPrompt(materials: string, range: string, requester?: {
+    name?: string;
+    id?: string;
+}): {
     role: string;
     content: string;
 }[];

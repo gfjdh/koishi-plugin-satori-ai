@@ -17,6 +17,10 @@ export declare function selectDigestNodes(from: Date, now: Date, fetchNodes: (le
     nodes: SatMemory[];
     cursor: Date;
 }>;
-export declare function formatDigestMaterials(nodes: SatMemory[], rows: SatDialogue[], timezoneOffset: number): string;
+export interface DigestFormatOptions {
+    /** 提问者 userId：原始消息里标出他的发言，避免张冠李戴 */
+    requesterId?: string;
+}
+export declare function formatDigestMaterials(nodes: SatMemory[], rows: SatDialogue[], timezoneOffset: number, options?: DigestFormatOptions): string;
 /** 概要只需要一段话：去掉代码块、压平换行，并截到 200 字 */
 export declare function clampDigest(text: string, max?: number): string;

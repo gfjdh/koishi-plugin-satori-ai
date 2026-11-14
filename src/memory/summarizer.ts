@@ -192,6 +192,13 @@ export function formatDialogueRows(
   }).join('\n')
 }
 
+export interface GroupRowFormatOptions {
+  /** 机器人发言的标签：归档用默认的「AI」，省流材料用「我」 */
+  botLabel?: string
+  /** 提问者的 userId；他的发言会额外标注，避免模型把别人的话当成他说的 */
+  requesterId?: string
+}
+
 /**
  * 群聊时间块的归档输入。
  *
@@ -199,13 +206,22 @@ export function formatDialogueRows(
  * 其余是群友，昵称只用来区分不同的人。群友之间本来就互相称呼，
  * 这里不做昵称抹除，否则「A 说 B 怎么样」会被删成残句。
  */
-export function formatGroupRows(rows: SatDialogue[], timezoneOffset: number): string {
+export function formatGroupRows(
+  rows: SatDialogue[],
+  timezoneOffset: number,
+  options: GroupRowFormatOptions = {},
+): string {
+  const botLabel = options.botLabel || ROLE_AI
   return rows.map((row) => {
     const time = formatTime(row.createdAt, timezoneOffset)
     const name = (row.username || '').trim()
-    const speaker = row.kind === GROUP_BOT_KIND
-      ? ROLE_AI
-      : (name ? `${ROLE_USER}（${name}）` : ROLE_USER)
+    const isRequester = !!options.requesterId
+      && row.kind !== GROUP_BOT_KIND
+      && row.userId === options.requesterId
+    const memberLabel = name
+      ? `${ROLE_USER}（${name}${isRequester ? '/提问者' : ''}）`
+      : (isRequester ? `${ROLE_USER}（提问者）` : ROLE_USER)
+    const speaker = row.kind === GROUP_BOT_KIND ? botLabel : memberLabel
     return `[${time}] ${speaker}说「${oneLine(row.userContent)}」`
   }).join('\n')
 }

@@ -7,6 +7,7 @@
 import {
   DIGEST_MAX_CHARS, clampDigest, formatDigestMaterials, selectDigestNodes,
 } from '../src/memory/group-digest'
+import { buildGroupDigestPrompt } from '../src/memory/prompts'
 import { Granularity, SatDialogue, SatMemory } from '../src/memory/schema'
 
 const assert = (cond: any, message: string) => {
@@ -101,20 +102,44 @@ async function main() {
   // ---------- 场景 4：材料格式 ----------
   {
     const day = node('day', local(11, 13), local(11, 14), '大家在聊新游戏')
-    const raw: SatDialogue[] = [{
-      id: 1,
-      scopeId: 'g:123',
-      userId: 'u1',
-      username: '灵梦',
-      kind: 'ambient',
-      userContent: '有人玩过吗',
-      aiContent: '',
-      createdAt: local(11, 14, 20),
-    }]
-    const text = formatDigestMaterials([day], raw, 8)
+    const raw: SatDialogue[] = [
+      {
+        id: 1,
+        scopeId: 'g:123',
+        userId: 'u1',
+        username: '灵梦',
+        kind: 'ambient',
+        userContent: '有人玩过吗',
+        aiContent: '',
+        createdAt: local(11, 14, 20),
+      },
+      {
+        id: 2,
+        scopeId: 'g:123',
+        userId: 'self',
+        username: '',
+        kind: 'ambient-bot',
+        userContent: '我玩过',
+        aiContent: '',
+        createdAt: local(11, 14, 20, 1),
+      },
+      {
+        id: 3,
+        scopeId: 'g:123',
+        userId: 'u2',
+        username: '魔理沙',
+        kind: 'ambient',
+        userContent: '我也玩过',
+        aiContent: '',
+        createdAt: local(11, 14, 20, 2),
+      },
+    ]
+    const text = formatDigestMaterials([day], raw, 8, { requesterId: 'u1' })
     assert(text.includes('【日总结 2026/11/13 04:00 ~ 2026/11/14 04:00】'), '记忆节点带粒度与时间范围')
     assert(text.includes('【尚未归档的原始消息】'), '未归档部分单独标注')
-    assert(text.includes('用户（灵梦）说「有人玩过吗」'), '原始消息沿用结构化发言人标签')
+    assert(text.includes('用户（灵梦/提问者）说「有人玩过吗」'), '提问者的发言被标出来')
+    assert(text.includes('我说「我玩过」'), '机器人发言用「我」而不是 AI')
+    assert(text.includes('用户（魔理沙）说「我也玩过」'), '其他人的发言不标提问者')
   }
 
   // ---------- 场景 5：概要截断 ----------
@@ -128,6 +153,16 @@ async function main() {
 
     const short = '就这些'
     assert(clampDigest(short) === short, '不超过上限时原样返回')
+  }
+
+  // ---------- 场景 6：提示词明确提问者和「我」 ----------
+  {
+    const prompt = buildGroupDigestPrompt('材料', '时间范围', { name: '灵梦', id: 'u1' })
+      .map(item => item.content).join('\n')
+    assert(prompt.includes('提问的人：灵梦（id u1）'), '提示词写明提问的人')
+    assert(prompt.includes('标了「提问者」的发言'), '提示词说明提问者标记')
+    assert(prompt.includes('不要把别人的话当成他说的'), '提示词禁止张冠李戴')
+    assert(prompt.includes('不要自称 AI'), '提示词禁止自称 AI')
   }
 
   console.log('\n全部通过')

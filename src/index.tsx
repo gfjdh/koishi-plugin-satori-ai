@@ -1057,8 +1057,9 @@ export class SAT extends Sat {
       .replace(/"/g, '&quot;')
     const html = `<!doctype html>
 <html><head><meta charset="utf-8"><style>
-  html, body { margin: 0; padding: 0; background: #f3eef6; }
-  body { font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; color: #2d2433; }
+  html { margin: 0; padding: 0; background: #f3eef6; }
+  /* body 必须收缩到卡片宽度，否则截图按视口宽度出图，右侧会留一大片空白 */
+  body { display: inline-block; margin: 0; padding: 16px; background: #f3eef6; font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; color: #2d2433; }
   .card { width: 520px; box-sizing: border-box; padding: 22px 24px; background: #fff; border-radius: 16px; border: 1px solid #e6dced; }
   .title { font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #5b3f6e; margin-bottom: 6px; }
   .meta { font-size: 12px; color: #9a8ca3; margin-bottom: 14px; }
