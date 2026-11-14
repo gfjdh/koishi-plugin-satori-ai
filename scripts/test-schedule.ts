@@ -137,4 +137,34 @@ const loaded = loadScheduleFile(dir)
 assert(!!loaded && loaded.items.length > 0, '缺少日程文件时自动写入示例并加载')
 assert(fs.existsSync(path.join(dir, 'schedule.json')), '示例文件已落盘')
 
+// ---------- 场景 15：全天视图 ----------
+const dayFile = parseScheduleFile({
+  template: '你现在的日程安排是：{activity}。',
+  dayView: true,
+  vars: { book: ['《甲》'], food: ['烤鱼'] },
+  items: [
+    { start: '00:00', end: '08:00', activities: ['睡觉'] },
+    { start: '08:00', end: '12:00', activities: ['在书房读{book}'] },
+    { start: '12:00', end: '13:00', activities: ['在吃{food}'] },
+    { start: '13:00', end: '18:00', activities: ['整理书架'] },
+    { start: '18:00', end: '24:00', activities: ['休息'] },
+  ],
+})!
+const dayText = (time: string) =>
+  buildScheduleText({ file: dayFile, timezoneOffset: 8, now: () => at('2026-11-13', time) })
+const noon = dayText('12:30')
+assert(noon.includes('已经做过：睡觉、在书房读《甲》。'), '全天视图列出已经做过的时段')
+assert(noon.includes('你现在的日程安排是：在吃烤鱼。'), '全天视图保留当前时段的句式')
+assert(noon.includes('接下来：整理书架、休息。'), '全天视图列出接下来的时段')
+assert(noon === dayText('12:50'), '全天视图在同一时段内也逐字节稳定')
+assert(noon.endsWith('你就会按这个安排去做。不要主动说明这是一份日程或系统信息。'), '全天视图使用对应的默认 hint')
+
+// 当前时段单独注入时选到的活动，与全天视图里的一致
+const single = buildScheduleText({
+  file: { ...dayFile, dayView: false },
+  timezoneOffset: 8,
+  now: () => at('2026-11-13', '12:30'),
+})
+assert(single.includes('在吃烤鱼'), '全天视图与单时段视图对当前活动取词一致')
+
 console.log('ALL PASS')

@@ -19,6 +19,7 @@ const DEFAULT_TEMPLATE = '你现在的日程安排是：{activity}。'
 // 用「没有互动就会去做」来限定日程的作用：避免模型以为自己此刻正身处那个场景，
 // 把日程当成正在发生的经历写进对话。
 const DEFAULT_HINT = '如果与用户没有具体的互动，你就会去做这件事。不要主动说明这是一份日程或系统信息。'
+const DAY_HINT = '如果与用户没有具体的互动，你就会按这个安排去做。不要主动说明这是一份日程或系统信息。'
 /** 一次注入最多附带几条变量简介，避免提示词过长 */
 const MAX_NOTES = 3
 
@@ -47,6 +48,8 @@ export interface ScheduleFile {
   template: string
   /** 日程后面的说明，限定它只是「没有互动时才会去做」的安排 */
   hint: string
+  /** true 时注入全天日程（已做 / 现在 / 接下来），false 只注入当前时段 */
+  dayView: boolean
   variationChance: number
   vars: Record<string, ScheduleVar[]>
   items: ScheduleItem[]
@@ -154,11 +157,13 @@ export function createExampleSchedule(): Record<string, any> {
       'activities / variations 里可以写 {变量}，从 vars 的同名列表取值；同一时段内固定取同一个值。',
       'vars 的条目可以是字符串，也可以是 { "text": "...", "note": "..." }，note 会作为补充信息一起注入。',
       'template 是日程的句式，{activity} 会被替换；hint 是跟在后面的说明，用来限定它只是「没有互动时才会去做」的安排。',
+      'dayView 为 true 时注入全天日程（已经做过 / 现在 / 接下来），false 只注入当前时段。',
       'variationChance 是小插曲概率，条目里可以单独覆盖。',
       '没有任何条目命中的时段不会注入日程。',
     ],
     template: DEFAULT_TEMPLATE,
-    hint: DEFAULT_HINT,
+    hint: DAY_HINT,
+    dayView: true,
     variationChance: 0.35,
     vars: {
       book: [
@@ -235,9 +240,11 @@ export function parseScheduleFile(raw: any, warn?: ScheduleOptions['warn']): Sch
     })
   }
   const chance = raw.variationChance ?? raw.variation_chance
+  const dayView = raw.dayView === true || raw.day_view === true
   return {
     template: typeof raw.template === 'string' && raw.template.trim() ? raw.template : DEFAULT_TEMPLATE,
-    hint: typeof raw.hint === 'string' && raw.hint.trim() ? raw.hint : DEFAULT_HINT,
+    hint: typeof raw.hint === 'string' && raw.hint.trim() ? raw.hint : (dayView ? DAY_HINT : DEFAULT_HINT),
+    dayView,
     variationChance: typeof chance === 'number' ? chance : 0.35,
     vars,
     items,
@@ -270,6 +277,74 @@ export function loadScheduleFile(dataDir: string, warn?: ScheduleOptions['warn']
 
 // ---------- 生成 ----------
 
+interface Segment {
+  start: number
+  end: number
+  item: ScheduleItem
+  index: number
+}
+
+/** 条目在一天内覆盖的分钟区间；跨午夜拆成两段 */
+function intervalsOf(item: ScheduleItem): Array<[number, number]> {
+  const start = parseTime(item.start)
+  if (start == null) return []
+  const end = item.end == null || item.end === '' ? MINUTES_PER_DAY : parseTime(item.end)
+  if (end == null) return []
+  if (end > start) return [[start, end]]
+  if (end === start) return [[0, MINUTES_PER_DAY]]
+  return [[start, MINUTES_PER_DAY], [0, end]]
+}
+
+/** 某一分钟命中的条目，已按优先级排好 */
+function candidatesAt(items: ScheduleItem[], weekday: string, minute: number) {
+  const candidates: { item: ScheduleItem; index: number; start: number }[] = []
+  items.forEach((item, index) => {
+    const start = parseTime(item.start)
+    if (start == null) return
+    if (!item.activities?.length) return
+    // 省略的 days 可能是空数组，空数组等同于「每天」
+    if (item.days?.length && !item.days.includes(weekday)) return
+    if (!covers(item, minute)) return
+    candidates.push({ item, index, start })
+  })
+  // 星期限定的条目优先，其次开始时间更晚的（更具体的时段覆盖更宽的）
+  candidates.sort((a, b) => {
+    const diff = (b.item.days?.length ? 1 : 0) - (a.item.days?.length ? 1 : 0)
+    if (diff) return diff
+    if (a.start !== b.start) return b.start - a.start
+    return a.index - b.index
+  })
+  return candidates
+}
+
+/**
+ * 把一天切成互不重叠的时段。先收集所有条目的起止点作为切分点，
+ * 每个小区间取该时刻的命中条目，再合并相邻且属于同一条目的区间。
+ */
+function buildSegments(items: ScheduleItem[], weekday: string): Segment[] {
+  const points = new Set<number>([0, MINUTES_PER_DAY])
+  for (const item of items) {
+    if (item.days?.length && !item.days.includes(weekday)) continue
+    for (const [start, end] of intervalsOf(item)) {
+      points.add(start)
+      points.add(end)
+    }
+  }
+  const sorted = [...points].sort((a, b) => a - b)
+  const segments: Segment[] = []
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const start = sorted[i]
+    const end = sorted[i + 1]
+    if (start === end) continue
+    const winner = candidatesAt(items, weekday, start)[0]
+    if (!winner) continue
+    const last = segments[segments.length - 1]
+    if (last && last.index === winner.index && last.end === start) last.end = end
+    else segments.push({ start, end, item: winner.item, index: winner.index })
+  }
+  return segments
+}
+
 /** 当前时刻的日程文本；没有条目命中时返回 null（此时不注入） */
 export function buildScheduleText(options: ScheduleOptions): string | null {
   const file = options.file
@@ -285,41 +360,55 @@ export function buildScheduleText(options: ScheduleOptions): string | null {
   const pad = (value: number) => String(value).padStart(2, '0')
   const dateKey = `${shifted.getUTCFullYear()}/${pad(shifted.getUTCMonth() + 1)}/${pad(shifted.getUTCDate())}`
 
-  const candidates = file.items
-    .map((item, index) => ({ item, index, start: parseTime(item.start) }))
-    .filter(candidate =>
-      candidate.start != null
-      && candidate.item.activities?.length > 0
-      // 省略的 days 可能是空数组，空数组等同于「每天」
-      && (!candidate.item.days?.length || candidate.item.days.includes(weekday))
-      && covers(candidate.item, minute),
-    )
-  if (!candidates.length) return null
+  const segments = buildSegments(file.items, weekday)
+  const current = segments.find(segment => segment.start <= minute && minute < segment.end)
+  if (!current) return null
 
-  // 星期限定的条目优先，其次开始时间更晚的（更具体的时段覆盖更宽的）
-  candidates.sort((a, b) => {
-    const specificity = (item: ScheduleItem) => item.days?.length ? 1 : 0
-    const diff = specificity(b.item) - specificity(a.item)
-    if (diff) return diff
-    if (a.start !== b.start) return b.start - a.start
-    return a.index - b.index
-  })
+  // 种子只用「日期 + 条目」：同一时段内反复请求得到同一句话，跨时段各自选词；
+  // 全天视图里的「已经做过」和当初单独注入时选到的是同一条活动。
+  const seedOf = (segment: Segment) => `${dateKey}|${weekday}|${segment.item.start}|${segment.index}`
+  const activityOf = (segment: Segment, used?: Map<string, ScheduleVar>) => {
+    const seed = seedOf(segment)
+    return strip(resolveVars(pick(segment.item.activities, seed + '|act'), vars, seed, used || new Map(), options.warn))
+  }
 
-  const chosen = candidates[0]
-  const item = chosen.item
-  // 种子只用「日期 + 条目」：同一时段内反复请求得到同一句话，跨时段各自选词
-  const seed = `${dateKey}|${weekday}|${item.start}|${chosen.index}`
   const used = new Map<string, ScheduleVar>()
-
-  const activity = strip(resolveVars(pick(item.activities, seed + '|act'), vars, seed, used, options.warn))
+  const currentActivity = activityOf(current, used)
   if (!template.includes('{activity}')) {
     warnOnce(options.warn, 'schedule.json 的 template 里没有 {activity}，日程不会包含当前活动')
   }
-  let text = template.split('{activity}').join(activity)
+  const currentLine = template.split('{activity}').join(currentActivity)
 
-  const itemChance = item.variationChance ?? chance
-  if (item.variations?.length && roll(seed + '|roll') < itemChance) {
-    const variation = resolveVars(pick(item.variations, seed + '|var-pick'), vars, seed, used, options.warn)
+  // 不同条目可能抽到同一句话（尤其是短时段），列表里去掉重复，免得白占 token
+  const joinActivities = (list: Segment[]) => {
+    const seen = new Set<string>()
+    const parts: string[] = []
+    for (const segment of list) {
+      const text = activityOf(segment)
+      if (!text || seen.has(text)) continue
+      seen.add(text)
+      parts.push(text)
+    }
+    return parts.join('、')
+  }
+
+  let text = currentLine
+  let nextText = ''
+  if (file.dayView) {
+    // 已经结束的时段算「做过」，还没开始的算「接下来」；当前时段单独一行
+    const pastText = joinActivities(segments.filter(segment => segment.end <= current.start))
+    nextText = joinActivities(segments.filter(segment => segment.start >= current.end))
+    text = '你今天的日程安排：'
+    if (pastText) text += `\n已经做过：${pastText}。`
+    text += `\n${currentLine}`
+  }
+
+  const itemChance = current.item.variationChance ?? chance
+  if (current.item.variations?.length && roll(seedOf(current) + '|roll') < itemChance) {
+    const variation = resolveVars(
+      pick(current.item.variations, seedOf(current) + '|var-pick'),
+      vars, seedOf(current), used, options.warn,
+    )
     text += '\n' + strip(variation) + '。'
   }
 
@@ -327,5 +416,7 @@ export function buildScheduleText(options: ScheduleOptions): string | null {
   const notes = [...used.values()].filter(entry => entry.note).slice(0, MAX_NOTES)
   for (const note of notes) text += `\n${note.text}：${note.note}`
 
-  return text + '\n' + (file.hint || DEFAULT_HINT)
+  if (file.dayView && nextText) text += `\n接下来：${nextText}。`
+
+  return text + '\n' + (file.hint || (file.dayView ? DAY_HINT : DEFAULT_HINT))
 }

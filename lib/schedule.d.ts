@@ -21,6 +21,8 @@ export interface ScheduleFile {
     template: string;
     /** 日程后面的说明，限定它只是「没有互动时才会去做」的安排 */
     hint: string;
+    /** true 时注入全天日程（已做 / 现在 / 接下来），false 只注入当前时段 */
+    dayView: boolean;
     variationChance: number;
     vars: Record<string, ScheduleVar[]>;
     items: ScheduleItem[];
