@@ -2,6 +2,7 @@ import { Context, Session } from 'koishi';
 import { APIClient } from '../api';
 import { MemoryConfig } from '../types';
 import { PromptBuildOptions, PromptContext } from './context';
+import { DigestRange } from './group-digest';
 export interface MemoryServiceConfig extends MemoryConfig {
     enable_layered_memory: boolean;
     /** 短期记忆空闲多久后清空（分钟），0 = 关闭 */
@@ -92,7 +93,7 @@ export declare class MemoryService {
      *
      * 从没在本群说过话时按最近 24 小时算。
      */
-    buildGroupDigestContext(session: Session): Promise<GroupDigestContext | null>;
+    buildGroupDigestContext(session: Session, range?: DigestRange): Promise<GroupDigestContext | null>;
     getPromptContext(session: Session, query: string, options?: PromptBuildOptions): Promise<PromptContext>;
     addCommonSense(content: string): Promise<void>;
     addGroupCommonSense(content: string, channelId: string): Promise<void>;

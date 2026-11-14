@@ -5,7 +5,8 @@
 // 要保证的事：粗粒度优先、同一时段不重复、最早的粗节点可以起点早于
 // 用户上次发言、没有节点时退回原文、概要截到 200 字。
 import {
-  DIGEST_MAX_CHARS, clampDigest, formatDigestMaterials, selectDigestNodes,
+  DIGEST_MAX_CHARS, clampDigest, digestRangeStart, formatDigestMaterials, hasDigestRange,
+  selectDigestNodes,
 } from '../src/memory/group-digest'
 import { buildGroupDigestTask } from '../src/memory/prompts'
 import { Granularity, SatDialogue, SatMemory } from '../src/memory/schema'
@@ -19,8 +20,10 @@ const assert = (cond: any, message: string) => {
 }
 
 /** +08 时区的本地时间 -> UTC Date */
+const localAt = (year: number, month: number, day: number, hour = 4, minute = 0) =>
+  new Date(Date.UTC(year, month - 1, day, hour - 8, minute))
 const local = (month: number, day: number, hour = 4, minute = 0) =>
-  new Date(Date.UTC(2026, month - 1, day, hour - 8, minute))
+  localAt(2026, month, day, hour, minute)
 
 let nextId = 0
 const node = (
@@ -162,6 +165,28 @@ async function main() {
     assert(prompt.includes('材料里的「你」是你自己说过的话'), '提示词说明机器人用「你」')
     assert(prompt.includes('标了「提问者」的是我'), '提示词说明提问者标记')
     assert(prompt.includes('200 字以内'), '提示词限制 200 字')
+  }
+
+  // ---------- 场景 7：-d/-m/-y 的范围起点 ----------
+  {
+    const now = localAt(2026, 11, 15, 12)
+    assert(+digestRangeStart(now, 8, { days: 5 }) === +localAt(2026, 11, 10, 12), '-d 5 往前 5×24 小时')
+    assert(+digestRangeStart(now, 8, { months: 1 }) === +localAt(2026, 10, 15, 12), '-m 1 按日历往前一个月')
+    assert(+digestRangeStart(now, 8, { years: 1 }) === +localAt(2025, 11, 15, 12), '-y 1 往前一个自然年')
+
+    const monthEnd = localAt(2026, 3, 31, 12)
+    assert(
+      +digestRangeStart(monthEnd, 8, { months: 1 }) === +localAt(2026, 2, 28, 12),
+      '目标月份没有这一天时取当月最后一天',
+    )
+
+    assert(
+      +digestRangeStart(now, 8, { months: 1, days: 5 }) === +localAt(2026, 10, 10, 12),
+      '多个单位同时给出时累加',
+    )
+
+    assert(!hasDigestRange({}) && !hasDigestRange(undefined), '没有范围选项时走默认逻辑')
+    assert(hasDigestRange({ days: 1 }), '给了范围选项时按范围算')
   }
 
   console.log('\n全部通过')

@@ -10,7 +10,7 @@ import { GroupDigestContext, MemoryService, MemoryServiceConfig } from './memory
 import { isGroupSession } from './memory/group'
 import { PromptBuildOptions } from './memory/context'
 import { buildGroupDigestTask } from './memory/prompts'
-import { clampDigest } from './memory/group-digest'
+import { clampDigest, DigestRange } from './memory/group-digest'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
 import { createMiddleware } from './middleware'
@@ -310,8 +310,11 @@ export class SAT extends Sat {
         return this.memoryService.view(scopeId)
       })
 
-    ctx.command('省流', '省流：总结你上次在群里发言之后群里聊了什么', { authority: 1 })
-      .action(async ({ session }) => this.handleDigest(session))
+    ctx.command('省流', '省流：总结群聊；可加 -d 天 / -m 月 / -y 年 指定范围', { authority: 1 })
+      .option('days', '-d <days:number> 最近多少天')
+      .option('months', '-m <months:number> 最近多少个月')
+      .option('years', '-y <years:number> 最近多少年')
+      .action(async ({ session, options }) => this.handleDigest(session, options))
 
     ctx.command('sat.memory.migrate', '重新迁移旧版记忆文件', { authority: 4 })
       .option('force', '-f')
@@ -1035,7 +1038,7 @@ export class SAT extends Sat {
   }
 
   // 省流：走正常对话的系统提示（人格/画像/好感度），但不注入金字塔与召回，也不留记忆
-  private async handleDigest(session: Session) {
+  private async handleDigest(session: Session, range?: DigestRange) {
     if (!isGroupSession(session)) return '「省流」只能在群里用。'
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
     if (this.config.enable_favorability && user
@@ -1043,7 +1046,7 @@ export class SAT extends Sat {
       return `你的好感度不够，无法使用「省流」功能。`
     }
 
-    const context = await this.memoryService.buildGroupDigestContext(session)
+    const context = await this.memoryService.buildGroupDigestContext(session, range)
     if (!context) return '这段时间群里没什么可省流的。'
 
     // 人格、用户画像、好感度、心情等都在，只是不注入个人/群金字塔和记忆召回

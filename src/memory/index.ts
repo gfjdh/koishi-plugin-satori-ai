@@ -15,7 +15,8 @@ import { Summarizer } from './summarizer'
 import { GroupRecorder } from './group-recorder'
 import { GROUP_KINDS, groupScopeId, isGroupScope } from './group'
 import {
-  DIGEST_MAX_RAW_MESSAGES, formatDigestMaterials, selectDigestNodes,
+  DIGEST_MAX_RAW_MESSAGES, DigestRange, digestRangeStart, formatDigestMaterials, hasDigestRange,
+  selectDigestNodes,
 } from './group-digest'
 import { formatTime } from './summarizer'
 import {
@@ -303,13 +304,23 @@ export class MemoryService {
    *
    * 从没在本群说过话时按最近 24 小时算。
    */
-  async buildGroupDigestContext(session: Session): Promise<GroupDigestContext | null> {
+  async buildGroupDigestContext(
+    session: Session,
+    range?: DigestRange,
+  ): Promise<GroupDigestContext | null> {
     const channelId = session.channelId
     if (!channelId) return null
     const scopeId = groupScopeId(channelId)
     const now = new Date()
-    const last = await this.repo.getLastDialogueByUser(scopeId, session.userId, GROUP_KINDS)
-    const from = last || new Date(now.getTime() - 24 * 3_600_000)
+
+    // 给了 -d/-m/-y 就用「现在往前推 N」；否则从用户上次在本群发言算起
+    let from: Date
+    if (hasDigestRange(range)) {
+      from = digestRangeStart(now, this.config.memory_timezone_offset, range)
+    } else {
+      const last = await this.repo.getLastDialogueByUser(scopeId, session.userId, GROUP_KINDS)
+      from = last || new Date(now.getTime() - 24 * 3_600_000)
+    }
 
     const { nodes, cursor } = await selectDigestNodes(
       from,

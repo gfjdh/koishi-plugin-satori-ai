@@ -26,6 +26,45 @@ export const DIGEST_MAX_CHARS = 200
 /** 未归档原始消息最多取多少条，避免归档积压时输入失控 */
 export const DIGEST_MAX_RAW_MESSAGES = 300
 
+/** 「省流 -d/-m/-y」给出的范围；多个单位同时给出时依次往前推 */
+export interface DigestRange {
+  days?: number
+  months?: number
+  years?: number
+}
+
+/**
+ * 「最近 N 天/月/年」的起点。
+ * 天按滚动小时数（-d 5 = 往前 120 小时），月/年按日历（-m 1 是同一个日期上个月，
+ * 目标月份没有这一天时取当月最后一天）。多个单位同时给出时累加。
+ */
+export function digestRangeStart(now: Date, timezoneOffset: number, range: DigestRange): Date {
+  const offsetMs = timezoneOffset * 3_600_000
+  const local = new Date(now.getTime() + offsetMs)
+
+  const years = Math.max(0, Math.floor(range.years || 0))
+  const months = Math.max(0, Math.floor(range.months || 0))
+  const days = Math.max(0, Math.floor(range.days || 0))
+
+  if (years) local.setUTCFullYear(local.getUTCFullYear() - years)
+  if (months) {
+    // 先落到 1 号再减月，避免 3/31 - 1 个月滚成 3/3
+    const day = local.getUTCDate()
+    local.setUTCDate(1)
+    local.setUTCMonth(local.getUTCMonth() - months)
+    const lastDay = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 0)).getUTCDate()
+    local.setUTCDate(Math.min(day, lastDay))
+  }
+  if (days) local.setUTCDate(local.getUTCDate() - days)
+
+  return new Date(local.getTime() - offsetMs)
+}
+
+export function hasDigestRange(range?: DigestRange): boolean {
+  if (!range) return false
+  return (range.days || 0) > 0 || (range.months || 0) > 0 || (range.years || 0) > 0
+}
+
 /**
  * 按「粗粒度优先」挑出覆盖 (from, now] 的记忆节点。
  *
