@@ -22,6 +22,9 @@ tsc
 
 # Random-trigger middleware ordering test (run from the workspace root)
 #   node -r esbuild-register external/satori-ai/scripts/test-random-middleware.ts
+
+# Schedule logic test (schedule content lives in ${dataDir}/schedule.json)
+#   node -r esbuild-register external/satori-ai/scripts/test-schedule.ts
 ```
 
 ## Architecture

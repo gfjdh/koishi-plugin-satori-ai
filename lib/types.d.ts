@@ -184,6 +184,8 @@ export declare namespace Sat {
         common_topN: number;
         dailogues_topN: number;
         enable_fixed_dialogues: boolean;
+        enable_schedule: boolean;
+        schedule_inject_below_entries: number;
         enable_layered_memory: boolean;
         memory_timezone_offset: number;
         memory_day_boundary_hour: number;

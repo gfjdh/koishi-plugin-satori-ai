@@ -213,6 +213,8 @@ export namespace Sat {
     common_topN: number
     dailogues_topN: number
     enable_fixed_dialogues: boolean
+    enable_schedule: boolean
+    schedule_inject_below_entries: number
 
     // 分层记忆
     enable_layered_memory: boolean
@@ -399,6 +401,8 @@ export namespace Sat {
       common_topN: Schema.number().default(5).description('群常识、常识记忆检索最大匹配数'),
       dailogues_topN: Schema.number().default(5).description('对话记忆检索最大匹配数'),
       enable_fixed_dialogues: Schema.boolean().default(false).description('是否启用固定对话（在dataDir中的fixed_dialogues.json修改）'),
+      enable_schedule: Schema.boolean().default(false).description('是否启用预设日程：按时间段注入「她现在正在做什么」的锚点（内容在 dataDir 的 schedule.json 修改）'),
+      schedule_inject_below_entries: Schema.number().min(0).default(10).description('短期记忆中少于多少条时注入日程（10 条约等于 5 轮对话）；心情差时不注入'),
     }).description('记忆设置'),
 
     Schema.object({

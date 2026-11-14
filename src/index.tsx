@@ -14,6 +14,7 @@ import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUs
 import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './types'
 import { addOutputCensor, filterResponse, processPrompt, splitSentences, updateUserPWithTicket } from './utils'
 import { MoodManager } from './mood'
+import { buildScheduleText, loadScheduleFile } from './schedule'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
@@ -737,6 +738,17 @@ export class SAT extends Sat {
 
     // 天气在几小时内不变，放在按查询变化的常识之前
     if (weatherPrompt) systemPrompt += `\n##${weatherPrompt}\n`
+
+    // 日程按条目起止时间变化，一天最多换几次；只在每段对话开头几轮注入，
+    // 心情差时跳过（生气时不宜描述「正在开心地整理藏书」）。
+    if (this.config.enable_schedule && (moodLevel == 'normal' || moodLevel == 'happy')) {
+      const scopeId = this.memoryService.getScopeId(session)
+      if (this.memoryService.getChannelMemory(scopeId).length < this.config.schedule_inject_below_entries) {
+        const file = loadScheduleFile(this.config.dataDir, message => logger.warn(message))
+        const schedulePrompt = file && buildScheduleText({ file, timezoneOffset: this.config.memory_timezone_offset })
+        if (schedulePrompt) systemPrompt += `\n##${schedulePrompt}\n`
+      }
+    }
 
     // 心情随表情和小时衰减变化，是半静态段里最不稳定的：放到金字塔、衣着、
     // 好感度、用户名、天气之后，它变化时不会连带把前面已经缓存的前缀打掉
