@@ -108,6 +108,8 @@ export class MemoryService {
       categoryOrder: GROUP_CATEGORY_ORDER,
       // 群友条目的 key 是 "member:昵称"，只取 content 会把主语丢掉
       nameKeyCategories: ['member'],
+      // 上次画像更新之后没有新的 topic 归档块时，不再发起画像调用
+      requireNewMemoryOf: 'topic',
       contextTitle: '以下是这个群的补充信息：',
       subjectLabel: '群',
       stateLabel: '群状态',

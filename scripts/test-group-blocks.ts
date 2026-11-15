@@ -5,7 +5,7 @@
 // 要保证的事：群聊按时间块切分，切块不花模型调用；过短和过长的发言被过滤；
 // 归档输入里的发言人只由消息的 kind 决定，不从内容里猜。
 import {
-  GROUP_GAP_MS, GROUP_MAX_MESSAGES, compressGroupRows, selectGroupBlock,
+  GROUP_GAP_MS, GROUP_MAX_MESSAGES, GROUP_MIN_BLOCK_MESSAGES, compressGroupRows, selectGroupBlock,
 } from '../src/memory/group'
 import { formatGroupRows } from '../src/memory/summarizer'
 import {
@@ -77,14 +77,29 @@ const msg = (
   assert(settled.closed, '沉默满 20 分钟后闭合')
 }
 
-// ---------- 场景 5：跨过日界线就闭合 ----------
+// ---------- 场景 5：不足最小条数时跨过沉默继续攒 ----------
+{
+  const rows = [msg(0, '第一句话'), msg(5, '第二句话'), msg(40, '第三句话')]
+  const small = selectGroupBlock(rows, dayEnd, at(60), { minMessages: 10 })
+  assert(small.block.length === 3, '不足 10 条时沉默间隔不作为断点，继续往后攒')
+  assert(!small.closed, '没攒够、当天也没结束时不归档')
+
+  const settledMany = Array.from({ length: 12 }, (_, i) => msg(i, `消息${i + 1}`))
+  const enough = selectGroupBlock(settledMany, dayEnd, at(35), { minMessages: 10 })
+  assert(enough.closed, '攒够最小条数且沉默满 20 分钟后才闭合')
+}
+
+// ---------- 场景 6：跨过日界线就闭合 ----------
 {
   const rows = [msg(0, '第一句话')]
   const { closed } = selectGroupBlock(rows, dayEnd, new Date(dayEnd.getTime() + 60_000))
   assert(closed, '这一天已经结束，块闭合')
+
+  const few = selectGroupBlock(rows, dayEnd, new Date(dayEnd.getTime() + 60_000), { minMessages: 10 })
+  assert(few.closed, '日结束时连接不足最小条数的块也会闭合，但由调用方跳过而不归档')
 }
 
-// ---------- 场景 6：抽取式压缩 ----------
+// ---------- 场景 7：抽取式压缩 ----------
 {
   const rows = [
     msg(0, '草'),
@@ -103,7 +118,7 @@ const msg = (
   assert(!out.some(row => row.userContent.includes('草')), '过短的发言不进入归档')
 }
 
-// ---------- 场景 7：不同的人不会被合并 ----------
+// ---------- 场景 8：不同的人不会被合并 ----------
 {
   const out = compressGroupRows([
     msg(0, '第一句话', '灵梦'),
@@ -112,7 +127,7 @@ const msg = (
   assert(out.length === 2, '不同发言人各自保留一行')
 }
 
-// ---------- 场景 8：发言人只由 kind 决定 ----------
+// ---------- 场景 9：发言人只由 kind 决定 ----------
 {
   const text = formatGroupRows([
     msg(0, '今天天气不错', '灵梦'),
@@ -126,7 +141,7 @@ const msg = (
   assert(!lines.some(line => line.includes('] 觉')), '内容里的名字不会变成发言人标签')
 }
 
-// ---------- 场景 9：提示词 ----------
+// ---------- 场景 10：提示词 ----------
 {
   const archive = buildGroupArchivePrompt('对话').map(item => item.content).join('\n')
   assert(archive.includes('只有标签决定谁在说话'), '群归档提示词声明标签是唯一判据')
@@ -143,10 +158,11 @@ const msg = (
   assert(profile.includes('隐私信息'), '群画像禁止记录隐私信息')
 }
 
-// ---------- 场景 10：默认常量 ----------
+// ---------- 场景 11：默认常量 ----------
 {
   assert(GROUP_GAP_MS === 20 * 60_000, '默认沉默阈值 20 分钟')
   assert(GROUP_MAX_MESSAGES === 300, '默认单块上限 300 条')
+  assert(GROUP_MIN_BLOCK_MESSAGES === 100, '默认单块最少 100 条才归档')
 }
 
 console.log('\n全部通过')

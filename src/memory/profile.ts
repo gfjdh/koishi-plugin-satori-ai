@@ -4,7 +4,7 @@ import { Context, Logger } from 'koishi'
 import { APIClient } from '../api'
 import { User } from '../types'
 import { MemoryRepository } from './repository'
-import { ProfileData, ProfileEntry, SatMemory } from './schema'
+import { Granularity, ProfileData, ProfileEntry, SatMemory } from './schema'
 import { parseLlmJson } from './json'
 import { buildProfilePrompt } from './prompts'
 import { applyProfileDelta, sanitizeProfileDelta, ProfileDelta } from './delta'
@@ -65,6 +65,8 @@ export interface ProfileConfig {
   categoryOrder?: string[]
   /** 这些类别的 key 是 "前缀:主语"，展示时要带上主语（群画像的 member:昵称） */
   nameKeyCategories?: string[]
+  /** 只有在该粒度上「上次画像更新之后」新增过记忆才更新（群画像用 topic 粘住新归档块） */
+  requireNewMemoryOf?: Granularity
   /** 注入系统提示时的标题 */
   contextTitle?: string
   /** 命令输出里的主体名（“用户”/“群”） */
@@ -201,6 +203,10 @@ export class ProfileManager {
     extra: Partial<ProfileData> = {},
   ): Promise<ProfileOutcome> {
     const entries = existing?.entries || []
+    if (!(await this.hasNewMemorySinceLastUpdate(scopeId, existing))) {
+      logger.debug(`画像没有新归档可吃，跳过 scope=${scopeId}`)
+      return 'skipped'
+    }
     const redact = this.redactScopes.has(scopeId)
     const buildPrompt = this.config.buildPrompt || buildProfilePrompt
 
@@ -270,6 +276,18 @@ export class ProfileManager {
       entries.map(entry => ({ ...entry, content: redactSensitiveText(entry.content) })),
       redactSensitiveText(input),
     ]
+  }
+
+  /** 未配置 requireNewMemoryOf 时恒为真；群画像要求上次更新之后确实有新归档块 */
+  private async hasNewMemorySinceLastUpdate(
+    scopeId: string,
+    existing?: ProfileData,
+  ): Promise<boolean> {
+    const granularity = this.config.requireNewMemoryOf
+    if (!granularity) return true
+    const stamp = existing?.lastSummarizedAt
+    const since = stamp && !Number.isNaN(Date.parse(stamp)) ? new Date(stamp) : new Date(0)
+    return this.repo.hasMemoriesCreatedSince(scopeId, granularity, since)
   }
 
   async getContext(scopeId: string): Promise<string> {

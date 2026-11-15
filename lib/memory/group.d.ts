@@ -10,6 +10,8 @@ export declare const GROUP_KINDS: string[];
 export declare const GROUP_GAP_MS: number;
 /** 一块最多多少条消息；到上限立即闭合，保证每块的模型输入可控 */
 export declare const GROUP_MAX_MESSAGES = 300;
+/** 一块至少多少条消息才值得归档；不足时跨过短暂的沉默继续攒，攒不够就跳过，绝不调用模型 */
+export declare const GROUP_MIN_BLOCK_MESSAGES = 100;
 /** 一块最长跨度；超过就断开，避免一段长会话拖成超大块 */
 export declare const GROUP_MAX_SPAN_MS: number;
 /** 短于此长度的发言没有信息量（“草”“哈哈哈”“？”），归档时丢掉 */
@@ -34,6 +36,8 @@ export interface GroupBlockOptions {
     gapMs?: number;
     maxMessages?: number;
     maxSpanMs?: number;
+    /** 低于这个条数时跨过沉默间隔继续攒；0 表示不启用 */
+    minMessages?: number;
 }
 export interface GroupBlockSelection {
     /** 本次要归档的连续消息（已按 createdAt 升序） */
@@ -49,9 +53,12 @@ export interface GroupBlockSelection {
  *
  * 闭合判据（任一成立）：
  * · 块内已到条数上限——硬切，后面的消息属于下一块；
- * · 取到的消息没被全部用掉——说明下一条与块尾的间隔超过阈值，或已到上限；
+ * · 取到的消息没被全部用掉——说明已达到最小条数、下一条间隔超过阈值，或触到条数/跨度上限；
  * · 这一天已经结束；
- * · 当天还没结束，但块尾之后已经沉默满一个间隔，不会再有消息并进来。
+ * · 当天还没结束，但块已达到最小条数、且块尾之后沉默满一个间隔。
+ *
+ * 不足 minMessages 时沉默间隔不作为断点：继续往后攒，直到够数或触到跨度上限。
+ * 攒不够的块闭合后由调用方跳过（推进游标，不调用模型），不会兜底归档。
  */
 export declare function selectGroupBlock(rows: SatDialogue[], dayEnd: Date, now: Date, options?: GroupBlockOptions): GroupBlockSelection;
 /**

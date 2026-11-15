@@ -2,7 +2,7 @@ import { Context } from 'koishi';
 import { APIClient } from '../api';
 import { User } from '../types';
 import { MemoryRepository } from './repository';
-import { ProfileEntry, SatMemory } from './schema';
+import { Granularity, ProfileEntry, SatMemory } from './schema';
 /** 画像输入被内容审核拒绝后该 scope 的冷却：重试同一段文本不会有不同结果。
  *  不永久放弃，是因为地灵殿通行证一旦充值恢复，辅助线路换了 provider，
  *  审核策略可能完全不同，那时应该重新尝试。 */
@@ -33,6 +33,8 @@ export interface ProfileConfig {
     categoryOrder?: string[];
     /** 这些类别的 key 是 "前缀:主语"，展示时要带上主语（群画像的 member:昵称） */
     nameKeyCategories?: string[];
+    /** 只有在该粒度上「上次画像更新之后」新增过记忆才更新（群画像用 topic 粘住新归档块） */
+    requireNewMemoryOf?: Granularity;
     /** 注入系统提示时的标题 */
     contextTitle?: string;
     /** 命令输出里的主体名（“用户”/“群”） */
@@ -80,6 +82,8 @@ export declare class ProfileManager {
     private applyUpdate;
     /** 需要脱敏时给出替换后的条目与输入；否则原样返回，避免无谓改动模型看到的文本 */
     private promptInput;
+    /** 未配置 requireNewMemoryOf 时恒为真；群画像要求上次更新之后确实有新归档块 */
+    private hasNewMemorySinceLastUpdate;
     getContext(scopeId: string): Promise<string>;
     has(scopeId: string): Promise<boolean>;
     formatById(scopeId: string): Promise<string>;

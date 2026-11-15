@@ -21,7 +21,8 @@ import {
   ROLE_AI, ROLE_USER, SummaryResult,
 } from './prompts'
 import {
-  GROUP_BOT_KIND, GROUP_KINDS, GROUP_MAX_MESSAGES, compressGroupRows, isGroupScope, selectGroupBlock,
+  GROUP_BOT_KIND, GROUP_KINDS, GROUP_MAX_MESSAGES, GROUP_MIN_BLOCK_MESSAGES,
+  compressGroupRows, isGroupScope, selectGroupBlock,
 } from './group'
 import { oneLine } from './text'
 import { ProfileManager } from './profile'
@@ -707,12 +708,23 @@ export class Summarizer {
         limit: GROUP_MAX_MESSAGES + 1,
         before: dayEnd,
       })
-      const { block, closed } = selectGroupBlock(rows, dayEnd, new Date())
+      const { block, closed } = selectGroupBlock(rows, dayEnd, new Date(), {
+        minMessages: GROUP_MIN_BLOCK_MESSAGES,
+      })
       if (!block.length) return false
       if (!closed) return true
 
       const key = `${scopeId}:${block[0].id}`
       const nextCursor = await this.groupNextCursor(scopeId, block, dayEnd)
+      // 不足最小条数的块不归档，也不花模型调用：直接推进游标，等更密的消息攒成下一块
+      if (block.length < GROUP_MIN_BLOCK_MESSAGES) {
+        await this.repo.setTopicStart(scopeId, nextCursor)
+        logger.info(`群聊时间块不足 ${GROUP_MIN_BLOCK_MESSAGES} 条，跳过 scope=${scopeId}`
+          + ` 消息=${block.length}`
+          + ` 起=${formatTime(block[0].createdAt, this.tz)}`
+          + ` 止=${formatTime(block[block.length - 1].createdAt, this.tz)}`)
+        continue
+      }
       const outcome = await this.archiveGroupBlock(scopeId, block, nextCursor)
       budget.calls -= 1
       if (outcome === 'ok' || outcome === 'empty') {

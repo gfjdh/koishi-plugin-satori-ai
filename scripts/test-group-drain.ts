@@ -100,14 +100,14 @@ function createSummarizer(repo: any, api: any) {
 }
 
 async function main() {
-  // ---------- 场景 1：同一天的两个时间块各归档一次 ----------
+  // ---------- 场景 1：过去的一天不足 100 条时直接跳过，不归档 ----------
   {
     const dayStart = local(11, 10, 4)
     const rows = [
       msg(local(11, 10, 10, 0), '第一句话'),
       msg(local(11, 10, 10, 1), '第二句话'),
       msg(local(11, 10, 10, 2), '第三句话'),
-      // 间隔 58 分钟，属于下一块
+      // 间隔 58 分钟，过去会切成下一块；不足 100 条时应该跨过去继续攒
       msg(local(11, 10, 11, 0), '第四句话'),
       msg(local(11, 10, 11, 1), '第五句话'),
     ]
@@ -116,25 +116,11 @@ async function main() {
 
     await createSummarizer(repo, api).summarizeScope('g:123')
 
-    assert(api.calls.length === 2, `两个时间块各一次模型调用（实际 ${api.calls.length}）`)
-    assert(repo.memories.length === 2, `写入两条 topic 记忆（实际 ${repo.memories.length}）`)
+    assert(api.calls.length === 0, '不足 100 条时不调用模型，日结束也一样')
+    assert(repo.memories.length === 0, '不写入 topic 记忆')
     assert(
-      +repo.memories[0].periodStart === +local(11, 10, 10, 0)
-      && +repo.memories[0].periodEnd === +local(11, 10, 10, 2),
-      '第一条记忆的时间范围是第一个块',
-    )
-    assert(
-      +repo.memories[1].periodStart === +local(11, 10, 11, 0)
-      && +repo.memories[1].periodEnd === +local(11, 10, 11, 1),
-      '第二条记忆的时间范围是第二个块',
-    )
-    assert(
-      +repo.meta.topicStart > +local(11, 10, 4) && +repo.meta.topicStart <= Date.now(),
-      '游标推进到今天（没有剩余消息时直接到日界线）',
-    )
-    assert(
-      api.calls[0].includes('用户（灵梦）说「第一句话'),
-      '归档输入使用结构化发言人标签',
+      +repo.meta.topicStart > +local(11, 11, 4) && +repo.meta.topicStart <= +Date.now(),
+      `游标越过这一天，不在小块上反复重试（实际 ${repo.meta.topicStart.toISOString()}）`,
     )
   }
 
@@ -152,7 +138,65 @@ async function main() {
     assert(+repo.meta.topicStart < +now, '游标停在原处，等下一轮')
   }
 
-  // ---------- 场景 3：全是无信息量的短句时跳过，不花调用 ----------
+  // ---------- 场景 3：当天已沉默但不足 100 条，继续等 ----------
+  {
+    const now = new Date()
+    const rows = Array.from({ length: 5 }, (_, i) =>
+      msg(new Date(now.getTime() - (40 - i) * 60_000), `第${i + 1}条讨论内容`))
+    const repo = createRepo(rows, new Date(now.getTime() - 90 * 60_000))
+    const api = createApi()
+
+    await createSummarizer(repo, api).summarizeScope('g:123')
+
+    assert(api.calls.length === 0, '当天不足 100 条，即使沉默满 20 分钟也不归档')
+    assert(repo.memories.length === 0, '不写入记忆')
+    assert(+repo.meta.topicStart < +now, '游标停在原处，等攒够或日结束')
+  }
+
+  // ---------- 场景 4：过去的一天两段各 100 条，各归档一次 ----------
+  {
+    const dayStart = local(11, 10, 4)
+    const first = Array.from({ length: 100 }, (_, i) =>
+      msg(local(11, 10, 10, 0), `上午讨论第${i + 1}条内容`))
+    const second = Array.from({ length: 100 }, (_, i) =>
+      msg(local(11, 10, 11, 0), `下午讨论第${i + 1}条内容`))
+    const repo = createRepo([...first, ...second], dayStart)
+    const api = createApi()
+
+    await createSummarizer(repo, api).summarizeScope('g:123')
+
+    assert(api.calls.length === 2, `两段都达到 100 条，各一次模型调用（实际 ${api.calls.length}）`)
+    assert(repo.memories.length === 2, `写入两条 topic 记忆（实际 ${repo.memories.length}）`)
+    assert(
+      +repo.memories[0].periodStart === +local(11, 10, 10, 0)
+      && +repo.memories[0].periodEnd === +local(11, 10, 10, 0),
+      '第一条记忆只覆盖第一段',
+    )
+    assert(
+      +repo.memories[1].periodStart === +local(11, 10, 11, 0)
+      && +repo.memories[1].periodEnd === +local(11, 10, 11, 0),
+      '第二条记忆只覆盖第二段',
+    )
+  }
+
+  // ---------- 场景 5：跨度切断的小块跳过，后面的满 100 块照常归档 ----------
+  {
+    const dayStart = local(11, 10, 4)
+    const small = Array.from({ length: 80 }, (_, i) =>
+      msg(local(11, 10, 10, 0), `上午第${i + 1}条内容`))
+    const large = Array.from({ length: 120 }, (_, i) =>
+      msg(local(11, 10, 16, 0), `下午第${i + 1}条内容`))
+    const repo = createRepo([...small, ...large], dayStart)
+    const api = createApi()
+
+    await createSummarizer(repo, api).summarizeScope('g:123')
+
+    assert(api.calls.length === 1, `不足 100 条的前半段跳过，只归档满 100 条的后半段（实际 ${api.calls.length}）`)
+    assert(repo.memories.length === 1, `只写入一条 topic 记忆（实际 ${repo.memories.length}）`)
+    assert(+repo.memories[0].periodStart === +local(11, 10, 16, 0), '归档的是后半段')
+  }
+
+  // ---------- 场景 6：全是无信息量的短句时跳过，不花调用 ----------
   {
     const dayStart = local(11, 10, 4)
     const rows = [

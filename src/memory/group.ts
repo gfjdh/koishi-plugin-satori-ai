@@ -21,6 +21,8 @@ export const GROUP_KINDS = [GROUP_MEMBER_KIND, GROUP_BOT_KIND]
 export const GROUP_GAP_MS = 20 * 60_000
 /** 一块最多多少条消息；到上限立即闭合，保证每块的模型输入可控 */
 export const GROUP_MAX_MESSAGES = 300
+/** 一块至少多少条消息才值得归档；不足时跨过短暂的沉默继续攒，攒不够就跳过，绝不调用模型 */
+export const GROUP_MIN_BLOCK_MESSAGES = 100
 /** 一块最长跨度；超过就断开，避免一段长会话拖成超大块 */
 export const GROUP_MAX_SPAN_MS = 4 * 3_600_000
 /** 短于此长度的发言没有信息量（“草”“哈哈哈”“？”），归档时丢掉 */
@@ -58,6 +60,8 @@ export interface GroupBlockOptions {
   gapMs?: number
   maxMessages?: number
   maxSpanMs?: number
+  /** 低于这个条数时跨过沉默间隔继续攒；0 表示不启用 */
+  minMessages?: number
 }
 
 export interface GroupBlockSelection {
@@ -75,9 +79,12 @@ export interface GroupBlockSelection {
  *
  * 闭合判据（任一成立）：
  * · 块内已到条数上限——硬切，后面的消息属于下一块；
- * · 取到的消息没被全部用掉——说明下一条与块尾的间隔超过阈值，或已到上限；
+ * · 取到的消息没被全部用掉——说明已达到最小条数、下一条间隔超过阈值，或触到条数/跨度上限；
  * · 这一天已经结束；
- * · 当天还没结束，但块尾之后已经沉默满一个间隔，不会再有消息并进来。
+ * · 当天还没结束，但块已达到最小条数、且块尾之后沉默满一个间隔。
+ *
+ * 不足 minMessages 时沉默间隔不作为断点：继续往后攒，直到够数或触到跨度上限。
+ * 攒不够的块闭合后由调用方跳过（推进游标，不调用模型），不会兜底归档。
  */
 export function selectGroupBlock(
   rows: SatDialogue[],
@@ -88,6 +95,7 @@ export function selectGroupBlock(
   const gapMs = options.gapMs ?? GROUP_GAP_MS
   const maxMessages = options.maxMessages ?? GROUP_MAX_MESSAGES
   const maxSpanMs = options.maxSpanMs ?? GROUP_MAX_SPAN_MS
+  const minMessages = options.minMessages ?? 0
 
   if (!rows.length) return { block: [], closed: true }
 
@@ -97,17 +105,19 @@ export function selectGroupBlock(
     const previous = block[block.length - 1]
     const gap = new Date(rows[i].createdAt).getTime() - new Date(previous.createdAt).getTime()
     const span = new Date(rows[i].createdAt).getTime() - new Date(block[0].createdAt).getTime()
-    if (gap > gapMs || span > maxSpanMs) break
+    if (span > maxSpanMs) break
+    if (gap > gapMs && block.length >= minMessages) break
     block.push(rows[i])
   }
 
   const hasMore = rows.length > block.length
   const full = block.length >= maxMessages
+  const meetsMin = block.length >= minMessages
   const last = block[block.length - 1]
   const dayOver = new Date(dayEnd).getTime() <= new Date(now).getTime()
   const settled = new Date(now).getTime() - new Date(last.createdAt).getTime() >= gapMs
 
-  return { block, closed: hasMore || full || dayOver || settled }
+  return { block, closed: hasMore || full || dayOver || (meetsMin && settled) }
 }
 
 /**

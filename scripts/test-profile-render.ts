@@ -5,7 +5,9 @@
 // 要保证的事：群画像把昵称编码在 "member:昵称" 的 key 里，
 // 展示和注入系统提示时必须把昵称补回去，不能再出现没有主语的“活跃群友”。
 import { ProfileManager, displayProfileContent } from '../src/memory/profile'
-import { GROUP_CATEGORY_LABELS, GROUP_CATEGORY_ORDER } from '../src/memory/prompts'
+import {
+  GROUP_CATEGORY_LABELS, GROUP_CATEGORY_ORDER, buildGroupProfilePrompt,
+} from '../src/memory/prompts'
 
 const assert = (cond: any, message: string) => {
   if (!cond) {
@@ -89,6 +91,49 @@ async function testManagers() {
 
   const personalContext = await personal.getContext('u:456')
   assert(personalContext.includes('· 群内技术型成员'), '个人画像不受群画像渲染影响')
+
+  // ---------- 场景 3：群画像只在有新归档块时更新 ----------
+  let hasNew = false
+  let calls = 0
+  let saves = 0
+  const gateRepo = {
+    getProfile: async (scopeId: string) => ({
+      scopeId,
+      data: { entries, lastSummarizedAt: '2026-11-15T04:00:00.000Z' },
+      updatedAt: new Date('2026-11-15T04:00:00.000Z'),
+    }),
+    hasMemoriesCreatedSince: async () => hasNew,
+    saveProfile: async () => { saves += 1 },
+  }
+  const gateApi = {
+    auxiliaryChat: async () => {
+      calls += 1
+      return {
+        content: JSON.stringify({
+          added: [{ key: 'topic:新话题', category: 'topic', content: '群里聊了新话题。', importance: 20 }],
+          modified: [],
+          deleted: [],
+        }),
+        error: false,
+      }
+    },
+  }
+  const gated = new ProfileManager({} as any, gateRepo as any, gateApi as any, {
+    enabled: true, dryRun: false, maxEntries: 100, contextEntries: 10,
+    buildPrompt: buildGroupProfilePrompt,
+    categoryLabels: GROUP_CATEGORY_LABELS,
+    categoryOrder: GROUP_CATEGORY_ORDER,
+    requireNewMemoryOf: 'topic',
+  })
+
+  const skipped = await gated.summarize('g:123', '昨天群里聊了一会儿。', [], null, new Date())
+  assert(skipped === 'skipped', '上次画像更新之后没有新 topic 记忆时跳过')
+  assert(calls === 0 && saves === 0, '跳过时不调用模型、不写库')
+
+  hasNew = true
+  const updated = await gated.summarize('g:123', '昨天群里聊了一会儿。', [], null, new Date())
+  assert(updated === 'ok', '有新归档块时才更新画像')
+  assert(calls === 1 && saves === 1, '更新时调用一次模型并落库')
 }
 
 testManagers().catch((err) => {

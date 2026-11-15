@@ -275,6 +275,18 @@ export class MemoryRepository {
     return rows[0] || null
   }
 
+  /** 自 since 之后是否新增过某粒度的记忆（群画像据此判断有没有新归档块） */
+  async hasMemoriesCreatedSince(
+    scopeId: string,
+    granularity: Granularity,
+    since: Date,
+  ): Promise<boolean> {
+    const rows = await this.ctx.database.get('sat_memory', {
+      scopeId, granularity, createdAt: { $gt: since },
+    }, { limit: 1 })
+    return !!rows.length
+  }
+
   async createMemory(row: Omit<SatMemory, 'id'>): Promise<void> {
     await this.ctx.database.create('sat_memory', row)
   }

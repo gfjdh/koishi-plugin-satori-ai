@@ -70,6 +70,8 @@ export declare class MemoryRepository {
     getMemoriesInRange(scopeId: string, granularity: Granularity, from: Date | null, to: Date, limit?: number): Promise<SatMemory[]>;
     /** 某个时间点之前结束的最新节点（用于历史回填选材） */
     getLatestMemoryBefore(scopeId: string, granularity: Granularity, before: Date): Promise<SatMemory | null>;
+    /** 自 since 之后是否新增过某粒度的记忆（群画像据此判断有没有新归档块） */
+    hasMemoriesCreatedSince(scopeId: string, granularity: Granularity, since: Date): Promise<boolean>;
     createMemory(row: Omit<SatMemory, 'id'>): Promise<void>;
     /** 该 scope 是否已经产过分层记忆（用于判断迁移是否第一次跑） */
     hasAnyMemory(scopeId: string): Promise<boolean>;
