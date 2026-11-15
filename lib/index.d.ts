@@ -46,7 +46,11 @@ export declare class SAT extends Sat {
         error: boolean;
         reasoning_content?: string;
     }>;
-    getChatResponse(user: User, messages: Sat.Msg[], prompt: string, session?: Session): Promise<{
+    getChatResponse(user: User, messages: Sat.Msg[], prompt: string, session?: Session, options?: {
+        maxOutputTokens?: number;
+        preserveFormatting?: boolean;
+        disableThinking?: boolean;
+    }): Promise<{
         content: string;
         error: boolean;
         reasoning_content?: string;
@@ -78,6 +82,12 @@ export declare class SAT extends Sat {
     handleNickNameMiddleware(session: Session, prompt: string): Promise<string>;
     handleChannelMemoryManager(session: Session): Promise<void>;
     private handleDigest;
+    private handleDailyDigest;
+    /**
+     * 把模型选出的昵称映射回区间内的群友，再给好感度。
+     * 返回展示用的一行文字，未生效时为空。
+     */
+    private applyDailyDigestFavorite;
     private renderDigestCard;
     dispose(): Promise<void>;
 }

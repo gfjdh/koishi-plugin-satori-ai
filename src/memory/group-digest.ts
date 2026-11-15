@@ -26,6 +26,16 @@ export const DIGEST_MAX_CHARS = 200
 /** 未归档原始消息最多取多少条，避免归档积压时输入失控 */
 export const DIGEST_MAX_RAW_MESSAGES = 300
 
+/** 群日报比省流长得多：目标约 1000 字，硬上限留出余量 */
+export const DAILY_DIGEST_MAX_CHARS = 1600
+/**
+ * 群日报单次请求的输出上限。1000 字中文加上思考模型自己的推理，
+ * 生产默认的 512 根本不够，必须给这次请求单独放宽。
+ */
+export const DAILY_DIGEST_MAX_OUTPUT_TOKENS = 8192
+/** 群日报的未归档消息上限。一天的消息量比「上次发言以来」大得多 */
+export const DAILY_DIGEST_MAX_RAW_MESSAGES = 600
+
 /** 「省流 -d/-m/-y」给出的范围；多个单位同时给出时依次往前推 */
 export interface DigestRange {
   days?: number
@@ -78,10 +88,11 @@ export async function selectDigestNodes(
   from: Date,
   now: Date,
   fetchNodes: (level: Granularity, after: Date, to: Date) => Promise<SatMemory[]>,
+  levels: Granularity[] = DIGEST_LEVELS,
 ): Promise<{ nodes: SatMemory[], cursor: Date }> {
   let cursor = from
   const nodes: SatMemory[] = []
-  for (const level of DIGEST_LEVELS) {
+  for (const level of levels) {
     const rows = await fetchNodes(level, cursor, now)
     if (!rows.length) continue
     nodes.push(...rows)
@@ -126,4 +137,112 @@ export function clampDigest(text: string, max = DIGEST_MAX_CHARS): string {
     .replace(/\s*\n+\s*/g, ' ')
     .trim()
   return cleaned.length > max ? cleaned.slice(0, max).trim() : cleaned
+}
+
+export interface DailyDigestParsed {
+  /** 去掉「今日最喜欢」标记后的日报正文 */
+  body: string
+  /** 模型选中的群友昵称；没有选或没按格式输出时为空字符串 */
+  favorite: string
+}
+
+/**
+ * 拆出日报正文和末尾的「今日最喜欢」标记。
+ *
+ * 标记是模型输出里的元数据，不能出现在卡片上。模型可能写成
+ * 「【今日最喜欢】昵称」或「【今日最喜欢：昵称】」，前后还可能带省略号、
+ * 句号；标记单独一行或跟在最后一段末尾都要能处理。
+ */
+export function parseDailyDigest(text: string): DailyDigestParsed {
+  const source = (text || '').replace(/\r\n?/g, '\n')
+
+  const inline = source.match(/【今日最喜欢】\s*[：:]?\s*([^\n【】]+)/)
+  if (inline) {
+    const favorite = inline[1]
+      .replace(/^[…\.。\s]+/, '')
+      .replace(/[…\.。\s]+$/, '')
+      .trim()
+    return {
+      body: removeDailyDigestMarker(source, inline.index!, inline[0].length),
+      favorite,
+    }
+  }
+
+  const bracketed = source.match(/【今日最喜欢[：:]\s*([^】\n]+)】/)
+  if (bracketed) {
+    return {
+      body: removeDailyDigestMarker(source, bracketed.index!, bracketed[0].length),
+      favorite: bracketed[1].trim(),
+    }
+  }
+
+  return { body: source.trim(), favorite: '' }
+}
+
+/** 去掉标记本身；标记独占一行时连整行一起删，跟在句尾时只删标记之后的内容 */
+function removeDailyDigestMarker(source: string, index: number, length: number): string {
+  const lineStart = source.lastIndexOf('\n', index) + 1
+  const beforeMarker = source.slice(lineStart, index)
+  const start = /^[\s…\.。]*$/.test(beforeMarker) ? lineStart : index
+  let end = source.indexOf('\n', index + length)
+  if (end < 0) end = source.length
+  const before = source.slice(0, start).replace(/[…\.\s]+$/, '')
+  const after = source.slice(end)
+  return (before + after).trim()
+}
+
+/**
+ * 群日报的正文清洗：保留段落换行（卡片是 pre-wrap），压缩多余空行，
+ * 超出上限时尽量在句末截断，避免把一句话劈成两半。
+ */
+export function clampDailyDigest(text: string, max = DAILY_DIGEST_MAX_CHARS): string {
+  const cleaned = (text || '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  if (cleaned.length <= max) return cleaned
+  const slice = cleaned.slice(0, max)
+  const cut = Math.max(
+    slice.lastIndexOf('。'),
+    slice.lastIndexOf('！'),
+    slice.lastIndexOf('？'),
+    slice.lastIndexOf('…'),
+  )
+  // 句末太靠前说明后面还有一大段没说完，宁可硬截也不要只剩半句
+  return (cut > max - 150 ? slice.slice(0, cut + 1) : slice).trim()
+}
+
+/** 区间内发过言的群友，用于把模型选出的昵称映射回 userId */
+export interface DigestParticipant {
+  userId: string
+  username: string
+  count: number
+}
+
+/**
+ * 把模型选出的昵称映射回群友。模型可能改写昵称（去括号、加句号、用简称），
+ * 所以先精确匹配，再退到包含匹配；多个候选时取发言最多的那个。
+ */
+export function resolveDigestFavorite(
+  choice: string,
+  participants: DigestParticipant[],
+): DigestParticipant | null {
+  const target = (choice || '')
+    .replace(/^[【\[（(「『"'“]+/, '')
+    .replace(/[】\]）)」』"'”]+$/, '')
+    .replace(/^今日最喜欢[：:]?/, '')
+    .replace(/[。．.!！,，、\s]+$/, '')
+    .trim()
+  if (!target) return null
+  const byCount = (pool: DigestParticipant[]) => [...pool].sort((a, b) => b.count - a.count)[0]
+
+  const exact = participants.filter(item => item.username === target)
+  if (exact.length) return byCount(exact)
+
+  const fuzzy = participants.filter(item =>
+    (target.length >= 2 && item.username.includes(target))
+    || (item.username.length >= 2 && target.includes(item.username)))
+  return fuzzy.length ? byCount(fuzzy) : null
 }

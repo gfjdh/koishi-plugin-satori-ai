@@ -70,6 +70,8 @@ export interface SatMeta {
   topicStart: Date     // 当前话题起点
   lastActiveAt: Date
   migratedAt: Date     // epoch 0 表示尚未迁移
+  /** 上一次群日报的时间；null 表示还没发过日报 */
+  dailyDigestAt?: Date
 }
 
 declare module 'koishi' {
@@ -151,6 +153,7 @@ export function extendMemoryDatabase(ctx: Context) {
     topicStart: 'timestamp',
     lastActiveAt: 'timestamp',
     migratedAt: 'timestamp',
+    dailyDigestAt: 'timestamp',
   }, {
     autoInc: true,
     unique: [['scopeId']],

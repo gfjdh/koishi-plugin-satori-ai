@@ -2,7 +2,7 @@ import { Context, Session } from 'koishi';
 import { APIClient } from '../api';
 import { MemoryConfig } from '../types';
 import { PromptBuildOptions, PromptContext } from './context';
-import { DigestRange } from './group-digest';
+import { DigestParticipant, DigestRange } from './group-digest';
 export interface MemoryServiceConfig extends MemoryConfig {
     enable_layered_memory: boolean;
     /** 短期记忆空闲多久后清空（分钟），0 = 关闭 */
@@ -40,6 +40,14 @@ export interface GroupDigestContext {
     range: string;
     nodeCount: number;
     messageCount: number;
+}
+/** 群聊「群日报」的选材结果 */
+export interface GroupDailyDigestContext extends GroupDigestContext {
+    participants: DigestParticipant[];
+    /** 本次日报的生成时刻；成功后写入游标，下次从这里继续 */
+    now: Date;
+    /** 今天还没发过日报时为 true：只有这一份日报能给「今日最喜欢」加好感度 */
+    allowFavorite: boolean;
 }
 export declare class MemoryService {
     private ctx;
@@ -96,6 +104,15 @@ export declare class MemoryService {
      * 从没在本群说过话时按最近 24 小时算。
      */
     buildGroupDigestContext(session: Session, range?: DigestRange): Promise<GroupDigestContext | null>;
+    /**
+     * 群日报的选材：上次日报之后的全部话题记忆 + 尚未归档的原始消息。
+     *
+     * 与省流不同，这里不往粗粒度（日/周/月…）上找——日报本身覆盖的是一天左右，
+     * 话题记忆已经足够细。从没发过日报时按最近 24 小时算。
+     */
+    buildGroupDailyDigestContext(session: Session): Promise<GroupDailyDigestContext | null>;
+    /** 日报生成成功后推进游标，下次从这一刻继续 */
+    markDailyDigest(channelId: string, at: Date): Promise<void>;
     getPromptContext(session: Session, query: string, options?: PromptBuildOptions): Promise<PromptContext>;
     addCommonSense(content: string): Promise<void>;
     addGroupCommonSense(content: string, channelId: string): Promise<void>;

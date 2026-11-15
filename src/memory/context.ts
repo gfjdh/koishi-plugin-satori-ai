@@ -66,6 +66,10 @@ export interface PromptBuildOptions {
   skipRecall?: boolean
   /** 群聊环境里不注入 bot 自己的发言（随机插话时避免复读） */
   excludeSelfDialogue?: boolean
+  /** 不注入提问者的画像与对话统计（群日报这类群级任务） */
+  skipUserContext?: boolean
+  /** 不注入短期群聊环境（日报材料已覆盖同一时段） */
+  skipAmbient?: boolean
 }
 
 export class ContextBuilder {
@@ -90,9 +94,11 @@ export class ContextBuilder {
     const [common, group, stats, pyramid, profile, groupPyramid, groupProfile] = await Promise.all([
       this.buildKnowledge('common', '*', query, this.config.commonTopN),
       this.buildKnowledge('group', session.channelId, query, this.config.commonTopN),
-      this.config.dialogueStatsEnabled ? buildDialogueStats(this.repo, scopeId) : Promise.resolve(''),
+      this.config.dialogueStatsEnabled && !options.skipUserContext
+        ? buildDialogueStats(this.repo, scopeId)
+        : Promise.resolve(''),
       pyramidEnabled ? this.buildPyramid(scopeId) : Promise.resolve(emptyPyramid),
-      this.profile.getContext(scopeId),
+      options.skipUserContext ? Promise.resolve('') : this.profile.getContext(scopeId),
       // 群记忆与按人记忆并存：群 scope 走独立的一棵金字塔，最高只注入最近一年
       pyramidEnabled && groupScope
         ? this.buildPyramid(groupScope, true)
@@ -107,9 +113,11 @@ export class ContextBuilder {
       ? await this.buildRecall(scopeId, query, pyramid.ids)
       : ''
 
-    const ambient = this.shortTerm.getChannelDialogue(
-      session, this.config.memoryConfig, { excludeSelf: options.excludeSelfDialogue },
-    )
+    const ambient = options.skipAmbient
+      ? ''
+      : this.shortTerm.getChannelDialogue(
+        session, this.config.memoryConfig, { excludeSelf: options.excludeSelfDialogue },
+      )
     return {
       common, group, ambient, stats,
       datetime: this.buildDateTime(),

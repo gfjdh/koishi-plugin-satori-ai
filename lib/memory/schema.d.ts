@@ -53,6 +53,8 @@ export interface SatMeta {
     topicStart: Date;
     lastActiveAt: Date;
     migratedAt: Date;
+    /** 上一次群日报的时间；null 表示还没发过日报 */
+    dailyDigestAt?: Date;
 }
 declare module 'koishi' {
     interface Tables {

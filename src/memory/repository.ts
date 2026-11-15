@@ -56,6 +56,25 @@ export class MemoryRepository {
     })
   }
 
+  /**
+   * 与 getDialoguesAfter 相同，但从新到旧取。
+   * 群日报在积压超过上限时要保留最近的发言，而不是最早的一段。
+   */
+  async getRecentDialoguesAfter(
+    scopeId: string,
+    after: Date,
+    options?: { kinds?: string[]; limit?: number; before?: Date },
+  ): Promise<SatDialogue[]> {
+    const createdAt: any = { $gt: after }
+    if (options?.before) createdAt.$lt = options.before
+    const query: any = { scopeId, createdAt }
+    if (options?.kinds?.length) query.kind = { $in: options.kinds }
+    return this.ctx.database.get('sat_dialogue', query, {
+      sort: { createdAt: 'desc' },
+      limit: options?.limit,
+    })
+  }
+
   /** after < createdAt < before 的最后一条对话时间，用于跳过当天剩余部分 */
   async getLastDialogueInRange(
     scopeId: string,
@@ -83,6 +102,40 @@ export class MemoryRepository {
       fields: ['createdAt'],
     })
     return row ? new Date(row.createdAt) : null
+  }
+
+  /**
+   * 区间内发过言的群友，按发言条数降序。
+   * 群日报用它把模型选出的「今日最喜欢」昵称映射回 userId——昵称只在
+   * 原始消息里有，已归档的话题记忆只保留文本。
+   */
+  async getDialogueParticipants(
+    scopeId: string,
+    after: Date,
+    before: Date,
+    kinds?: string[],
+  ): Promise<{ userId: string, username: string, count: number }[]> {
+    const query: any = { scopeId, createdAt: { $gt: after, $lte: before } }
+    if (kinds?.length) query.kind = { $in: kinds }
+    const rows = await this.ctx.database.get('sat_dialogue', query, {
+      fields: ['userId', 'username', 'kind'],
+    })
+    const participants = new Map<string, { userId: string, username: string, count: number }>()
+    for (const row of rows) {
+      if (!row.userId || row.kind === GROUP_BOT_KIND) continue
+      const existing = participants.get(row.userId)
+      if (existing) {
+        existing.count++
+        if (row.username) existing.username = row.username
+      } else {
+        participants.set(row.userId, {
+          userId: row.userId,
+          username: row.username || '',
+          count: 1,
+        })
+      }
+    }
+    return [...participants.values()].sort((a, b) => b.count - a.count)
   }
 
   async countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number> {
@@ -216,6 +269,17 @@ export class MemoryRepository {
   async setMigratedAt(scopeId: string, at: Date): Promise<void> {
     await this.ensureMeta(scopeId, at)
     await this.ctx.database.set('sat_meta', { scopeId }, { migratedAt: at })
+  }
+
+  /** 上一次群日报的时间；没有发过时返回 null */
+  async getDailyDigestAt(scopeId: string): Promise<Date | null> {
+    const meta = await this.getMeta(scopeId)
+    return meta?.dailyDigestAt ? new Date(meta.dailyDigestAt) : null
+  }
+
+  async setDailyDigestAt(scopeId: string, at: Date): Promise<void> {
+    await this.ensureMeta(scopeId, at)
+    await this.ctx.database.set('sat_meta', { scopeId }, { dailyDigestAt: at })
   }
 
   /**

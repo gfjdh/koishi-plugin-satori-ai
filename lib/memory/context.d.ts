@@ -40,6 +40,10 @@ export interface PromptBuildOptions {
     skipRecall?: boolean;
     /** 群聊环境里不注入 bot 自己的发言（随机插话时避免复读） */
     excludeSelfDialogue?: boolean;
+    /** 不注入提问者的画像与对话统计（群日报这类群级任务） */
+    skipUserContext?: boolean;
+    /** 不注入短期群聊环境（日报材料已覆盖同一时段） */
+    skipAmbient?: boolean;
 }
 export declare class ContextBuilder {
     private repo;

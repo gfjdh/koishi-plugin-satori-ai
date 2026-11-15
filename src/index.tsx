@@ -9,8 +9,11 @@ import { APIClient } from './api'
 import { GroupDigestContext, MemoryService, MemoryServiceConfig } from './memory'
 import { isGroupSession } from './memory/group'
 import { PromptBuildOptions } from './memory/context'
-import { buildGroupDigestTask } from './memory/prompts'
-import { clampDigest, DigestRange } from './memory/group-digest'
+import { buildGroupDailyDigestTask, buildGroupDigestTask } from './memory/prompts'
+import {
+  clampDailyDigest, clampDigest, DAILY_DIGEST_MAX_OUTPUT_TOKENS, DigestParticipant, DigestRange,
+  parseDailyDigest, resolveDigestFavorite,
+} from './memory/group-digest'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
 import { createMiddleware } from './middleware'
@@ -316,6 +319,10 @@ export class SAT extends Sat {
       .option('years', '-y <years:number> 最近多少年')
       .action(async ({ session, options }) => this.handleDigest(session, options))
 
+    ctx.command('群日报', '群日报：总结自上次日报以来的群聊，附角色点评', { authority: 3 })
+      .alias('日报')
+      .action(async ({ session }) => this.handleDailyDigest(session))
+
     ctx.command('sat.memory.migrate', '重新迁移旧版记忆文件', { authority: 4 })
       .option('force', '-f')
       .action(async ({ options }) => {
@@ -571,12 +578,18 @@ export class SAT extends Sat {
   }
 
   // 获取聊天回复
-  public async getChatResponse(user: User, messages: Sat.Msg[], prompt: string, session?: Session): Promise<{ content: string; error: boolean; reasoning_content?: string }> {
+  public async getChatResponse(
+    user: User,
+    messages: Sat.Msg[],
+    prompt: string,
+    session?: Session,
+    options: { maxOutputTokens?: number; preserveFormatting?: boolean; disableThinking?: boolean } = {},
+  ): Promise<{ content: string; error: boolean; reasoning_content?: string }> {
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength && this.config.enable_reasoner_like
     const startTime = Date.now()
-    let response = await this.apiClient.chat(user, messages)
+    let response = await this.apiClient.chat(user, messages, options)
     logger.info(`API 调用耗时: ${Date.now() - startTime}ms`)
     if (this.config.log_ask_response) {
       const prefix = session ? `Satori AI（${botTag(session)}）` : 'Satori AI'
@@ -588,7 +601,8 @@ export class SAT extends Sat {
     if (!response.error) {
       const filterStartTime = Date.now()
       response.content = filterResponse(response.content, this.config.reasoner_filter_word.split('-'), {
-        applyBracketFilter: this.config.reasoner_filter,
+        // 日报要保留段落和【】标记：括号过滤会把空白换成「.」并把标记包上省略号
+        applyBracketFilter: options.preserveFormatting ? false : this.config.reasoner_filter,
         applyTagFilter: useNoReasoner || this.config.enhanceReasoningProtection,
       }).content
       const filterTime = Date.now() - filterStartTime
@@ -672,7 +686,7 @@ export class SAT extends Sat {
       messages.push({ role: 'system', content: await this.buildSystemPrompt(session, prompt, undefined, options) })
     }
     // 添加上下文记忆
-    if (prompt != randomPrompt) {
+    if (prompt != randomPrompt && !options.skipUserContext) {
       const userMemory = this.memoryService.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
       messages.push(...userMemory)
     }
@@ -705,9 +719,11 @@ export class SAT extends Sat {
       ? { ...options, excludeSelfDialogue: true }
       : options
     const memoryContext = await this.memoryService.getPromptContext(session, queryHint || prompt, contextOptions)
-    const weatherPrompt = await this.weatherManager.buildWeatherPrompt(session)
-    const user = await getUser(this.ctx, session.userId)
-    const moodLevel = this.moodManager.getMoodLevel(user.userid)
+    // 群日报是群级任务：提问者可能只是定时器用的账号，不能把他的画像/好感度带进去
+    const skipUserContext = !!options.skipUserContext
+    const weatherPrompt = skipUserContext ? '' : await this.weatherManager.buildWeatherPrompt(session)
+    const user = skipUserContext ? null : await getUser(this.ctx, session.userId)
+    const moodLevel = user ? this.moodManager.getMoodLevel(user.userid) : 'normal'
     let systemPrompt = ''
 
     if (prompt == randomPrompt) {
@@ -717,7 +733,7 @@ export class SAT extends Sat {
         systemPrompt += `\n#注意：你最终的回复内容必须使用“<p>”开头，使用“</p>”结尾\n`
         if (this.config.no_system_prompt) systemPrompt += '\n#如果你明白以上内容，请回复“<p>已明确对话要求</p>”'
       }
-      systemPrompt += this.getThinkingPrompt(user, prompt)
+      if (!skipUserContext) systemPrompt += this.getThinkingPrompt(user, prompt)
       // 每轮变化的部分放最后；群画像很短，插话时也能带上
       if (memoryContext.groupProfile) systemPrompt += '\n##' + memoryContext.groupProfile
       if (memoryContext.ambient) systemPrompt += '\n##' + memoryContext.ambient
@@ -733,12 +749,12 @@ export class SAT extends Sat {
       if (this.config.no_system_prompt) systemPrompt += '\n#如果你明白以上内容，请回复“<p>已明确对话要求</p>”'
     }
 
-    systemPrompt += this.getThinkingPrompt(user, prompt)
+    if (!skipUserContext) systemPrompt += this.getThinkingPrompt(user, prompt)
 
     // ---------- 2. 半静态：同一用户若干轮内不变 ----------
     systemPrompt += '\n#以下是与当前对话相关的参考信息\n'
 
-    if ((moodLevel == 'normal' || moodLevel == 'happy') && memoryContext.profile)
+    if (!skipUserContext && (moodLevel == 'normal' || moodLevel == 'happy') && memoryContext.profile)
       systemPrompt += '\n##' + memoryContext.profile
     // 群画像与个人画像并列：一个描述「这个人」，一个描述「这个群」
     if ((moodLevel == 'normal' || moodLevel == 'happy') && memoryContext.groupProfile)
@@ -746,13 +762,13 @@ export class SAT extends Sat {
     if (memoryContext.pyramid) systemPrompt += '\n##' + memoryContext.pyramid + '\n'
     if (memoryContext.groupPyramid) systemPrompt += '\n##' + memoryContext.groupPyramid + '\n'
 
-    if (user?.items?.['觉的衣柜']?.count && (moodLevel == 'normal' || moodLevel == 'happy')) {
+    if (!skipUserContext && user?.items?.['觉的衣柜']?.count && (moodLevel == 'normal' || moodLevel == 'happy')) {
       const clothes = user?.items?.['觉的衣柜']?.metadata?.clothes
       if (clothes) systemPrompt += `\n##你当前的穿着(你可以根据穿着进行对应的行为)：${clothes}\n`
     }
 
     // 添加好感度提示（按天变化，比心情稳定）
-    if (this.config.enable_favorability) {
+    if (!skipUserContext && this.config.enable_favorability) {
       const favorabilityLevel = getFavorabilityLevel(user, this.getFavorabilityConfig())
       if (this.config.enable_mood) {
         if ((moodLevel == 'normal' || moodLevel == 'happy') || favorabilityLevel == '厌恶')
@@ -763,9 +779,11 @@ export class SAT extends Sat {
     }
 
     // 添加用户名
-    systemPrompt += `\n##用户的名字是：${session.username}`
-    const nickName = user?.items?.['情侣合照']?.metadata?.userNickName
-    if (nickName) systemPrompt += `, 昵称是：${nickName},称呼用户时请优先使用昵称\n`
+    if (!skipUserContext) {
+      systemPrompt += `\n##用户的名字是：${session.username}`
+      const nickName = user?.items?.['情侣合照']?.metadata?.userNickName
+      if (nickName) systemPrompt += `, 昵称是：${nickName},称呼用户时请优先使用昵称\n`
+    }
 
     // 天气在几小时内不变，放在按查询变化的常识之前
     if (weatherPrompt) systemPrompt += `\n##${weatherPrompt}\n`
@@ -783,7 +801,7 @@ export class SAT extends Sat {
 
     // 心情随表情和小时衰减变化，是半静态段里最不稳定的：放到金字塔、衣着、
     // 好感度、用户名、天气之后，它变化时不会连带把前面已经缓存的前缀打掉
-    if (this.config.enable_favorability && this.config.enable_mood) {
+    if (!skipUserContext && this.config.enable_favorability && this.config.enable_mood) {
       systemPrompt += `\n##${this.moodManager.generateMoodPrompt(user.userid)}\n`
     }
 
@@ -1078,8 +1096,72 @@ export class SAT extends Sat {
     return summary
   }
 
+  // 群日报：与省流同一条对话链路，但选材是「上次日报以来的话题记忆 + 未归档消息」，
+  // 篇幅更长，并要求角色附一段点评、选出今日最喜欢的群友
+  private async handleDailyDigest(session: Session) {
+    if (!isGroupSession(session)) return '「群日报」只能在群里用。'
+
+    const context = await this.memoryService.buildGroupDailyDigestContext(session)
+    if (!context) return '这段时间群里没什么可写日报的。'
+
+    const user = await ensureUserExists(this.ctx, session.userId, session.username)
+    const task = buildGroupDailyDigestTask(
+      context.materials,
+      context.range,
+      context.participants.map(item => item.username),
+    )[0].content
+    const messages = await this.buildMessages(session, task, {
+      skipPyramid: true,
+      skipRecall: true,
+      skipUserContext: true,
+      skipAmbient: true,
+    })
+    const response = await this.getChatResponse(user, messages, task, session, {
+      maxOutputTokens: DAILY_DIGEST_MAX_OUTPUT_TOKENS,
+      preserveFormatting: true,
+      disableThinking: true,
+    })
+    if (response.error) return '群日报生成失败了，稍后再试。'
+
+    const parsed = parseDailyDigest(response.content)
+    const summary = clampDailyDigest(parsed.body)
+    if (!summary) return '群日报生成失败了，稍后再试。'
+
+    const favorite = context.allowFavorite
+      ? await this.applyDailyDigestFavorite(parsed.favorite, context.participants)
+      : ''
+
+    const card = await this.renderDigestCard({ ...context, summary }, {
+      title: '群日报',
+      extra: favorite,
+    })
+    if (card) await session.send(card)
+    else await session.send(favorite ? `${summary}\n\n${favorite}` : summary)
+
+    // 发送成功后才推进游标；生成或发送失败时下次会重新覆盖这段时间
+    await this.memoryService.markDailyDigest(session.channelId, context.now)
+  }
+
+  /**
+   * 把模型选出的昵称映射回区间内的群友，再给好感度。
+   * 返回展示用的一行文字，未生效时为空。
+   */
+  private async applyDailyDigestFavorite(
+    choice: string,
+    participants: DigestParticipant[],
+  ): Promise<string> {
+    if (!this.config.enable_favorability || !choice) return ''
+    const picked = resolveDigestFavorite(choice, participants)
+    if (!picked) return ''
+    const user = await ensureUserExists(this.ctx, picked.userId, picked.username)
+    if (!user) return ''
+    await updateFavorability(this.ctx, user, 20)
+    return `今日最喜欢：${picked.username}（好感度 +20）`
+  }
+
   private async renderDigestCard(
     digest: GroupDigestContext & { summary: string },
+    options: { title?: string, extra?: string } = {},
   ): Promise<string | null> {
     if (!this.puppeteer) return null
     const escape = (text: string) => text
@@ -1096,11 +1178,13 @@ export class SAT extends Sat {
   .title { font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #5b3f6e; margin-bottom: 6px; }
   .meta { font-size: 12px; color: #9a8ca3; margin-bottom: 14px; }
   .body { font-size: 16px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+  .extra { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #e6dced; font-size: 14px; color: #7a5f8c; }
   .footer { margin-top: 16px; font-size: 12px; color: #b3a7ba; text-align: right; }
 </style></head><body><div class="card">
-  <div class="title">省流</div>
+  <div class="title">${escape(options.title || '省流')}</div>
   <div class="meta">${escape(digest.range)} · 参考 ${digest.nodeCount} 条记忆 / ${digest.messageCount} 条消息</div>
   <div class="body">${escape(digest.summary)}</div>
+  ${options.extra ? `<div class="extra">${escape(options.extra)}</div>` : ''}
   <div class="footer">${escape(this.getBotName())}</div>
 </div></body></html>`
     try {

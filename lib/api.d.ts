@@ -6,7 +6,10 @@ export declare class APIClient {
     private currentKeyIndex;
     private ticketFailedUntil;
     constructor(ctx: Context, config: APIConfig);
-    chat(user: User, messages: Sat.Msg[]): Promise<{
+    chat(user: User, messages: Sat.Msg[], options?: {
+        maxOutputTokens?: number;
+        disableThinking?: boolean;
+    }): Promise<{
         content: string;
         error: boolean;
         reasoning_content?: string;

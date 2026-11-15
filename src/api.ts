@@ -25,7 +25,11 @@ export class APIClient {
   }
 
   // 发送聊天请求
-  public async chat(user: User, messages: Sat.Msg[]): Promise<{content:string, error: boolean, reasoning_content?: string}> {
+  public async chat(
+    user: User,
+    messages: Sat.Msg[],
+    options: { maxOutputTokens?: number; disableThinking?: boolean } = {},
+  ): Promise<{content:string, error: boolean, reasoning_content?: string}> {
     // if(user.userid == 'Alice') return { content: '<p>(系统)这是一个测试句子。这个句子稍长一些，包含多个标点符号！这是一个特别长的句子，需要超过最大长度限制的句子应该被保留原样，但这种情况在实际使用中应该尽量避免。最后？这是一个需要合并的短句！;</p>',
     //    error: false, reasoning_content: '(测试111111111111111111111111111111111111111111111111111111111111111555555555555)（测试2）' }
     const enableUserKey = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description == 'on'
@@ -68,10 +72,12 @@ export class APIClient {
       logger.error('未配置任何可用的 API key')
       return { content: '未配置 API key，请联系管理员', error: true }
     }
-    const payload = this.createPayload(messages, modle, thinkingType)
+    // 群日报这类长文任务显式关闭思考：推理会吃掉输出预算，还让单次请求变成两分钟
+    if (options.disableThinking) thinkingType = "disabled"
+    const payload = this.createPayload(messages, modle, thinkingType, options.maxOutputTokens)
     for (let i = 0; i < keys.length; i++) {
       try {
-        return await this.tryRequest(baseURL, payload, keys)
+        return await this.tryRequest(baseURL, payload, keys, options.maxOutputTokens)
       } catch (error) {
         if (i == keys.length - 1) {
           return this.handleAPIError(error)
@@ -216,13 +222,18 @@ export class APIClient {
   }
 
   // 生成请求体
-  private createPayload(messages: Sat.Msg[], model: string, thinkingType: string = "enabled"): Payload {
+  private createPayload(
+    messages: Sat.Msg[],
+    model: string,
+    thinkingType: string = "enabled",
+    maxOutputTokens?: number,
+  ): Payload {
     return {
       model: model,
       messages,
       temperature: this.config.temperature,
       top_p: 0.9,
-      max_tokens: this.config.max_output_tokens,
+      max_tokens: maxOutputTokens || this.config.max_output_tokens,
       frequency_penalty: this.config.frequency_penalty,
       presence_penalty: this.config.presence_penalty,
       reasoning_effort: this.config.reasoning_effort || "low",
@@ -245,9 +256,15 @@ export class APIClient {
   }
 
   // 尝试请求
-  private async tryRequest(URL: string, payload: Payload, keys: string[]): Promise<{ content: string; error: boolean; reasoning_content?: string }> {
+  private async tryRequest(
+    URL: string,
+    payload: Payload,
+    keys: string[],
+    maxOutputTokens?: number,
+  ): Promise<{ content: string; error: boolean; reasoning_content?: string }> {
     const url = `${trimSlash(URL)}/chat/completions`
     const headers = this.createHeaders(keys)
+    const limit = maxOutputTokens || this.config.max_output_tokens
 
     let content: string
     for (let i = 1; i <= this.config.maxRetryTimes; i++) {
@@ -269,7 +286,7 @@ export class APIClient {
         if (reasoning_content != '无' && content && content.length > reasoning_content.length) {
           logger.warn('返回内容疑似包含推理内容')
         }
-        if (result.completion_tokens > this.config.max_output_tokens) {
+        if (result.completion_tokens > limit) {
           logger.warn('返回内容过长导致被截断')
           continue
         }

@@ -21,10 +21,29 @@ export declare class MemoryRepository {
         limit?: number;
         before?: Date;
     }): Promise<SatDialogue[]>;
+    /**
+     * 与 getDialoguesAfter 相同，但从新到旧取。
+     * 群日报在积压超过上限时要保留最近的发言，而不是最早的一段。
+     */
+    getRecentDialoguesAfter(scopeId: string, after: Date, options?: {
+        kinds?: string[];
+        limit?: number;
+        before?: Date;
+    }): Promise<SatDialogue[]>;
     /** after < createdAt < before 的最后一条对话时间，用于跳过当天剩余部分 */
     getLastDialogueInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<Date | null>;
     /** 某个用户在某个 scope 里的最后一条发言时间（群聊「省流」的起点） */
     getLastDialogueByUser(scopeId: string, userId: string, kinds?: string[]): Promise<Date | null>;
+    /**
+     * 区间内发过言的群友，按发言条数降序。
+     * 群日报用它把模型选出的「今日最喜欢」昵称映射回 userId——昵称只在
+     * 原始消息里有，已归档的话题记忆只保留文本。
+     */
+    getDialogueParticipants(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<{
+        userId: string;
+        username: string;
+        count: number;
+    }[]>;
     countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number>;
     /** after < createdAt < before 的对话数，用于判断一个已关闭的日块是否归档干净 */
     countDialoguesInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<number>;
@@ -58,6 +77,9 @@ export declare class MemoryRepository {
      */
     setTopicStart(scopeId: string, at: Date): Promise<void>;
     setMigratedAt(scopeId: string, at: Date): Promise<void>;
+    /** 上一次群日报的时间；没有发过时返回 null */
+    getDailyDigestAt(scopeId: string): Promise<Date | null>;
+    setDailyDigestAt(scopeId: string, at: Date): Promise<void>;
     /**
      * 活跃 scope：最近活跃时间不早于 since。
      * `__global__` 只用来记迁移时间，不是对话作用域——它有 meta 但没有对话，

@@ -38,6 +38,9 @@ tsc
 # Group "省流" digest test (coarse-first selection, 200-char clamp)
 #   node -r esbuild-register external/satori-ai/scripts/test-group-digest.ts
 
+# Group daily report test (topic-only selection, favorite marker parsing, ~1000-char clamp)
+#   node -r esbuild-register external/satori-ai/scripts/test-group-daily-digest.ts
+
 # Profile entry rendering test (group "member:昵称" keys must keep the nickname)
 #   node -r esbuild-register external/satori-ai/scripts/test-profile-render.ts
 
