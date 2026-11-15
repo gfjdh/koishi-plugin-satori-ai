@@ -700,7 +700,11 @@ export class SAT extends Sat {
     queryHint?: string,
     options: PromptBuildOptions = {},
   ): Promise<string> {
-    const memoryContext = await this.memoryService.getPromptContext(session, queryHint || prompt, options)
+    // 随机插话不参考自己刚说过的话：群聊上下文里带着自己的发言，模型容易顺着复读
+    const contextOptions = prompt == randomPrompt
+      ? { ...options, excludeSelfDialogue: true }
+      : options
+    const memoryContext = await this.memoryService.getPromptContext(session, queryHint || prompt, contextOptions)
     const weatherPrompt = await this.weatherManager.buildWeatherPrompt(session)
     const user = await getUser(this.ctx, session.userId)
     const moodLevel = this.moodManager.getMoodLevel(user.userid)
@@ -887,7 +891,8 @@ export class SAT extends Sat {
     // 群聊随机插话要像其他群友一样留痕：后续对话的群聊环境里能看到「觉刚说过什么」。
     // 记录的是最终发出去的文字（含饰品/心情后缀），与群友看到的完全一致。
     if (recordSelfReply) {
-      this.memoryService.updateChannelDialogue(session, response, this.getSelfDialogueName())
+      // 标记为 self：下一次随机插话注入群聊上下文时会排除它，避免复读
+      this.memoryService.updateChannelDialogue(session, response, this.getSelfDialogueName(), true)
     }
     if (this.ctx.puppeteer && !this.puppeteerReady()) {
       logger.info('Puppeteer 未就绪，正在重新初始化 Puppeteer...')

@@ -12,9 +12,16 @@ export interface ShortTermOptions {
   now?: () => Date
 }
 
+/** 群聊环境的一条发言。`self` 标记 bot 自己说的话，与发言人昵称解耦 */
+export interface ChannelDialogueEntry {
+  name: string
+  content: string
+  self?: boolean
+}
+
 export class ShortTermMemory {
   private channelMemories = new Map<string, ChannelMemory>()
-  private channelDialogues = new Map<string, string[]>()
+  private channelDialogues = new Map<string, ChannelDialogueEntry[]>()
 
   constructor(private ctx: Context, private options: ShortTermOptions = { ttlMs: 0 }) {}
 
@@ -160,11 +167,11 @@ export class ShortTermMemory {
     }
   }
 
-  /** 记录一条群聊环境发言（含不对 bot 说的） */
-  updateChannelDialogue(session: Session, prompt: string, name: string, config: MemoryConfig): void {
+  /** 记录一条群聊环境发言（含不对 bot 说的）；self 标记 bot 自己的发言 */
+  updateChannelDialogue(session: Session, prompt: string, name: string, config: MemoryConfig, self = false): void {
     if (!config.channel_dialogues) return
     const list = this.channelDialogues.get(session.channelId) || []
-    list.push('"' + name + '" 说: ' + prompt)
+    list.push({ name, content: prompt, self })
     this.channelDialogues.set(
       session.channelId,
       list.length > config.channel_dialogues_max_length
@@ -175,9 +182,14 @@ export class ShortTermMemory {
 
   // ---------- 读取 ----------
 
-  getChannelDialogue(session: Session, config: MemoryConfig): string {
+  /** excludeSelf：随机插话时不要参考自己刚说过的话，否则容易顺着复读 */
+  getChannelDialogue(session: Session, config: MemoryConfig, options: { excludeSelf?: boolean } = {}): string {
     if (!config.channel_dialogues) return ''
-    const dialogue = this.channelDialogues.get(session.channelId)?.join('\n') || ''
+    const entries = (this.channelDialogues.get(session.channelId) || [])
+      .filter(entry => !options.excludeSelf || !entry.self)
+    // 普通对话保持原样；随机插话时如果只剩自己的发言，就不要注入一个空壳
+    if (options.excludeSelf && !entries.length) return ''
+    const dialogue = entries.map(entry => `"${entry.name}" 说: ${entry.content}`).join('\n')
     return '以下是群聊内最近的包括所有人的聊天记录，当当前对话涉及其中内容时你可以参考这些信息，但是要注意分辨发言人是谁：{\n'
       + dialogue + '\n}\n'
   }

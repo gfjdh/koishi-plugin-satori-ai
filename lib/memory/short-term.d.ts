@@ -6,6 +6,12 @@ export interface ShortTermOptions {
     /** 可注入时钟，便于验证过期逻辑；生产环境不传 */
     now?: () => Date;
 }
+/** 群聊环境的一条发言。`self` 标记 bot 自己说的话，与发言人昵称解耦 */
+export interface ChannelDialogueEntry {
+    name: string;
+    content: string;
+    self?: boolean;
+}
 export declare class ShortTermMemory {
     private ctx;
     private options;
@@ -25,9 +31,12 @@ export declare class ShortTermMemory {
     updateChannelMemory(session: Session, prompt: string, config: MemoryConfig, response?: string, scopeId?: string): void;
     /** 记录一条仅由机器人发出的主动消息（不伪造用户发言） */
     recordAssistant(session: Session, content: string, config: MemoryConfig, scopeId?: string): void;
-    /** 记录一条群聊环境发言（含不对 bot 说的） */
-    updateChannelDialogue(session: Session, prompt: string, name: string, config: MemoryConfig): void;
-    getChannelDialogue(session: Session, config: MemoryConfig): string;
+    /** 记录一条群聊环境发言（含不对 bot 说的）；self 标记 bot 自己的发言 */
+    updateChannelDialogue(session: Session, prompt: string, name: string, config: MemoryConfig, self?: boolean): void;
+    /** excludeSelf：随机插话时不要参考自己刚说过的话，否则容易顺着复读 */
+    getChannelDialogue(session: Session, config: MemoryConfig, options?: {
+        excludeSelf?: boolean;
+    }): string;
     getChannelMemory(channelId: string): MemoryEntry[];
     getChannelContext(channelId: string): MemoryEntry[];
     clearChannelMemory(channelId: string): void;

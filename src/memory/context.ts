@@ -64,6 +64,8 @@ export interface PromptBuildOptions {
   skipPyramid?: boolean
   /** 不注入关键词召回 */
   skipRecall?: boolean
+  /** 群聊环境里不注入 bot 自己的发言（随机插话时避免复读） */
+  excludeSelfDialogue?: boolean
 }
 
 export class ContextBuilder {
@@ -105,7 +107,9 @@ export class ContextBuilder {
       ? await this.buildRecall(scopeId, query, pyramid.ids)
       : ''
 
-    const ambient = this.shortTerm.getChannelDialogue(session, this.config.memoryConfig)
+    const ambient = this.shortTerm.getChannelDialogue(
+      session, this.config.memoryConfig, { excludeSelf: options.excludeSelfDialogue },
+    )
     return {
       common, group, ambient, stats,
       datetime: this.buildDateTime(),

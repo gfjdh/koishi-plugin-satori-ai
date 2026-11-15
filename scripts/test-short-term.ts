@@ -113,4 +113,21 @@ assert(
   '群聊记录里触发消息排在 bot 发言之前',
 )
 
+// ---------- 场景 9：随机插话的上下文排除 bot 自己的发言 ----------
+fakeNow = 0
+const mem9 = new ShortTermMemory({} as any, { ttlMs: minutes(60), now })
+mem9.updateChannelDialogue(session('u1', 'c9', '群友'), '今天在整理藏书', '群友', config)
+mem9.updateChannelDialogue(session('u1', 'c9'), '藏书又乱了', '觉大人（你）', config, true)
+const withSelf = mem9.getChannelDialogue(session('u1', 'c9'), config)
+const withoutSelf = mem9.getChannelDialogue(session('u1', 'c9'), config, { excludeSelf: true })
+assert(withSelf.includes('藏书又乱了'), '普通对话的群聊环境仍包含 bot 自己的发言')
+assert(!withoutSelf.includes('藏书又乱了'), '随机插话的群聊环境排除 bot 自己的发言')
+assert(withoutSelf.includes('今天在整理藏书'), '随机插话的群聊环境保留群友的发言')
+
+// 只有 bot 自己的发言时，随机插话不再注入空壳
+const mem10 = new ShortTermMemory({} as any, { ttlMs: minutes(60), now })
+mem10.updateChannelDialogue(session('u1', 'c10'), '自言自语', '觉大人（你）', config, true)
+assert(mem10.getChannelDialogue(session('u1', 'c10'), config, { excludeSelf: true }) === '',
+  '排除自己后没有剩余发言时不注入群聊环境')
+
 console.log('ALL PASS')

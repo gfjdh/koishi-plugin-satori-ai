@@ -225,12 +225,12 @@ export class MemoryService {
     return this.shortTerm.getChannelContext(channelId)
   }
 
-  getChannelDialogue(session: Session): string {
-    return this.shortTerm.getChannelDialogue(session, this.config)
+  getChannelDialogue(session: Session, options?: { excludeSelf?: boolean }): string {
+    return this.shortTerm.getChannelDialogue(session, this.config, options)
   }
 
-  updateChannelDialogue(session: Session, prompt: string, name: string): void {
-    this.shortTerm.updateChannelDialogue(session, prompt, name, this.config)
+  updateChannelDialogue(session: Session, prompt: string, name: string, self = false): void {
+    this.shortTerm.updateChannelDialogue(session, prompt, name, this.config, self)
   }
 
   clearChannelMemory(channelId: string): void {

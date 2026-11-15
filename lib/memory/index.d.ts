@@ -72,8 +72,10 @@ export declare class MemoryService {
     resolveViewScope(input: string): Promise<string>;
     getChannelMemory(channelId: string): import("../types").MemoryEntry[];
     getChannelContext(channelId: string): import("../types").MemoryEntry[];
-    getChannelDialogue(session: Session): string;
-    updateChannelDialogue(session: Session, prompt: string, name: string): void;
+    getChannelDialogue(session: Session, options?: {
+        excludeSelf?: boolean;
+    }): string;
+    updateChannelDialogue(session: Session, prompt: string, name: string, self?: boolean): void;
     clearChannelMemory(channelId: string): void;
     clearChannelDialogue(channelId: string): void;
     clearAllMemories(): void;
