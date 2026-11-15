@@ -9,21 +9,28 @@ import { Heartbeat } from './heartbeat'
 import { Migrator } from './migrate'
 import { ProfileManager } from './profile'
 import { MemoryRepository } from './repository'
-import { extendMemoryDatabase, Granularity } from './schema'
+import { extendMemoryDatabase } from './schema'
 import { ShortTermMemory } from './short-term'
 import { Summarizer } from './summarizer'
 import { GroupRecorder } from './group-recorder'
 import { GROUP_KINDS, groupScopeId, isGroupScope } from './group'
 import {
-  DAILY_DIGEST_MAX_RAW_MESSAGES, DigestParticipant, DIGEST_MAX_RAW_MESSAGES, DigestRange,
-  digestRangeStart, formatDigestMaterials, hasDigestRange, selectDigestNodes,
+  DigestParticipant, DIGEST_MAX_RAW_MESSAGES, DigestRange, digestRangeStart, formatDigestMaterials,
+  hasDigestRange, resolveReportPeriod, selectDigestNodes,
 } from './group-digest'
-import { dayStart, formatTime } from './summarizer'
+import { GROUP_REPORT_SPECS, GroupReportKind, GroupReportSpec } from './report-specs'
+import { formatTime } from './summarizer'
 import {
   GROUP_CATEGORY_LABELS, GROUP_CATEGORY_ORDER, buildGroupProfilePrompt,
 } from './prompts'
 
 const logger = new Logger('satori-memory')
+
+/** 本地日期键（按零点切分），用于判断报告是否已经在同一天奖励过 */
+function localDateKey(date: Date, timezoneOffset: number): string {
+  const local = new Date(date.getTime() + timezoneOffset * 3_600_000)
+  return `${local.getUTCFullYear()}-${local.getUTCMonth()}-${local.getUTCDate()}`
+}
 
 export interface MemoryServiceConfig extends MemoryConfig {
   enable_layered_memory: boolean
@@ -66,13 +73,17 @@ export interface GroupDigestContext {
   messageCount: number
 }
 
-/** 群聊「群日报」的选材结果 */
-export interface GroupDailyDigestContext extends GroupDigestContext {
+/** 群聊日报/周报/月报/年报的选材结果 */
+export interface GroupReportContext extends GroupDigestContext {
   participants: DigestParticipant[]
-  /** 本次日报的生成时刻；成功后写入游标，下次从这里继续 */
+  /** 本次报告的生成时刻 */
   now: Date
-  /** 今天还没发过日报时为 true：只有这一份日报能给「今日最喜欢」加好感度 */
+  /** 报告覆盖的终点；成功后写入日报游标，下一天从这里继续 */
+  to: Date
+  /** 当前记忆日还没出过报告时为 true：只有第一份报告能给「最喜欢」加好感度 */
   allowFavorite: boolean
+  kind: GroupReportKind
+  spec: GroupReportSpec
 }
 
 export class MemoryService {
@@ -356,68 +367,75 @@ export class MemoryService {
     }
   }
 
-  // ---------- 群聊日报 ----------
+  // ---------- 群聊日报/周报/月报/年报 ----------
 
   /**
-   * 群日报的选材：上次日报之后的全部话题记忆 + 尚未归档的原始消息。
+   * 按执行时刻决定出日报还是周/月/年报，并选出材料。
    *
-   * 与省流不同，这里不往粗粒度（日/周/月…）上找——日报本身覆盖的是一天左右，
-   * 话题记忆已经足够细。从没发过日报时按最近 24 小时算。
+   * 自然周期（周/月/年）只取已闭合的时段，选材按各自的最高粒度往下补：
+   * 周报 日→话题，月报 周→日→话题，年报 月→周→日→话题。日报仍从上次
+   * 日报游标开始，没有游标时取最近 24 小时。
    */
-  async buildGroupDailyDigestContext(session: Session): Promise<GroupDailyDigestContext | null> {
+  async buildGroupReportContext(session: Session): Promise<GroupReportContext | null> {
     const channelId = session.channelId
     if (!channelId) return null
     const scopeId = groupScopeId(channelId)
     const now = new Date()
+    const tz = this.config.memory_timezone_offset
+    const period = resolveReportPeriod(now, tz)
+    const spec = GROUP_REPORT_SPECS[period.kind]
 
     const last = await this.repo.getDailyDigestAt(scopeId)
-    const from = last || new Date(now.getTime() - 24 * 3_600_000)
+    const from = period.kind === 'daily'
+      ? (last || new Date(now.getTime() - 24 * 3_600_000))
+      : period.from!
 
     const { nodes, cursor } = await selectDigestNodes(
       from,
-      now,
+      period.to,
       (level, after, to) => this.repo.getMemoriesInRange(scopeId, level, after, to),
-      ['topic'] as Granularity[],
+      spec.levels,
     )
 
-    // 多取一条用来判断是否被上限截断。截断时保留最近的 600 条：
-    // 日报要覆盖的是最近的空档，丢掉更早的积压比丢掉昨晚的发言合理。
+    // 多取一条用来判断是否被上限截断。截断时保留最近的若干条：
+    // 报告要覆盖的是最近的空档，丢掉更早的积压比丢掉昨晚的发言合理。
     const fetched = await this.repo.getRecentDialoguesAfter(scopeId, cursor, {
       kinds: GROUP_KINDS,
-      limit: DAILY_DIGEST_MAX_RAW_MESSAGES + 1,
+      limit: spec.maxRawMessages + 1,
+      before: period.to,
     })
-    const truncated = fetched.length > DAILY_DIGEST_MAX_RAW_MESSAGES
+    const truncated = fetched.length > spec.maxRawMessages
     // 查询是从新到旧，格式化需要从旧到新
-    const raw = (truncated ? fetched.slice(0, DAILY_DIGEST_MAX_RAW_MESSAGES) : fetched).reverse()
+    const raw = (truncated ? fetched.slice(0, spec.maxRawMessages) : fetched).reverse()
     if (!nodes.length && !raw.length) return null
 
-    const tz = this.config.memory_timezone_offset
-    // 日报不标「提问者」：发起日报的人可能只是定时器用的账号，不是话题参与者
+    // 报告不标「提问者」：发起报告的人可能只是定时器用的账号，不是话题参与者
     let materials = formatDigestMaterials(nodes, raw, tz)
     if (truncated) {
-      materials += `\n\n（未归档消息超过 ${DAILY_DIGEST_MAX_RAW_MESSAGES} 条，更早的部分已省略）`
+      materials += `\n\n（未归档消息超过 ${spec.maxRawMessages} 条，更早的部分已省略）`
     }
 
-    const participants = (await this.repo.getDialogueParticipants(scopeId, from, now, GROUP_KINDS))
+    const participants = (await this.repo.getDialogueParticipants(scopeId, from, period.to, GROUP_KINDS))
       .filter(item => item.username)
 
-    // 「今日最喜欢」一天只奖励一次：同一天再次手动执行日报时只出正文
-    const allowFavorite = !last
-      || +dayStart(last, tz, this.config.memory_day_boundary_hour)
-        < +dayStart(now, tz, this.config.memory_day_boundary_hour)
+    // 同一记忆日只奖励一次：同一天重复执行报告时只出正文
+    const allowFavorite = !last || localDateKey(last, tz) !== localDateKey(now, tz)
 
     return {
       materials,
-      range: `${formatTime(from, tz)} ~ ${formatTime(now, tz)}`,
+      range: `${formatTime(from, tz)} ~ ${formatTime(period.to, tz)}`,
       nodeCount: nodes.length,
       messageCount: raw.length,
       participants,
       now,
+      to: period.to,
       allowFavorite,
+      kind: period.kind,
+      spec,
     }
   }
 
-  /** 日报生成成功后推进游标，下次从这一刻继续 */
+  /** 报告生成成功后推进日报游标：日报推到当前时刻，自然周期推到周期末尾 */
   async markDailyDigest(channelId: string, at: Date): Promise<void> {
     if (!channelId) return
     await this.repo.setDailyDigestAt(groupScopeId(channelId), at)

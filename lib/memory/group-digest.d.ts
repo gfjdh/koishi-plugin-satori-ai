@@ -1,18 +1,12 @@
 import { Granularity, SatDialogue, SatMemory } from './schema';
+import { GroupReportKind } from './report-specs';
 /** 由粗到细；topic 是最后一级 */
 export declare const DIGEST_LEVELS: Granularity[];
 export declare const DIGEST_MAX_CHARS = 200;
 /** 未归档原始消息最多取多少条，避免归档积压时输入失控 */
 export declare const DIGEST_MAX_RAW_MESSAGES = 300;
-/** 群日报比省流长得多：目标约 1000 字，硬上限留出余量 */
+/** 日报正文的硬上限；周/月/年报的上限在 report-specs.ts 里 */
 export declare const DAILY_DIGEST_MAX_CHARS = 1600;
-/**
- * 群日报单次请求的输出上限。1000 字中文加上思考模型自己的推理，
- * 生产默认的 512 根本不够，必须给这次请求单独放宽。
- */
-export declare const DAILY_DIGEST_MAX_OUTPUT_TOKENS = 8192;
-/** 群日报的未归档消息上限。一天的消息量比「上次发言以来」大得多 */
-export declare const DAILY_DIGEST_MAX_RAW_MESSAGES = 600;
 /** 「省流 -d/-m/-y」给出的范围；多个单位同时给出时依次往前推 */
 export interface DigestRange {
     days?: number;
@@ -26,6 +20,22 @@ export interface DigestRange {
  */
 export declare function digestRangeStart(now: Date, timezoneOffset: number, range: DigestRange): Date;
 export declare function hasDigestRange(range?: DigestRange): boolean;
+export interface ReportPeriod {
+    kind: GroupReportKind;
+    /** 日报为 null，由上次日报游标决定；其余为固定自然周期起点 */
+    from: Date | null;
+    /** 报告覆盖的终点（自然周期是已闭合的零点，日报是当前时刻） */
+    to: Date;
+}
+/**
+ * 按执行时刻判断该出哪种报告，并给出自然周期范围。
+ *
+ * 日期判定按本地零点：周一 00:00 之后就是周一，1 号 00:00 之后就是 1 号。
+ * 记忆金字塔自己的日界线（默认 04:00）不参与报告类型判断；周期末尾的
+ * 最后几个小时如果还没形成日节点，会自然退回话题/原始消息。
+ * 优先级：年 > 月 > 周 > 日（1 月 1 日只出年报，1 号只出月报，周一才出周报）。
+ */
+export declare function resolveReportPeriod(now: Date, timezoneOffset: number): ReportPeriod;
 /**
  * 按「粗粒度优先」挑出覆盖 (from, now] 的记忆节点。
  *
@@ -47,16 +57,16 @@ export declare function formatDigestMaterials(nodes: SatMemory[], rows: SatDialo
 /** 概要只需要一段话：去掉代码块、压平换行，并截到 200 字 */
 export declare function clampDigest(text: string, max?: number): string;
 export interface DailyDigestParsed {
-    /** 去掉「今日最喜欢」标记后的日报正文 */
+    /** 去掉「今日/本期最喜欢」标记后的正文 */
     body: string;
     /** 模型选中的群友昵称；没有选或没按格式输出时为空字符串 */
     favorite: string;
 }
 /**
- * 拆出日报正文和末尾的「今日最喜欢」标记。
+ * 拆出报告正文和末尾的「今日/本期最喜欢」标记。
  *
  * 标记是模型输出里的元数据，不能出现在卡片上。模型可能写成
- * 「【今日最喜欢】昵称」或「【今日最喜欢：昵称】」，前后还可能带省略号、
+ * 「【今日最喜欢】昵称」或「【本期最喜欢：昵称】」，前后还可能带省略号、
  * 句号；标记单独一行或跟在最后一段末尾都要能处理。
  */
 export declare function parseDailyDigest(text: string): DailyDigestParsed;

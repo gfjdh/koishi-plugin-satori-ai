@@ -1,4 +1,5 @@
 import { ProfileEntry } from './schema';
+import { GroupReportSpec } from './report-specs';
 export interface ArchiveResult {
     topic?: string;
     summary?: string;
@@ -22,8 +23,6 @@ export interface GroupSummaryResult {
     summary?: string;
     group_state?: string;
 }
-/** 群日报末尾「今日最喜欢」的固定标记，由 group-digest 解析 */
-export declare const DAILY_DIGEST_FAVORITE_MARK = "\u3010\u4ECA\u65E5\u6700\u559C\u6B22\u3011";
 /** 群画像的类别。与个人画像分开：这里描述的是「群」，不是某个用户 */
 export declare const GROUP_CATEGORY_LABELS: Record<string, string>;
 export declare const GROUP_CATEGORY_ORDER: string[];
@@ -85,10 +84,14 @@ export declare function buildGroupDigestTask(materials: string, range: string): 
     content: string;
 }[];
 /**
- * 群聊「群日报」的任务输入。
+ * 群聊日报/周报/月报/年报的任务输入。
  * 与省流共用人格与材料格式，但篇幅更长，并要求附一段角色点评；
- * 最后一行让角色选一个今天最喜欢的群友，供调用方加好感度。
+ * 最后一行让角色选一个最喜欢的群友，供调用方加好感度。
  */
+export declare function buildGroupReportTask(materials: string, range: string, participants: string[], spec: GroupReportSpec): {
+    role: string;
+    content: string;
+}[];
 export declare function buildGroupDailyDigestTask(materials: string, range: string, participants: string[]): {
     role: string;
     content: string;

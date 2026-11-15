@@ -82,12 +82,12 @@ export declare class SAT extends Sat {
     handleNickNameMiddleware(session: Session, prompt: string): Promise<string>;
     handleChannelMemoryManager(session: Session): Promise<void>;
     private handleDigest;
-    private handleDailyDigest;
+    private handleGroupReport;
     /**
      * 把模型选出的昵称映射回区间内的群友，再给好感度。
      * 返回展示用的一行文字，未生效时为空。
      */
-    private applyDailyDigestFavorite;
+    private applyDigestFavorite;
     private renderDigestCard;
     dispose(): Promise<void>;
 }

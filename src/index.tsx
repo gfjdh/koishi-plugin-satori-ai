@@ -9,10 +9,10 @@ import { APIClient } from './api'
 import { GroupDigestContext, MemoryService, MemoryServiceConfig } from './memory'
 import { isGroupSession } from './memory/group'
 import { PromptBuildOptions } from './memory/context'
-import { buildGroupDailyDigestTask, buildGroupDigestTask } from './memory/prompts'
+import { buildGroupReportTask, buildGroupDigestTask } from './memory/prompts'
 import {
-  clampDailyDigest, clampDigest, DAILY_DIGEST_MAX_OUTPUT_TOKENS, DigestParticipant, DigestRange,
-  parseDailyDigest, resolveDigestFavorite,
+  clampDailyDigest, clampDigest, DigestParticipant, DigestRange, parseDailyDigest,
+  resolveDigestFavorite,
 } from './memory/group-digest'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
@@ -319,9 +319,9 @@ export class SAT extends Sat {
       .option('years', '-y <years:number> 最近多少年')
       .action(async ({ session, options }) => this.handleDigest(session, options))
 
-    ctx.command('群日报', '群日报：总结自上次日报以来的群聊，附角色点评', { authority: 3 })
+    ctx.command('群日报', '群日报/周报/月报/年报：按日期自动选择（1月1日/每月1日/周一）', { authority: 3 })
       .alias('日报')
-      .action(async ({ session }) => this.handleDailyDigest(session))
+      .action(async ({ session }) => this.handleGroupReport(session))
 
     ctx.command('sat.memory.migrate', '重新迁移旧版记忆文件', { authority: 4 })
       .option('force', '-f')
@@ -1096,19 +1096,19 @@ export class SAT extends Sat {
     return summary
   }
 
-  // 群日报：与省流同一条对话链路，但选材是「上次日报以来的话题记忆 + 未归档消息」，
-  // 篇幅更长，并要求角色附一段点评、选出今日最喜欢的群友
-  private async handleDailyDigest(session: Session) {
+  // 群日报/周报/月报/年报共用一条链路：按日期决定类型，选材、篇幅、标题随之变化
+  private async handleGroupReport(session: Session) {
     if (!isGroupSession(session)) return '「群日报」只能在群里用。'
 
-    const context = await this.memoryService.buildGroupDailyDigestContext(session)
-    if (!context) return '这段时间群里没什么可写日报的。'
+    const context = await this.memoryService.buildGroupReportContext(session)
+    if (!context) return '这段时间群里没什么可写报告的。'
 
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
-    const task = buildGroupDailyDigestTask(
+    const task = buildGroupReportTask(
       context.materials,
       context.range,
       context.participants.map(item => item.username),
+      context.spec,
     )[0].content
     const messages = await this.buildMessages(session, task, {
       skipPyramid: true,
@@ -1117,38 +1117,39 @@ export class SAT extends Sat {
       skipAmbient: true,
     })
     const response = await this.getChatResponse(user, messages, task, session, {
-      maxOutputTokens: DAILY_DIGEST_MAX_OUTPUT_TOKENS,
+      maxOutputTokens: context.spec.maxOutputTokens,
       preserveFormatting: true,
       disableThinking: true,
     })
-    if (response.error) return '群日报生成失败了，稍后再试。'
+    if (response.error) return `群${context.spec.title}生成失败了，稍后再试。`
 
     const parsed = parseDailyDigest(response.content)
-    const summary = clampDailyDigest(parsed.body)
-    if (!summary) return '群日报生成失败了，稍后再试。'
+    const summary = clampDailyDigest(parsed.body, context.spec.maxChars)
+    if (!summary) return `群${context.spec.title}生成失败了，稍后再试。`
 
     const favorite = context.allowFavorite
-      ? await this.applyDailyDigestFavorite(parsed.favorite, context.participants)
+      ? await this.applyDigestFavorite(parsed.favorite, context.participants, context.spec.favoriteLabel)
       : ''
 
     const card = await this.renderDigestCard({ ...context, summary }, {
-      title: '群日报',
+      title: `群${context.spec.title}`,
       extra: favorite,
     })
     if (card) await session.send(card)
     else await session.send(favorite ? `${summary}\n\n${favorite}` : summary)
 
     // 发送成功后才推进游标；生成或发送失败时下次会重新覆盖这段时间
-    await this.memoryService.markDailyDigest(session.channelId, context.now)
+    await this.memoryService.markDailyDigest(session.channelId, context.to)
   }
 
   /**
    * 把模型选出的昵称映射回区间内的群友，再给好感度。
    * 返回展示用的一行文字，未生效时为空。
    */
-  private async applyDailyDigestFavorite(
+  private async applyDigestFavorite(
     choice: string,
     participants: DigestParticipant[],
+    label: string,
   ): Promise<string> {
     if (!this.config.enable_favorability || !choice) return ''
     const picked = resolveDigestFavorite(choice, participants)
@@ -1156,7 +1157,7 @@ export class SAT extends Sat {
     const user = await ensureUserExists(this.ctx, picked.userId, picked.username)
     if (!user) return ''
     await updateFavorability(this.ctx, user, 20)
-    return `今日最喜欢：${picked.username}（好感度 +20）`
+    return `${label}：${picked.username}（好感度 +20）`
   }
 
   private async renderDigestCard(

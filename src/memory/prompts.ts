@@ -1,6 +1,7 @@
 // src/memory/prompts.ts
 // 记忆系统所有提示词集中在这里，方便调整。
 import { ProfileEntry } from './schema'
+import { GROUP_REPORT_SPECS, GroupReportSpec } from './report-specs'
 
 export interface ArchiveResult {
   topic?: string
@@ -29,9 +30,6 @@ export interface GroupSummaryResult {
   summary?: string
   group_state?: string
 }
-
-/** 群日报末尾「今日最喜欢」的固定标记，由 group-digest 解析 */
-export const DAILY_DIGEST_FAVORITE_MARK = '【今日最喜欢】'
 
 /** 群画像的类别。与个人画像分开：这里描述的是「群」，不是某个用户 */
 export const GROUP_CATEGORY_LABELS: Record<string, string> = {
@@ -319,33 +317,42 @@ ${materials}
 }
 
 /**
- * 群聊「群日报」的任务输入。
+ * 群聊日报/周报/月报/年报的任务输入。
  * 与省流共用人格与材料格式，但篇幅更长，并要求附一段角色点评；
- * 最后一行让角色选一个今天最喜欢的群友，供调用方加好感度。
+ * 最后一行让角色选一个最喜欢的群友，供调用方加好感度。
  */
+export function buildGroupReportTask(
+  materials: string,
+  range: string,
+  participants: string[],
+  spec: GroupReportSpec,
+): { role: string; content: string }[] {
+  const names = participants.length ? participants.join('、') : '（材料里出现的群友）'
+  return [{
+    role: 'user',
+    content: `现在是「群${spec.title}」任务：为 ${range} 这段时间写一份群${spec.title}（${spec.periodLabel}的回顾）。
+
+群聊材料：
+${materials}
+
+可以选作${spec.favoriteLabel}的群友（只从这个列表里选）：${names}
+
+要求：
+· 用你自己的口吻写，像在群里和大家分享见闻，不要写成报告、列表或标题。
+· 先概括这段时间群里聊了哪些事、气氛如何，不少于 ${spec.summaryChars} 字；再写一段你自己的点评，说说你的看法、吐槽或感受，不少于 ${spec.commentChars} 字。全文 ${spec.targetMin}-${spec.targetMax} 字（不含最后一行标记），分 4-8 段。
+· 多写具体的人、具体的事和群里的原话细节，不要只写笼统印象；写不满 ${spec.targetMin} 字就继续补充材料里的事件。
+· 材料里的「你」是你自己说过的话，其他人按昵称区分。
+· 只写材料里出现过的内容，不要编造；材料没提到的事不要提。
+· 不要用 markdown，不要分点，不要输出字数统计、自我检查或修改说明。
+· 最后另起一行，从上面列出的群友里选一个你最喜欢的（只选列表里的），严格按这个格式输出：【${spec.favoriteLabel}】昵称
+· 标记之后不要再写任何内容。`,
+  }]
+}
+
 export function buildGroupDailyDigestTask(
   materials: string,
   range: string,
   participants: string[],
 ): { role: string; content: string }[] {
-  const names = participants.length ? participants.join('、') : '（材料里出现的群友）'
-  return [{
-    role: 'user',
-    content: `现在是「群日报」任务：为 ${range} 这段时间写一份群日报。
-
-群聊材料：
-${materials}
-
-这段时间在群里说过话的群友：${names}
-
-要求：
-· 用你自己的口吻写，像在群里和大家分享今天的见闻，不要写成报告、列表或标题。
-· 先概括这段时间群里聊了哪些事、气氛如何，不少于 600 字；再写一段你自己的点评，说说你的看法、吐槽或感受，不少于 250 字。全文 900-1100 字（不含最后一行标记），分 4-6 段。
-· 多写具体的人、具体的事和群里的原话细节，不要只写笼统印象；写不满 900 字就继续补充材料里的事件。
-· 材料里的「你」是你自己说过的话，其他人按昵称区分。
-· 只写材料里出现过的内容，不要编造；材料没提到的事不要提。
-· 不要用 markdown，不要分点，不要输出字数统计、自我检查或修改说明。
-· 最后另起一行，从上面提到的群友里选一个你最喜欢的，严格按这个格式输出：${DAILY_DIGEST_FAVORITE_MARK}昵称
-· 标记之后不要再写任何内容。`,
-  }]
+  return buildGroupReportTask(materials, range, participants, GROUP_REPORT_SPECS.daily)
 }

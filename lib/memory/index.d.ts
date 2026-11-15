@@ -3,6 +3,7 @@ import { APIClient } from '../api';
 import { MemoryConfig } from '../types';
 import { PromptBuildOptions, PromptContext } from './context';
 import { DigestParticipant, DigestRange } from './group-digest';
+import { GroupReportKind, GroupReportSpec } from './report-specs';
 export interface MemoryServiceConfig extends MemoryConfig {
     enable_layered_memory: boolean;
     /** 短期记忆空闲多久后清空（分钟），0 = 关闭 */
@@ -41,13 +42,17 @@ export interface GroupDigestContext {
     nodeCount: number;
     messageCount: number;
 }
-/** 群聊「群日报」的选材结果 */
-export interface GroupDailyDigestContext extends GroupDigestContext {
+/** 群聊日报/周报/月报/年报的选材结果 */
+export interface GroupReportContext extends GroupDigestContext {
     participants: DigestParticipant[];
-    /** 本次日报的生成时刻；成功后写入游标，下次从这里继续 */
+    /** 本次报告的生成时刻 */
     now: Date;
-    /** 今天还没发过日报时为 true：只有这一份日报能给「今日最喜欢」加好感度 */
+    /** 报告覆盖的终点；成功后写入日报游标，下一天从这里继续 */
+    to: Date;
+    /** 当前记忆日还没出过报告时为 true：只有第一份报告能给「最喜欢」加好感度 */
     allowFavorite: boolean;
+    kind: GroupReportKind;
+    spec: GroupReportSpec;
 }
 export declare class MemoryService {
     private ctx;
@@ -105,13 +110,14 @@ export declare class MemoryService {
      */
     buildGroupDigestContext(session: Session, range?: DigestRange): Promise<GroupDigestContext | null>;
     /**
-     * 群日报的选材：上次日报之后的全部话题记忆 + 尚未归档的原始消息。
+     * 按执行时刻决定出日报还是周/月/年报，并选出材料。
      *
-     * 与省流不同，这里不往粗粒度（日/周/月…）上找——日报本身覆盖的是一天左右，
-     * 话题记忆已经足够细。从没发过日报时按最近 24 小时算。
+     * 自然周期（周/月/年）只取已闭合的时段，选材按各自的最高粒度往下补：
+     * 周报 日→话题，月报 周→日→话题，年报 月→周→日→话题。日报仍从上次
+     * 日报游标开始，没有游标时取最近 24 小时。
      */
-    buildGroupDailyDigestContext(session: Session): Promise<GroupDailyDigestContext | null>;
-    /** 日报生成成功后推进游标，下次从这一刻继续 */
+    buildGroupReportContext(session: Session): Promise<GroupReportContext | null>;
+    /** 报告生成成功后推进日报游标：日报推到当前时刻，自然周期推到周期末尾 */
     markDailyDigest(channelId: string, at: Date): Promise<void>;
     getPromptContext(session: Session, query: string, options?: PromptBuildOptions): Promise<PromptContext>;
     addCommonSense(content: string): Promise<void>;
