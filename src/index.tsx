@@ -888,7 +888,7 @@ export class SAT extends Sat {
       this.addUserToWarnList(session, auxiliaryResult)
     }
     if (replyPointing) { response = `@${session.username} ` + response }
-    // 群聊随机插话要像其他群友一样留痕：后续对话的群聊环境里能看到「觉刚说过什么」。
+    // 群聊随机插话要像其他群友一样留痕：后续对话的群聊环境里能看到「自己刚说过什么」。
     // 记录的是最终发出去的文字（含饰品/心情后缀），与群友看到的完全一致。
     if (recordSelfReply) {
       // 标记为 self：下一次随机插话注入群聊上下文时会排除它，避免复读
@@ -1013,10 +1013,15 @@ export class SAT extends Sat {
     return await this.formatResponse(session, response.content, null, undefined, !response.error)
   }
 
+  /** 机器人的称呼：昵称列表第一个非空项；都没配置时退回「我」 */
+  public getBotName(): string {
+    const name = this.config.nick_name_list?.find(item => item && item.trim())
+    return name?.trim() || '我'
+  }
+
   /** 群聊环境里代表 bot 自己的名字：昵称列表第一个加「（你）」，让模型能分辨这是自己的发言 */
   private getSelfDialogueName(): string {
-    const name = this.config.nick_name_list?.find(item => item && item.trim())
-    return `${(name || '觉').trim()}（你）`
+    return `${this.getBotName()}（你）`
   }
 
   // 昵称中间件转接
@@ -1096,7 +1101,7 @@ export class SAT extends Sat {
   <div class="title">省流</div>
   <div class="meta">${escape(digest.range)} · 参考 ${digest.nodeCount} 条记忆 / ${digest.messageCount} 条消息</div>
   <div class="body">${escape(digest.summary)}</div>
-  <div class="footer">古明地觉</div>
+  <div class="footer">${escape(this.getBotName())}</div>
 </div></body></html>`
     try {
       return await this.puppeteer.render(html)

@@ -1,5 +1,5 @@
 // src/schedule.ts
-// 「觉的日程」引擎：从数据目录的 schedule.json 读取日程，按当前时刻挑一条，
+// 日程引擎：从数据目录的 schedule.json 读取日程，按当前时刻挑一条，
 // 替换随机变量，生成注入系统提示的一段文字。
 //
 // 内容全部在 JSON 里（默认 ${dataDir}/schedule.json），插件只负责匹配与选词。

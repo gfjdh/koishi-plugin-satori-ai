@@ -150,7 +150,7 @@ export function processPrompt(prompt: string, botNames: string[] = [], botIds: s
   if (prompt.includes(':poke')) return '戳戳';
   const names = botNames.filter(Boolean);
   const ids = botIds.filter(Boolean);
-  // @ 提及：<at id="..." name="古明地觉"/>。bot 自己的提及直接删除；
+  // @ 提及：<at id="..." name="昵称"/>。bot 自己的提及直接删除；
   // 其他用户的 @ 仍还原成名字，因为正文里有指代意义。
   prompt = prompt.replace(/<at\b[^>]*?name="([^\"]*)"[^>]*>/gi, (tag, name) => {
     const id = /\bid="([^"]*)"/i.exec(tag)?.[1];
@@ -162,8 +162,8 @@ export function processPrompt(prompt: string, botNames: string[] = [], botIds: s
   prompt = prompt.replace(/<[^>]*?avatar[^>]*>/g, '。回复：');
   prompt = prompt.replace(/<[^>]*?img[^>]*>/g, '[图片]');
   prompt = prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `${name}`);
-  // 不用 @、直接以昵称开场（如「古明地觉 你好」）时，开头的昵称同样是称呼。
-  // 昵称后面必须紧跟空白/标点或到句尾，避免把「古明地觉真可爱」误伤成「真可爱」。
+  // 不用 @、直接以昵称开场（如「昵称 你好」）时，开头的昵称同样是称呼。
+  // 昵称后面必须紧跟空白/标点或到句尾，避免把「昵称真可爱」误伤成「真可爱」。
   if (names.length) {
     const pattern = [...new Set(names.map(name => name.replace(/[\s,，.。!！?？~～:：;；、]+$/, '')))]
       .filter(Boolean)
