@@ -33,6 +33,24 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const CATEGORY_ORDER = ['identity', 'preference', 'aversion', 'requirement', 'habit', 'fact']
 
+/**
+ * 某些类别的 key 把主语编码在后缀里（群画像的 "member:昵称"）。
+ * 展示和注入系统提示时只取 content，会把这些条目的主语整个丢掉，
+ * 所以这里把 key 的后缀补回 content 前面。
+ */
+export function displayProfileContent(
+  entry: Pick<ProfileEntry, 'key' | 'category' | 'content'>,
+  nameKeyCategories: string[] = [],
+): string {
+  const content = entry.content || ''
+  if (!nameKeyCategories.includes(entry.category)) return content
+  const colon = (entry.key || '').indexOf(':')
+  if (colon < 0) return content
+  const name = entry.key.slice(colon + 1).trim()
+  if (!name || content.startsWith(name)) return content
+  return `${name}：${content}`
+}
+
 export interface ProfileConfig {
   enabled: boolean
   dryRun: boolean
@@ -45,6 +63,8 @@ export interface ProfileConfig {
   /** 类别展示顺序与名称；默认个人画像的六类 */
   categoryLabels?: Record<string, string>
   categoryOrder?: string[]
+  /** 这些类别的 key 是 "前缀:主语"，展示时要带上主语（群画像的 member:昵称） */
+  nameKeyCategories?: string[]
   /** 注入系统提示时的标题 */
   contextTitle?: string
   /** 命令输出里的主体名（“用户”/“群”） */
@@ -268,7 +288,7 @@ export class ProfileManager {
     for (const entry of selected) {
       const category = labels[entry.category] ? entry.category : 'fact'
       const list = grouped.get(category) || []
-      list.push(entry.content)
+      list.push(displayProfileContent(entry, this.config.nameKeyCategories))
       grouped.set(category, list)
     }
 
@@ -297,7 +317,7 @@ export class ProfileManager {
     const subject = this.config.subjectLabel || '用户'
     if (!entries.length) return `${subject}${scopeId}没有画像`
     const lines = entries.map(entry =>
-      `- [${labels[entry.category] || entry.category}] ${entry.content}`)
+      `- [${labels[entry.category] || entry.category}] ${displayProfileContent(entry, this.config.nameKeyCategories)}`)
     return `以下是${subject}${scopeId}的画像：{\n${lines.join('\n')}\n}`
   }
 }

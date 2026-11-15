@@ -106,6 +106,8 @@ export class MemoryService {
       buildPrompt: buildGroupProfilePrompt,
       categoryLabels: GROUP_CATEGORY_LABELS,
       categoryOrder: GROUP_CATEGORY_ORDER,
+      // 群友条目的 key 是 "member:昵称"，只取 content 会把主语丢掉
+      nameKeyCategories: ['member'],
       contextTitle: '以下是这个群的补充信息：',
       subjectLabel: '群',
       stateLabel: '群状态',

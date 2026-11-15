@@ -38,6 +38,9 @@ tsc
 # Group "省流" digest test (coarse-first selection, 200-char clamp)
 #   node -r esbuild-register external/satori-ai/scripts/test-group-digest.ts
 
+# Profile entry rendering test (group "member:昵称" keys must keep the nickname)
+#   node -r esbuild-register external/satori-ai/scripts/test-profile-render.ts
+
 # Repository transaction serialization test (SQLite rejects concurrent transactions)
 #   node -r esbuild-register external/satori-ai/scripts/test-repository-transact.ts
 ```

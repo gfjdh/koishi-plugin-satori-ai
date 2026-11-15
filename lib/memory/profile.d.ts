@@ -10,6 +10,12 @@ export declare const PROFILE_REJECT_COOLDOWN_MS: number;
 /** 历史回填被拒后的冷却更长：它只在积压追平后触发，本身不是高频路径 */
 export declare const BACKFILL_REJECT_COOLDOWN_MS: number;
 export type ProfileOutcome = 'ok' | 'failed' | 'rejected' | 'skipped';
+/**
+ * 某些类别的 key 把主语编码在后缀里（群画像的 "member:昵称"）。
+ * 展示和注入系统提示时只取 content，会把这些条目的主语整个丢掉，
+ * 所以这里把 key 的后缀补回 content 前面。
+ */
+export declare function displayProfileContent(entry: Pick<ProfileEntry, 'key' | 'category' | 'content'>, nameKeyCategories?: string[]): string;
 export interface ProfileConfig {
     enabled: boolean;
     dryRun: boolean;
@@ -25,6 +31,8 @@ export interface ProfileConfig {
     /** 类别展示顺序与名称；默认个人画像的六类 */
     categoryLabels?: Record<string, string>;
     categoryOrder?: string[];
+    /** 这些类别的 key 是 "前缀:主语"，展示时要带上主语（群画像的 member:昵称） */
+    nameKeyCategories?: string[];
     /** 注入系统提示时的标题 */
     contextTitle?: string;
     /** 命令输出里的主体名（“用户”/“群”） */
