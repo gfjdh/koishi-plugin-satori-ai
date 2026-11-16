@@ -123,6 +123,15 @@ export function shouldFilterContent(
   return blockWords.some(word => content.includes(word))
 }
 
+/**
+ * 输入是否被 censor 命中。
+ * mint-filter 会把屏蔽词的每个字符替换成 '*'，所以连续的 '**' 就是命中标记。
+ * 注意不要把「只剩称呼」的空消息占位符（见 EMPTY_PROMPT）算进来。
+ */
+export function hasCensorMark(content: string): boolean {
+  return /\*\*/.test(content || '')
+}
+
 // 随机数生成
 export function probabilisticCheck(probability: number): boolean {
   return Math.random() < probability
@@ -139,6 +148,15 @@ export function isErrorWithMessage(
 }
 
 /**
+ * 消息去掉称呼后什么也不剩（且连 @ 的名字都拿不到）时的兜底占位符。
+ *
+ * 这里不能用 '**'：审查命中（censor 把屏蔽词替换成等长星号）也是 '**'，
+ * 两者混用会让空消息被 inputContentCheck 当成触发屏蔽词，白白扣掉一整档好感度，
+ * 回复后面还会挂上「(好感↓↓)」。
+ */
+export const EMPTY_PROMPT = '（空）'
+
+/**
  * @param prompt 包含待处理标签的原始字符串
  * @param botNames bot 的称呼列表；用于去掉 @bot / 以昵称开场这类「称呼」，
  *   它们只是唤起方式，不应该进入对话记录与总结
@@ -150,15 +168,25 @@ export function processPrompt(prompt: string, botNames: string[] = [], botIds: s
   if (prompt.includes(':poke')) return '戳戳';
   const names = botNames.filter(Boolean);
   const ids = botIds.filter(Boolean);
-  // @ 提及：<at id="..." name="昵称"/>。bot 自己的提及直接删除；
+  // 只 @ 了 bot、没有正文时保留这条 @ 的名字：一律删掉会让消息变成空串，
+  // 模型只能看到占位符，记忆里也会留下一条没有内容的「（空）」。
+  let mentionName = '';
+  // @ 提及：<at id="..." name="昵称"/>。有正文时 bot 自己的提及直接删除；
   // 其他用户的 @ 仍还原成名字，因为正文里有指代意义。
   prompt = prompt.replace(/<at\b[^>]*?name="([^\"]*)"[^>]*>/gi, (tag, name) => {
     const id = /\bid="([^"]*)"/i.exec(tag)?.[1];
-    if (ids.includes(id) || names.includes(name)) return '';
+    if (ids.includes(id) || names.includes(name)) {
+      mentionName = mentionName || name.trim() || (names[0] || '');
+      return '';
+    }
     return name;
   });
-  // 少数适配器的 at 元素不带 name，同样不该出现在正文里
-  prompt = prompt.replace(/<at\b[^>]*\/?>/gi, '');
+  // 少数适配器的 at 元素不带 name，同样不该出现在正文里；是 bot 的 @ 时退回配置里的称呼
+  prompt = prompt.replace(/<at\b[^>]*\/?>/gi, (tag) => {
+    const id = /\bid="([^"]*)"/i.exec(tag)?.[1];
+    if (ids.includes(id)) mentionName = mentionName || (names[0] || '');
+    return '';
+  });
   prompt = prompt.replace(/<[^>]*?avatar[^>]*>/g, '。回复：');
   prompt = prompt.replace(/<[^>]*?img[^>]*>/g, '[图片]');
   prompt = prompt.replace(/<[^>]*?name="([^\"]*)"[^>]*>/g, (_, name) => `${name}`);
@@ -181,7 +209,10 @@ export function processPrompt(prompt: string, botNames: string[] = [], botIds: s
   }
   // 处理输入的字符串，删除其中的‘**’
   prompt = prompt.replace(/\*\*/g, '');
-  if (!prompt.trim()) return '**';
+  if (!prompt.trim()) {
+    // @ 的昵称同样要剥掉 '**'，否则群名片里带星号时又会被当成审查命中
+    return mentionName.replace(/\*\*/g, '').trim() || EMPTY_PROMPT;
+  }
   return prompt.trim();
 }
 

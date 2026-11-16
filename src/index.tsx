@@ -15,11 +15,11 @@ import {
   resolveDigestFavorite,
 } from './memory/group-digest'
 import { handleFixedDialogues } from './fixed-dialogues'
-import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck } from './favorability'
+import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck, shouldAppendFavorabilityMark } from './favorability'
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
 import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './types'
-import { addOutputCensor, filterResponse, processPrompt, splitSentences, updateUserPWithTicket } from './utils'
+import { addOutputCensor, filterResponse, hasCensorMark, processPrompt, splitSentences, updateUserPWithTicket } from './utils'
 import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
 import { Game } from './game'
@@ -444,8 +444,7 @@ export class SAT extends Sat {
     if (response.error || !this.config.enable_favorability) return null
     const user = await getUser(this.ctx, session.userId)
     const outputCheck = await outputContentCheck(this.ctx, response, session.userId, this.getFavorabilityConfig(), session, this.moodManager)
-    const regex = /\*\*/g
-    const inputCensor = prompt.match(regex)?.length
+    const inputCensor = hasCensorMark(prompt)
     const outputCensor = outputCheck < 0
     if (inputCensor) return "(好感↓↓)"
     if (outputCensor) return "(好感↓)"
@@ -903,7 +902,8 @@ export class SAT extends Sat {
       if (moodLevel == 'upset') response += '（烦躁）'
     }
     if (auxiliaryResult && this.config.visible_favorability && !ring && !bottle) {
-      response += auxiliaryResult
+      // 模型被骚扰时会自己写「好感↓」，这时不再追加重复的下降标记
+      if (shouldAppendFavorabilityMark(response, auxiliaryResult)) response += auxiliaryResult
       this.addUserToWarnList(session, auxiliaryResult)
     }
     if (replyPointing) { response = `@${session.username} ` + response }

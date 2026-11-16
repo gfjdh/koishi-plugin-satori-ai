@@ -6,7 +6,7 @@ import { MoodManager } from './mood'
 import { Sat } from './types'
 import * as fs from 'fs'
 import * as path from 'path'
-import { processPrompt } from './utils'
+import { processPrompt, hasCensorMark } from './utils'
 
 // 「奶瓶」道具提示词的兜底值：正常情况下由 p-shop 的道具配置页写入道具 metadata
 const DEFAULT_MOTHER_PROMPT = '你与用户的关系是母子，你是用户的母亲。你要像真正的母亲一样疼爱、照顾用户，语气温柔慈爱，可以唠叨、叮嘱，关心他的饮食起居和身体，包容他的一切小脾气，永远站在他这边。'
@@ -120,9 +120,8 @@ export async function inputContentCheck(
 ): Promise<number> {
   const user = await getUser(ctx, userid)
   if (!user) return 0
-  // 敏感词检测
-  const regex = /\*\*/g
-  const hasCensor = regex.test(content)
+  // 敏感词检测：'**' 是 censor 的命中标记，空消息占位符不算
+  const hasCensor = hasCensorMark(content)
 
   if (hasCensor && config.input_censor_favorability) {
     await moodManager.handleInputMoodChange(user, getFavorabilityLevel(user, config))
@@ -178,6 +177,20 @@ export async function outputContentCheck(
     }
   }
   return 0
+}
+
+/**
+ * 是否把好感度标记（「(好感↓)」「(好感↓↓)」等）追加到回复末尾。
+ *
+ * 模型被骚扰时会按提示词自己写「好感↓」，回复里已经表达了下降，
+ * 插件再补一个重复的「(好感↓)」只会重复。数值仍然照常结算，这里只管显示。
+ * 输入屏蔽词触发的「(好感↓↓)」保留：它表示用户这条消息本身违规，与回复自述的下降不是一回事。
+ * 上升标记不受影响：模型写了「好感↓」也可能是先抑后扬。
+ */
+export function shouldAppendFavorabilityMark(response: string, auxiliaryResult: string | void): boolean {
+  if (!auxiliaryResult) return false
+  if (auxiliaryResult === '(好感↓)' && (response || '').includes('好感↓')) return false
+  return true
 }
 
 // 确保输出屏蔽词文件存在

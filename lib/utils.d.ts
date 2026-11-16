@@ -12,11 +12,25 @@ export declare function detectEnglishLetters(text: string): number;
 export declare function trimSlash(url: string): string;
 export declare function splitSentences(text: string, MIN_LENGTH: number, MAX_LENGTH: number): string[];
 export declare function shouldFilterContent(content: string, blockWords: string[]): boolean;
+/**
+ * 输入是否被 censor 命中。
+ * mint-filter 会把屏蔽词的每个字符替换成 '*'，所以连续的 '**' 就是命中标记。
+ * 注意不要把「只剩称呼」的空消息占位符（见 EMPTY_PROMPT）算进来。
+ */
+export declare function hasCensorMark(content: string): boolean;
 export declare function probabilisticCheck(probability: number): boolean;
 export declare function isErrorWithMessage(error: unknown): error is {
     response: any;
     message: string;
 };
+/**
+ * 消息去掉称呼后什么也不剩（且连 @ 的名字都拿不到）时的兜底占位符。
+ *
+ * 这里不能用 '**'：审查命中（censor 把屏蔽词替换成等长星号）也是 '**'，
+ * 两者混用会让空消息被 inputContentCheck 当成触发屏蔽词，白白扣掉一整档好感度，
+ * 回复后面还会挂上「(好感↓↓)」。
+ */
+export declare const EMPTY_PROMPT = "\uFF08\u7A7A\uFF09";
 /**
  * @param prompt 包含待处理标签的原始字符串
  * @param botNames bot 的称呼列表；用于去掉 @bot / 以昵称开场这类「称呼」，
