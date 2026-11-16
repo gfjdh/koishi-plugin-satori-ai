@@ -13,6 +13,8 @@ export interface MemoryServiceConfig extends MemoryConfig {
     memory_day_boundary_hour: number;
     /** 昵称列表：归档时从用户发言里抹掉，避免昵称被当成发言人 */
     nick_name_list: string[];
+    /** 机器人名字（昵称列表第一个）：记忆提示词与归档标签里的自称 */
+    bot_name: string;
     /** 是否启用群聊记忆（按群建立独立的时间块金字塔，与按人记忆并存） */
     enable_group_memory: boolean;
     topic_switch_check: boolean;

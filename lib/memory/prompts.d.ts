@@ -31,14 +31,17 @@ export declare const GROUP_CATEGORY_ORDER: string[];
  * 都可能是任意角色名，靠识别名字区分发言人是穷举不完的，所以只认标签。
  */
 export declare const ROLE_USER = "\u7528\u6237";
-export declare const ROLE_AI = "AI";
+/** 昵称列表为空时的兜底标签；正常情况由昵称列表第一个提供 */
+export declare const BOT_NAME_FALLBACK = "\u89D2\u8272";
+/** 机器人作为发言人/记忆主语时的名字：优先用配置里的第一个昵称 */
+export declare function resolveBotName(botName?: string): string;
 /** 判断话题是否切换 */
 export declare function buildTopicSwitchPrompt(dialogues: string, topicStart: string): {
     role: string;
     content: string;
 }[];
 /** 把一段原始对话归档为一条 topic 记忆 */
-export declare function buildTopicArchivePrompt(dialogues: string): {
+export declare function buildTopicArchivePrompt(dialogues: string, botName?: string): {
     role: string;
     content: string;
 }[];
@@ -46,32 +49,32 @@ export declare function buildTopicArchivePrompt(dialogues: string): {
 export declare function buildTopicBatchPrompt(days: {
     date: string;
     dialogues: string;
-}[]): {
+}[], botName?: string): {
     role: string;
     content: string;
 }[];
 /** 把子级记忆汇总为父级记忆 */
-export declare function buildSummaryPrompt(level: string, children: string): {
+export declare function buildSummaryPrompt(level: string, children: string, botName?: string): {
     role: string;
     content: string;
 }[];
 /** 增量更新用户画像 */
-export declare function buildProfilePrompt(existing: ProfileEntry[], input: string): {
+export declare function buildProfilePrompt(existing: ProfileEntry[], input: string, botName?: string): {
     role: string;
     content: string;
 }[];
 /** 把一个时间块内的群聊记录归档为一条 topic 记忆 */
-export declare function buildGroupArchivePrompt(messages: string): {
+export declare function buildGroupArchivePrompt(messages: string, botName?: string): {
     role: string;
     content: string;
 }[];
 /** 把子级群记忆汇总为父级群记忆 */
-export declare function buildGroupSummaryPrompt(level: string, children: string): {
+export declare function buildGroupSummaryPrompt(level: string, children: string, botName?: string): {
     role: string;
     content: string;
 }[];
 /** 增量更新群画像 */
-export declare function buildGroupProfilePrompt(existing: ProfileEntry[], input: string): {
+export declare function buildGroupProfilePrompt(existing: ProfileEntry[], input: string, botName?: string): {
     role: string;
     content: string;
 }[];

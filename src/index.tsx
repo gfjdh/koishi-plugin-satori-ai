@@ -194,6 +194,7 @@ export class SAT extends Sat {
       memory_timezone_offset: this.config.memory_timezone_offset,
       memory_day_boundary_hour: this.config.memory_day_boundary_hour,
       nick_name_list: this.config.nick_name_list,
+      bot_name: this.getBotName(),
       topic_switch_check: this.config.topic_switch_check,
       summary_heartbeat_minutes: this.config.summary_heartbeat_minutes,
       summary_dry_run: this.config.summary_dry_run,

@@ -24,10 +24,12 @@ export interface ProfileConfig {
     /** 只对最近 N 天内结束的日节点更新画像；<=0 表示不限制 */
     updateWindowDays?: number;
     /** 提示词构造器；默认个人画像，群画像传入自己的版本 */
-    buildPrompt?: (existing: ProfileEntry[], input: string) => {
+    buildPrompt?: (existing: ProfileEntry[], input: string, botName?: string) => {
         role: string;
         content: string;
     }[];
+    /** 机器人名字（昵称列表第一个）：提示词里指代角色时使用 */
+    botName?: string;
     /** 类别展示顺序与名称；默认个人画像的六类 */
     categoryLabels?: Record<string, string>;
     categoryOrder?: string[];

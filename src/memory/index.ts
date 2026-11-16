@@ -41,6 +41,8 @@ export interface MemoryServiceConfig extends MemoryConfig {
   memory_day_boundary_hour: number
   /** 昵称列表：归档时从用户发言里抹掉，避免昵称被当成发言人 */
   nick_name_list: string[]
+  /** 机器人名字（昵称列表第一个）：记忆提示词与归档标签里的自称 */
+  bot_name: string
   /** 是否启用群聊记忆（按群建立独立的时间块金字塔，与按人记忆并存） */
   enable_group_memory: boolean
   topic_switch_check: boolean
@@ -115,6 +117,7 @@ export class MemoryService {
       maxEntries: config.profile_max_entries,
       contextEntries: config.profile_context_entries,
       updateWindowDays: config.profile_update_window_days,
+      botName: config.bot_name,
     })
     // 群画像与个人画像走同一套增量合并，只是提示词、类别和标题不同
     this.groupProfile = new ProfileManager(ctx, this.repo, api, {
@@ -123,6 +126,7 @@ export class MemoryService {
       maxEntries: config.profile_max_entries,
       contextEntries: config.profile_context_entries,
       updateWindowDays: config.profile_update_window_days,
+      botName: config.bot_name,
       buildPrompt: buildGroupProfilePrompt,
       categoryLabels: GROUP_CATEGORY_LABELS,
       categoryOrder: GROUP_CATEGORY_ORDER,
@@ -148,6 +152,7 @@ export class MemoryService {
       timezoneOffset: config.memory_timezone_offset,
       dayBoundaryHour: config.memory_day_boundary_hour,
       nickNames: config.nick_name_list,
+      botName: config.bot_name,
       maxCallsPerTick: config.summary_max_calls_per_tick,
       resolveUser,
       groupProfile: this.groupProfile,

@@ -36,6 +36,8 @@ export interface SummarizerConfig {
     dayBoundaryHour: number;
     /** 昵称列表；归档时从用户发言里抹掉，避免昵称被当成发言人 */
     nickNames?: string[];
+    /** 机器人名字（昵称列表第一个）：归档输入与提示词里的发言人标签 */
+    botName?: string;
     /** 每个 scope 每次汇总最多发起多少次辅助模型调用 */
     maxCallsPerTick?: number;
     /** scopeId -> 用户；用于让持“地灵殿通行证”的用户走自己的 key */
@@ -77,9 +79,9 @@ export declare function collectArchiveNickNames(baseNames: string[], user: Pick<
  * 一个作用域里出现多个昵称时（按群记忆）才把昵称补在标签后面，
  * 只用来区分不同的人，不承担身份判断。
  */
-export declare function formatDialogueRows(rows: DialogueRow[], timezoneOffset: number, names?: string[]): string;
+export declare function formatDialogueRows(rows: DialogueRow[], timezoneOffset: number, names?: string[], botName?: string): string;
 export interface GroupRowFormatOptions {
-    /** 机器人发言的标签：归档用默认的「AI」，省流材料用「我」 */
+    /** 机器人发言的标签：归档默认用昵称列表第一个，省流材料用「你」 */
     botLabel?: string;
     /** 提问者的 userId；他的发言会额外标注，避免模型把别人的话当成他说的 */
     requesterId?: string;
@@ -115,6 +117,7 @@ export declare class Summarizer {
     constructor(ctx: Context, repo: MemoryRepository, api: APIClient, profile: ProfileManager, config: SummarizerConfig);
     private get tz();
     private get boundaryHour();
+    private get botName();
     /**
      * 每轮对话后调用：必要时归档当前话题。
      * 注意：这里不阻塞回复，由调用方以 fire-and-forget 方式触发。

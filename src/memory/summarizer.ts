@@ -17,8 +17,9 @@ import { parseLlmJson } from './json'
 import {
   buildGroupArchivePrompt, buildGroupSummaryPrompt, buildSummaryPrompt,
   buildTopicArchivePrompt, buildTopicBatchPrompt, buildTopicSwitchPrompt,
+  resolveBotName,
   ArchiveDayResult, ArchiveResult, GroupArchiveResult, GroupSummaryResult,
-  ROLE_AI, ROLE_USER, SummaryResult,
+  ROLE_USER, SummaryResult,
 } from './prompts'
 import {
   GROUP_BOT_KIND, GROUP_KINDS, GROUP_MAX_MESSAGES, GROUP_MIN_BLOCK_MESSAGES,
@@ -81,6 +82,8 @@ export interface SummarizerConfig {
   dayBoundaryHour: number
   /** 昵称列表；归档时从用户发言里抹掉，避免昵称被当成发言人 */
   nickNames?: string[]
+  /** 机器人名字（昵称列表第一个）：归档输入与提示词里的发言人标签 */
+  botName?: string
   /** 每个 scope 每次汇总最多发起多少次辅助模型调用 */
   maxCallsPerTick?: number
   /** scopeId -> 用户；用于让持“地灵殿通行证”的用户走自己的 key */
@@ -177,9 +180,11 @@ export function formatDialogueRows(
   rows: DialogueRow[],
   timezoneOffset: number,
   names: string[] = [],
+  botName?: string,
 ): string {
   const userNames = new Set(rows.map(row => (row.username || '').trim()).filter(Boolean))
   const showName = userNames.size > 1
+  const bot = resolveBotName(botName)
   return rows.map((row) => {
     const time = formatTime(row.createdAt, timezoneOffset)
     const name = showName ? (row.username || '').trim() : ''
@@ -188,13 +193,13 @@ export function formatDialogueRows(
     const lines = [`[${time}] ${speaker}说「${content}」`]
     // '…' 是关闭模型自发言记忆时的占位，不代表真的说了这句话
     const reply = row.aiContent && row.aiContent !== '…' ? oneLine(row.aiContent) : ''
-    if (reply) lines.push(`[${time}] ${ROLE_AI}说「${reply}」`)
+    if (reply) lines.push(`[${time}] ${bot}说「${reply}」`)
     return lines.join('\n')
   }).join('\n')
 }
 
 export interface GroupRowFormatOptions {
-  /** 机器人发言的标签：归档用默认的「AI」，省流材料用「我」 */
+  /** 机器人发言的标签：归档默认用昵称列表第一个，省流材料用「你」 */
   botLabel?: string
   /** 提问者的 userId；他的发言会额外标注，避免模型把别人的话当成他说的 */
   requesterId?: string
@@ -212,7 +217,7 @@ export function formatGroupRows(
   timezoneOffset: number,
   options: GroupRowFormatOptions = {},
 ): string {
-  const botLabel = options.botLabel || ROLE_AI
+  const botLabel = options.botLabel || resolveBotName()
   return rows.map((row) => {
     const time = formatTime(row.createdAt, timezoneOffset)
     const name = (row.username || '').trim()
@@ -308,6 +313,7 @@ export class Summarizer {
 
   private get tz() { return this.config.timezoneOffset }
   private get boundaryHour() { return this.config.dayBoundaryHour }
+  private get botName() { return resolveBotName(this.config.botName) }
 
   // ---------- 话题 ----------
 
@@ -370,11 +376,11 @@ export class Summarizer {
       return 'empty'
     }
 
-    let result = await this.api.auxiliaryChat(buildTopicArchivePrompt(text), user)
+    let result = await this.api.auxiliaryChat(buildTopicArchivePrompt(text, this.botName), user)
     if (result.error && isRejectedContent(result.content)) {
       // 被审核拒绝时用脱敏副本再试一次：少一点细节，也好过整天不归档
       logger.warn(`topic 归档被内容审核拒绝，改用脱敏输入重试 scope=${scopeId}`)
-      result = await this.api.auxiliaryChat(buildTopicArchivePrompt(redactSensitiveText(text)), user)
+      result = await this.api.auxiliaryChat(buildTopicArchivePrompt(redactSensitiveText(text), this.botName), user)
     }
     if (result.error) {
       logger.warn(`topic 归档失败 scope=${scopeId}: ${result.content}`)
@@ -474,13 +480,13 @@ export class Summarizer {
       date: formatTime(block.from, this.tz).slice(0, 10),
       dialogues: this.formatDialogues(block.dialogues, user),
     }))
-    let result = await this.api.auxiliaryChat(buildTopicBatchPrompt(groups), user)
+    let result = await this.api.auxiliaryChat(buildTopicBatchPrompt(groups, this.botName), user)
     if (result.error && isRejectedContent(result.content)) {
       logger.warn(`topic 合并归档被内容审核拒绝，改用脱敏输入重试 scope=${scopeId} 天数=${blocks.length}`)
       result = await this.api.auxiliaryChat(buildTopicBatchPrompt(groups.map(group => ({
         date: group.date,
         dialogues: redactSensitiveText(group.dialogues),
-      }))), user)
+      })), this.botName), user)
     }
     if (result.error) {
       logger.warn(`topic 合并归档失败 scope=${scopeId} 天数=${blocks.length}: ${result.content}`)
@@ -762,11 +768,11 @@ export class Summarizer {
       return 'empty'
     }
 
-    const text = formatGroupRows(compact, this.tz)
-    let result = await this.api.auxiliaryChat(buildGroupArchivePrompt(text), null)
+    const text = formatGroupRows(compact, this.tz, { botLabel: this.botName })
+    let result = await this.api.auxiliaryChat(buildGroupArchivePrompt(text, this.botName), null)
     if (result.error && isRejectedContent(result.content)) {
       logger.warn(`群聊归档被内容审核拒绝，改用脱敏输入重试 scope=${scopeId}`)
-      result = await this.api.auxiliaryChat(buildGroupArchivePrompt(redactSensitiveText(text)), null)
+      result = await this.api.auxiliaryChat(buildGroupArchivePrompt(redactSensitiveText(text), this.botName), null)
     }
     if (result.error) {
       logger.warn(`群聊归档失败 scope=${scopeId}: ${result.content}`)
@@ -982,7 +988,7 @@ export class Summarizer {
         }
 
         const result = await this.api.auxiliaryChat(
-          group ? buildGroupSummaryPrompt(level, text) : buildSummaryPrompt(level, text),
+          group ? buildGroupSummaryPrompt(level, text, this.botName) : buildSummaryPrompt(level, text, this.botName),
           group ? null : user,
         )
         budget.calls -= 1
@@ -1027,7 +1033,7 @@ export class Summarizer {
   // ---------- 工具 ----------
 
   private formatDialogues(rows: DialogueRow[], user: User | null): string {
-    return formatDialogueRows(rows, this.tz, collectArchiveNickNames(this.config.nickNames || [], user))
+    return formatDialogueRows(rows, this.tz, collectArchiveNickNames(this.config.nickNames || [], user), this.botName)
   }
 
   private formatChildren(children: SatMemory[], group = false): string {

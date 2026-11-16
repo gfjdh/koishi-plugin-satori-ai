@@ -59,7 +59,9 @@ export interface ProfileConfig {
   /** 只对最近 N 天内结束的日节点更新画像；<=0 表示不限制 */
   updateWindowDays?: number
   /** 提示词构造器；默认个人画像，群画像传入自己的版本 */
-  buildPrompt?: (existing: ProfileEntry[], input: string) => { role: string, content: string }[]
+  buildPrompt?: (existing: ProfileEntry[], input: string, botName?: string) => { role: string, content: string }[]
+  /** 机器人名字（昵称列表第一个）：提示词里指代角色时使用 */
+  botName?: string
   /** 类别展示顺序与名称；默认个人画像的六类 */
   categoryLabels?: Record<string, string>
   categoryOrder?: string[]
@@ -210,8 +212,9 @@ export class ProfileManager {
     const redact = this.redactScopes.has(scopeId)
     const buildPrompt = this.config.buildPrompt || buildProfilePrompt
 
+    const [promptEntries, promptInput] = this.promptInput(entries, input, redact)
     let result = await this.api.auxiliaryChat(
-      buildPrompt(...this.promptInput(entries, input, redact)), user,
+      buildPrompt(promptEntries, promptInput, this.config.botName), user,
     )
 
     if (result.error && isRejectedContent(result.content)) {
@@ -223,8 +226,9 @@ export class ProfileManager {
       }
       this.redactScopes.add(scopeId)
       logger.warn(`画像更新被内容审核拒绝，改用脱敏输入重试 scope=${scopeId}`)
+      const [redactedEntries, redactedInput] = this.promptInput(entries, input, true)
       result = await this.api.auxiliaryChat(
-        buildPrompt(...this.promptInput(entries, input, true)), user,
+        buildPrompt(redactedEntries, redactedInput, this.config.botName), user,
       )
       if (result.error) {
         if (isRejectedContent(result.content)) {

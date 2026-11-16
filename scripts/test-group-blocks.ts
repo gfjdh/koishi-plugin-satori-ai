@@ -20,6 +20,8 @@ const assert = (cond: any, message: string) => {
   console.log(`ok: ${message}`)
 }
 
+const BOT = '古明地觉'
+
 const tz = 8
 const at = (minute: number) => new Date(Date.UTC(2026, 10, 14, 12, minute))
 const dayEnd = new Date(at(0).getTime() + 86_400_000)
@@ -133,29 +135,31 @@ const msg = (
     msg(0, '今天天气不错', '灵梦'),
     msg(1, '嗯，确实', '', 'ambient-bot'),
     msg(2, '觉：我们走吧', '魔理沙'),
-  ], tz)
+  ], tz, { botLabel: BOT })
   const lines = text.split('\n')
   assert(lines[0].includes('用户（灵梦）说「今天天气不错」'), '群友发言带昵称标签')
-  assert(lines[1] === '[2026/11/14 20:01] AI说「嗯，确实」', '机器人发言用固定标签 AI')
+  assert(lines[1] === `[2026/11/14 20:01] ${BOT}说「嗯，确实」`, '机器人发言用昵称列表第一个作为标签')
   assert(lines[2].includes('用户（魔理沙）说「觉：我们走吧」'), '内容里的「觉：」不会把发言人换成机器人')
   assert(!lines.some(line => line.includes('] 觉')), '内容里的名字不会变成发言人标签')
 }
 
 // ---------- 场景 10：提示词 ----------
 {
-  const archive = buildGroupArchivePrompt('对话').map(item => item.content).join('\n')
+  const archive = buildGroupArchivePrompt('对话', BOT).map(item => item.content).join('\n')
   assert(archive.includes('只有标签决定谁在说话'), '群归档提示词声明标签是唯一判据')
   assert(archive.includes('group_state'), '群归档输出群状态而不是用户状态')
   assert(archive.includes('这是群聊，不是一对一对话'), '群归档提示词说明记忆对象是整个群')
+  assert(archive.includes(`提到 ${BOT} 时写「${BOT}」`), '群归档要求用昵称指代机器人')
 
-  const summary = buildGroupSummaryPrompt('day', '子记忆').map(item => item.content).join('\n')
+  const summary = buildGroupSummaryPrompt('day', '子记忆', BOT).map(item => item.content).join('\n')
   assert(summary.includes('群聊记忆'), '群汇总提示词面向群聊')
   assert(summary.includes('group_state'), '群汇总输出群状态')
 
-  const profile = buildGroupProfilePrompt([], '材料').map(item => item.content).join('\n')
+  const profile = buildGroupProfilePrompt([], '材料', BOT).map(item => item.content).join('\n')
   assert(profile.includes('member:昵称'), '群画像用 member:昵称 作为稳定 key')
   assert(profile.includes('群友关系'), '群画像包含群友关系类别')
   assert(profile.includes('隐私信息'), '群画像禁止记录隐私信息')
+  assert(!profile.includes('助手') && !profile.includes('「AI」'), '群画像提示词不再把角色称为助手或 AI')
 }
 
 // ---------- 场景 11：默认常量 ----------
