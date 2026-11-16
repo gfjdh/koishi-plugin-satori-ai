@@ -85,7 +85,7 @@ export declare class SAT extends Sat {
     private handleGroupReport;
     /**
      * 把模型选出的昵称映射回区间内的群友，再给好感度。
-     * 返回展示用的一行文字，未生效时为空。
+     * 返回被选中的群友；未生效时返回 null。
      */
     private applyDigestFavorite;
     private renderDigestCard;

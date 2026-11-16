@@ -84,6 +84,8 @@ export interface GroupReportContext extends GroupDigestContext {
   to: Date
   /** 当前记忆日还没出过报告时为 true：只有第一份报告能给「最喜欢」加好感度 */
   allowFavorite: boolean
+  /** 上一份报告选中的群友；本期候选列表已排除此人 */
+  previousFavorite: { userId: string, username: string } | null
   kind: GroupReportKind
   spec: GroupReportSpec
 }
@@ -422,6 +424,11 @@ export class MemoryService {
 
     const participants = (await this.repo.getDialogueParticipants(scopeId, from, period.to, GROUP_KINDS))
       .filter(item => item.username)
+    // 上一份报告选过的人，本期候选列表直接排除，避免模型重复选
+    const previousFavorite = await this.repo.getLastFavorite(scopeId)
+    const favoriteCandidates = previousFavorite
+      ? participants.filter(item => item.userId !== previousFavorite.userId)
+      : participants
 
     // 同一记忆日只奖励一次：同一天重复执行报告时只出正文
     const allowFavorite = !last || localDateKey(last, tz) !== localDateKey(now, tz)
@@ -431,10 +438,11 @@ export class MemoryService {
       range: `${formatTime(from, tz)} ~ ${formatTime(period.to, tz)}`,
       nodeCount: nodes.length,
       messageCount: raw.length,
-      participants,
+      participants: favoriteCandidates,
       now,
       to: period.to,
       allowFavorite,
+      previousFavorite,
       kind: period.kind,
       spec,
     }
@@ -444,6 +452,12 @@ export class MemoryService {
   async markDailyDigest(channelId: string, at: Date): Promise<void> {
     if (!channelId) return
     await this.repo.setDailyDigestAt(groupScopeId(channelId), at)
+  }
+
+  /** 记录本期的「最喜欢」，下一份报告不能再选同一个人 */
+  async markFavorite(channelId: string, userId: string, username: string): Promise<void> {
+    if (!channelId || !userId) return
+    await this.repo.setLastFavorite(groupScopeId(channelId), userId, username)
   }
 
   // ---------- 系统提示 ----------

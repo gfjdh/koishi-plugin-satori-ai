@@ -231,6 +231,18 @@ async function main() {
     assert(yearly.includes('群年报'), '年报提示词使用年报标题')
     assert(yearly.includes('3600-4400 字'), '年报篇幅 3600-4400 字')
     assert(yearly.includes('过去一年'), '年报说明过去一年')
+
+    const repeat = buildGroupReportTask(
+      '材料内容', '11-09 04:00 ~ 11-16 04:00', ['小明', '小红'], GROUP_REPORT_SPECS.weekly, '小明',
+    )[0].content
+    assert(repeat.includes('上一期最喜欢的是 小明'), '提示词提醒上一期最喜欢的人')
+    assert(repeat.includes('本期不能重复选同一个人'), '提示词要求本期不能重复选')
+
+    const empty = buildGroupReportTask(
+      '材料内容', '11-15 04:00 ~ 11-16 04:00', [], GROUP_REPORT_SPECS.daily, '小明',
+    )[0].content
+    assert(empty.includes('本期没有可选的群友'), '候选列表为空时明确提示')
+    assert(empty.includes('跳过最喜欢标记'), '候选列表为空时要求跳过标记')
   }
 
   console.log('\n全部通过')

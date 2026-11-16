@@ -53,6 +53,11 @@ export interface GroupReportContext extends GroupDigestContext {
     to: Date;
     /** 当前记忆日还没出过报告时为 true：只有第一份报告能给「最喜欢」加好感度 */
     allowFavorite: boolean;
+    /** 上一份报告选中的群友；本期候选列表已排除此人 */
+    previousFavorite: {
+        userId: string;
+        username: string;
+    } | null;
     kind: GroupReportKind;
     spec: GroupReportSpec;
 }
@@ -121,6 +126,8 @@ export declare class MemoryService {
     buildGroupReportContext(session: Session): Promise<GroupReportContext | null>;
     /** 报告生成成功后推进日报游标：日报推到当前时刻，自然周期推到周期末尾 */
     markDailyDigest(channelId: string, at: Date): Promise<void>;
+    /** 记录本期的「最喜欢」，下一份报告不能再选同一个人 */
+    markFavorite(channelId: string, userId: string, username: string): Promise<void>;
     getPromptContext(session: Session, query: string, options?: PromptBuildOptions): Promise<PromptContext>;
     addCommonSense(content: string): Promise<void>;
     addGroupCommonSense(content: string, channelId: string): Promise<void>;

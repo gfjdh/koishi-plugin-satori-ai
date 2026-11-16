@@ -150,10 +150,12 @@ const msg = (
   assert(archive.includes('group_state'), '群归档输出群状态而不是用户状态')
   assert(archive.includes('这是群聊，不是一对一对话'), '群归档提示词说明记忆对象是整个群')
   assert(archive.includes(`提到 ${BOT} 时写「${BOT}」`), '群归档要求用昵称指代机器人')
+  assert(archive.includes('不得超过 1000 字'), '群归档提示词限制 summary 不超过 1000 字')
 
   const summary = buildGroupSummaryPrompt('day', '子记忆', BOT).map(item => item.content).join('\n')
   assert(summary.includes('群聊记忆'), '群汇总提示词面向群聊')
   assert(summary.includes('group_state'), '群汇总输出群状态')
+  assert(summary.includes('不得超过 1000 字'), '群汇总提示词限制 summary 不超过 1000 字')
 
   const profile = buildGroupProfilePrompt([], '材料', BOT).map(item => item.content).join('\n')
   assert(profile.includes('member:昵称'), '群画像用 member:昵称 作为稳定 key')

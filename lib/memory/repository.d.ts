@@ -80,6 +80,12 @@ export declare class MemoryRepository {
     /** 上一次群日报的时间；没有发过时返回 null */
     getDailyDigestAt(scopeId: string): Promise<Date | null>;
     setDailyDigestAt(scopeId: string, at: Date): Promise<void>;
+    /** 上一份报告选中的「最喜欢」；没有时返回 null */
+    getLastFavorite(scopeId: string): Promise<{
+        userId: string;
+        username: string;
+    } | null>;
+    setLastFavorite(scopeId: string, userId: string, username: string): Promise<void>;
     /**
      * 活跃 scope：最近活跃时间不早于 since。
      * `__global__` 只用来记迁移时间，不是对话作用域——它有 meta 但没有对话，

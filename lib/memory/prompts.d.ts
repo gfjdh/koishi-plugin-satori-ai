@@ -27,6 +27,11 @@ export interface GroupSummaryResult {
 export declare const GROUP_CATEGORY_LABELS: Record<string, string>;
 export declare const GROUP_CATEGORY_ORDER: string[];
 /**
+ * 群记忆每一层的 summary 上限（topic 归档与 day/week/month/season/year 汇总共用）。
+ * 只约束提示词，不做代码截断：模型按这个长度自行取舍。
+ */
+export declare const GROUP_SUMMARY_MAX_CHARS = 1000;
+/**
  * 归档输入里的固定发言人标签。不随昵称变化：用户的昵称、用户消息里打出的称呼
  * 都可能是任意角色名，靠识别名字区分发言人是穷举不完的，所以只认标签。
  */
@@ -91,7 +96,7 @@ export declare function buildGroupDigestTask(materials: string, range: string): 
  * 与省流共用人格与材料格式，但篇幅更长，并要求附一段角色点评；
  * 最后一行让角色选一个最喜欢的群友，供调用方加好感度。
  */
-export declare function buildGroupReportTask(materials: string, range: string, participants: string[], spec: GroupReportSpec): {
+export declare function buildGroupReportTask(materials: string, range: string, participants: string[], spec: GroupReportSpec, previousFavoriteName?: string): {
     role: string;
     content: string;
 }[];

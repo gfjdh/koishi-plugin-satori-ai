@@ -43,6 +43,12 @@ export const GROUP_CATEGORY_LABELS: Record<string, string> = {
 
 export const GROUP_CATEGORY_ORDER = ['identity', 'member', 'relationship', 'topic', 'requirement', 'fact']
 
+/**
+ * 群记忆每一层的 summary 上限（topic 归档与 day/week/month/season/year 汇总共用）。
+ * 只约束提示词，不做代码截断：模型按这个长度自行取舍。
+ */
+export const GROUP_SUMMARY_MAX_CHARS = 1000
+
 const LEVEL_LABELS: Record<string, string> = {
   day: '一天',
   week: '一周',
@@ -256,6 +262,7 @@ ${messages}
 · 这是群聊，不是一对一对话：记录谁说了什么、谁和谁在互动、群里在聊什么。
 · 无状态地存储信息：把“今天”“刚才”“最近”等相对时间替换成具体的日期或时间范围。
 · summary 简洁但保留关键事实、人物、事件、决定和群友的明确要求。
+· summary 不得超过 ${GROUP_SUMMARY_MAX_CHARS} 字，这是硬性上限：超出时优先删减细节和原话，保留主线。
 · group_state 只描述这段时间群里的整体状态（气氛、正在追的话题、发生的事），没有相关信息时留空字符串。
 · 提到 ${bot} 时写「${bot}」，不要用泛称或代号。
 · topic 用不超过 12 个字概括这段群聊的主题。
@@ -280,6 +287,7 @@ ${children}
 · 无状态地存储信息：把相对时间替换成具体日期或时间范围。
 · 提到群友时用昵称，不要把不同的人合并成一个人；提到 ${bot} 时写「${bot}」，不要用泛称或代号。
 · 合并重复内容，删除琐碎细节；不要编造子级记忆中不存在的信息。
+· summary 不得超过 ${GROUP_SUMMARY_MAX_CHARS} 字，这是硬性上限：子级记忆再多也要压缩到这个长度内，宁可删减细节也不能超长。
 · group_state 描述这段时间群里的整体状态（气氛、长期话题、发生的事），没有相关信息时留空字符串。
 · 仅输出 JSON，不要包含 markdown 代码块或其他内容：
 {"summary": "...", "group_state": "..."}`,
@@ -370,8 +378,15 @@ export function buildGroupReportTask(
   range: string,
   participants: string[],
   spec: GroupReportSpec,
+  previousFavoriteName?: string,
 ): { role: string; content: string }[] {
-  const names = participants.length ? participants.join('、') : '（材料里出现的群友）'
+  const names = participants.length ? participants.join('、') : '（本期没有可选的群友）'
+  const noRepeat = previousFavoriteName
+    ? `· 上一期最喜欢的是 ${previousFavoriteName}，本期不能重复选同一个人。\n`
+    : ''
+  const emptyHint = participants.length
+    ? ''
+    : '· 候选列表为空时跳过最喜欢标记，不要输出。\n'
   return [{
     role: 'user',
     content: `现在是「群${spec.title}」任务：为 ${range} 这段时间写一份群${spec.title}（${spec.periodLabel}的回顾）。
@@ -388,7 +403,7 @@ ${materials}
 · 材料里的「你」是你自己说过的话，其他人按昵称区分。
 · 只写材料里出现过的内容，不要编造；材料没提到的事不要提。
 · 不要用 markdown，不要分点，不要输出字数统计、自我检查或修改说明。
-· 最后另起一行，从上面列出的群友里选一个你最喜欢的（只选列表里的），严格按这个格式输出：【${spec.favoriteLabel}】昵称
+${noRepeat}${emptyHint}· 最后另起一行，从上面列出的群友里选一个你最喜欢的（只选列表里的），严格按这个格式输出：【${spec.favoriteLabel}】昵称
 · 标记之后不要再写任何内容。`,
   }]
 }

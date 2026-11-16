@@ -1110,6 +1110,7 @@ export class SAT extends Sat {
       context.range,
       context.participants.map(item => item.username),
       context.spec,
+      context.previousFavorite?.username,
     )[0].content
     const messages = await this.buildMessages(session, task, {
       skipPyramid: true,
@@ -1129,15 +1130,23 @@ export class SAT extends Sat {
     if (!summary) return `群${context.spec.title}生成失败了，稍后再试。`
 
     const favorite = context.allowFavorite
-      ? await this.applyDigestFavorite(parsed.favorite, context.participants, context.spec.favoriteLabel)
-      : ''
+      ? await this.applyDigestFavorite(parsed.favorite, context.participants, context.previousFavorite)
+      : null
 
     const card = await this.renderDigestCard({ ...context, summary }, {
       title: `群${context.spec.title}`,
-      extra: favorite,
     })
     if (card) await session.send(card)
-    else await session.send(favorite ? `${summary}\n\n${favorite}` : summary)
+    else await session.send(summary)
+    // 最喜欢单独发一条普通消息，并在消息里 @ 该群友
+    if (favorite) {
+      await this.memoryService.markFavorite(session.channelId, favorite.userId, favorite.username)
+      await session.send([
+        `${context.spec.favoriteLabel}：`,
+        h('at', { id: favorite.userId, name: favorite.username }),
+        '（好感度 +20）',
+      ])
+    }
 
     // 发送成功后才推进游标；生成或发送失败时下次会重新覆盖这段时间
     await this.memoryService.markDailyDigest(session.channelId, context.to)
@@ -1145,25 +1154,27 @@ export class SAT extends Sat {
 
   /**
    * 把模型选出的昵称映射回区间内的群友，再给好感度。
-   * 返回展示用的一行文字，未生效时为空。
+   * 返回被选中的群友；未生效时返回 null。
    */
   private async applyDigestFavorite(
     choice: string,
     participants: DigestParticipant[],
-    label: string,
-  ): Promise<string> {
-    if (!this.config.enable_favorability || !choice) return ''
+    previousFavorite: { userId: string, username: string } | null,
+  ): Promise<DigestParticipant | null> {
+    if (!this.config.enable_favorability || !choice) return null
     const picked = resolveDigestFavorite(choice, participants)
-    if (!picked) return ''
+    if (!picked) return null
+    // 上一份报告选过的人不能重复选（候选列表已排除，这里再兜一层）
+    if (previousFavorite && picked.userId === previousFavorite.userId) return null
     const user = await ensureUserExists(this.ctx, picked.userId, picked.username)
-    if (!user) return ''
+    if (!user) return null
     await updateFavorability(this.ctx, user, 20)
-    return `${label}：${picked.username}（好感度 +20）`
+    return picked
   }
 
   private async renderDigestCard(
     digest: GroupDigestContext & { summary: string },
-    options: { title?: string, extra?: string } = {},
+    options: { title?: string } = {},
   ): Promise<string | null> {
     if (!this.puppeteer) return null
     const escape = (text: string) => text
@@ -1180,13 +1191,11 @@ export class SAT extends Sat {
   .title { font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #5b3f6e; margin-bottom: 6px; }
   .meta { font-size: 12px; color: #9a8ca3; margin-bottom: 14px; }
   .body { font-size: 16px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
-  .extra { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #e6dced; font-size: 14px; color: #7a5f8c; }
   .footer { margin-top: 16px; font-size: 12px; color: #b3a7ba; text-align: right; }
 </style></head><body><div class="card">
   <div class="title">${escape(options.title || '省流')}</div>
   <div class="meta">${escape(digest.range)} · 参考 ${digest.nodeCount} 条记忆 / ${digest.messageCount} 条消息</div>
   <div class="body">${escape(digest.summary)}</div>
-  ${options.extra ? `<div class="extra">${escape(options.extra)}</div>` : ''}
   <div class="footer">${escape(this.getBotName())}</div>
 </div></body></html>`
     try {

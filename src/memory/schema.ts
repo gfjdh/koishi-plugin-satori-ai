@@ -72,6 +72,9 @@ export interface SatMeta {
   migratedAt: Date     // epoch 0 表示尚未迁移
   /** 上一次群日报的时间；null 表示还没发过日报 */
   dailyDigestAt?: Date
+  /** 上一份报告选中的「最喜欢」群友，下一份报告不能重复选 */
+  lastFavoriteId?: string
+  lastFavoriteName?: string
 }
 
 declare module 'koishi' {
@@ -154,6 +157,8 @@ export function extendMemoryDatabase(ctx: Context) {
     lastActiveAt: 'timestamp',
     migratedAt: 'timestamp',
     dailyDigestAt: 'timestamp',
+    lastFavoriteId: 'string',
+    lastFavoriteName: 'string',
   }, {
     autoInc: true,
     unique: [['scopeId']],
