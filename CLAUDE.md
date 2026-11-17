@@ -44,6 +44,12 @@ tsc
 # Vision helper test (image extraction from message + quote, data URL, prompt)
 #   node -r esbuild-register external/satori-ai/scripts/test-vision.ts
 
+# Touhou character matching + knowledge entries test
+#   node -r esbuild-register external/satori-ai/scripts/test-touhou.ts
+
+# Regenerate Touhou character data from external/thbwiki (after thbwiki updates)
+#   node -r esbuild-register external/satori-ai/scripts/generate-touhou.ts
+
 # Group report test (daily/weekly/monthly/yearly period resolution, level caps, favorite marker)
 #   node -r esbuild-register external/satori-ai/scripts/test-group-daily-digest.ts
 

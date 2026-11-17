@@ -24,6 +24,7 @@ import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
 import { CollectedImage, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, downloadImageAsDataUrl } from './vision'
 import { takeRecentImageMessage } from './image-cache'
+import { buildCharacterNote, loadTouhouCharacters, matchCharacters } from './touhou'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
@@ -110,6 +111,8 @@ export class SAT extends Sat {
   constructor(ctx: Context, public config: Sat.Config) {
     // 调用父类构造函数
     super(ctx, config)
+    // 东方角色库：默认值随包，启动时从 dataDir 的 JSON 加载（没有就写一份默认值）
+    loadTouhouCharacters(config.dataDir)
     // 初始化本地化
     ctx.i18n.define('zh', require('./locales/zh'))
     // 实例化puppeteer
@@ -438,7 +441,12 @@ export class SAT extends Sat {
         const result = await this.describeImages(session, processedPrompt, images, user)
         quotedTotal = result.quotedTotal
         quotedUsed = result.quotedUsed
-        if (result.description) finalPrompt = `${processedPrompt}\n\n[图片内容]\n${result.description}`.trim()
+        if (result.description) {
+          finalPrompt = `${processedPrompt}\n\n[图片内容]\n${result.description}`.trim()
+          // 用识图描述在东方角色库里检索候选，只给参考，不下结论
+          const characterNote = buildCharacterNote(matchCharacters(result.description))
+          if (characterNote) finalPrompt = `${finalPrompt}\n${characterNote}`.trim()
+        }
       } else {
         const result = await this.loadImageParts(session, images)
         imageParts = result.parts
