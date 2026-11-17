@@ -4,9 +4,12 @@
 // 要保证的事：能从本次消息和引用消息里抽图片、正文里的 img 标签会被去掉、
 // 图片能转成 data URL、识图提示词带上原消息正文。
 import {
-  buildVisionPrompt, collectImages, downloadImageAsDataUrl, guessImageMime, stripImageTags,
+  buildVisionPrompt, collectImages, currentImages, downloadImageAsDataUrl, guessImageMime, hasTextContent, stripImageTags,
 } from '../src/vision'
 import { consumeVisionUsage } from '../src/database'
+import {
+  IMAGE_CACHE_TTL_MS, clearImageCache, forgetImageMessage, rememberImageMessage, takeRecentImageMessage,
+} from '../src/image-cache'
 
 const assert = (cond: any, message: string) => {
   if (!cond) {
@@ -20,6 +23,7 @@ async function main() {
   // ---------- 场景 1：抽取本次消息 + 引用消息里的图片 ----------
   {
     const session = {
+      content: '<img src="https://example.com/1.jpg"/><img src="base64://QUJD"/><at id="1" name="灵梦"/>',
       elements: [
         { type: 'text', attrs: {} },
         { type: 'img', attrs: { src: 'https://example.com/1.jpg' } },
@@ -31,9 +35,13 @@ async function main() {
 
     const images = collectImages(session)
     assert(images.length === 3, `本次和引用消息共 3 张图（实际 ${images.length}）`)
-    assert(images[0].quoted === false && images[1].quoted === false, '当前消息的图片不标记引用')
-    assert(images[2].quoted === true, '引用消息的图片标记为引用')
+    assert(images[0].source === 'current' && images[1].source === 'current', '当前消息的图片标记为 current')
+    assert(images[2].source === 'quoted', '引用消息的图片标记为 quoted')
     assert(images[2].src.includes('quoted.png'), '引用图片按顺序排在最后')
+
+    assert(currentImages(session).length === 2, 'currentImages 只返回当前消息的图片')
+    assert(hasTextContent(session) === false, '纯图片消息没有正文')
+    assert(hasTextContent({ content: '看看这个<img src="x"/>', elements: [] } as any) === true, '带文字的消息有正文')
   }
 
   // ---------- 场景 2：正文去掉图片标签 ----------
@@ -68,6 +76,32 @@ async function main() {
     assert(prompt.includes('1 张来自用户引用的消息'), '提示词说明引用来源')
     assert(prompt.includes('重点描述与消息正文相关的内容'), '提示词要求聚焦问题相关内容')
     assert(prompt.includes('只做中性描述'), '提示词带内容安全软约束')
+
+    const withPrevious = buildVisionPrompt('这是什么？', 2, 0, 1)
+    assert(withPrevious.includes('1 张来自用户上一条消息'), '提示词说明上一条消息来源')
+  }
+
+  // ---------- 场景 6：上一条纯图片消息的缓存 ----------
+  {
+    clearImageCache()
+    const session = { channelId: 'c1', userId: 'u1' } as any
+    const images = [{ src: 'https://example.com/1.jpg', source: 'current' as const }]
+
+    rememberImageMessage(session, images, 1000)
+    const taken = takeRecentImageMessage(session, 1000 + IMAGE_CACHE_TTL_MS)
+    assert(taken.length === 1 && taken[0].source === 'previous', '一分钟内的上一条纯图片可以被取用')
+    assert(takeRecentImageMessage(session, 2000).length === 0, '取出后即失效')
+
+    rememberImageMessage(session, images, 1000)
+    assert(takeRecentImageMessage(session, 1000 + IMAGE_CACHE_TTL_MS + 1).length === 0, '超过一分钟后不再使用')
+
+    rememberImageMessage(session, images, 1000)
+    forgetImageMessage(session)
+    assert(takeRecentImageMessage(session, 1500).length === 0, '发了别的消息后失效')
+
+    rememberImageMessage({ channelId: 'c1', userId: 'u2' } as any, images, 1000)
+    assert(takeRecentImageMessage(session, 1500).length === 0, '别的用户的图片不会串到当前用户')
+    clearImageCache()
   }
 
   // ---------- 场景 5：识图次数按等级限额、按天重置 ----------

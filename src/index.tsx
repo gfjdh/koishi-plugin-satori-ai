@@ -22,7 +22,8 @@ import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './ty
 import { addOutputCensor, filterResponse, hasCensorMark, processPrompt, splitSentences, updateUserPWithTicket } from './utils'
 import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
-import { CollectedImage, buildVisionPrompt, collectImages, downloadImageAsDataUrl } from './vision'
+import { CollectedImage, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, downloadImageAsDataUrl } from './vision'
+import { takeRecentImageMessage } from './image-cache'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
@@ -423,7 +424,9 @@ export class SAT extends Sat {
     const dialogueCountCheck = await this.checkUserDialogueCount(session, user)
     if (dialogueCountCheck) return dialogueCountCheck
     // 图片：配了识图模型就转成文字写进本轮输入，否则把图片直接附给主模型
-    const images = collectImages(session)
+    // 本次消息 + 引用消息的图片；再加上一分钟内上一条纯图片消息
+    const images = [...collectImages(session), ...takeRecentImageMessage(session)]
+      .slice(0, VISION_MAX_IMAGES)
     let finalPrompt = processedPrompt
     let imageParts: Sat.MsgContentPart[] = []
     if (images.length) {
@@ -608,6 +611,7 @@ export class SAT extends Sat {
   ): Promise<string> {
     const dataUrls: string[] = []
     let quoted = 0
+    let previous = 0
     for (const image of images) {
       const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src)
       if (!dataUrl) {
@@ -615,7 +619,8 @@ export class SAT extends Sat {
         continue
       }
       dataUrls.push(dataUrl)
-      if (image.quoted) quoted += 1
+      if (image.source === 'quoted') quoted += 1
+      else if (image.source === 'previous') previous += 1
     }
     if (!dataUrls.length) return ''
 
@@ -629,7 +634,7 @@ export class SAT extends Sat {
 
     const result = await this.apiClient.visionChat(
       dataUrls,
-      buildVisionPrompt(text, dataUrls.length, quoted),
+      buildVisionPrompt(text, dataUrls.length, quoted, previous),
     )
     if (result.error) {
       logger.warn(`识图失败：${result.content}`)

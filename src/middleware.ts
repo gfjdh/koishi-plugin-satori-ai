@@ -5,6 +5,8 @@ import type { SAT } from './index'
 import { probabilisticCheck } from './utils'
 import { FavorabilityConfig, MiddlewareConfig } from './types'
 import { ensureUserExists } from './database'
+import { currentImages, hasTextContent } from './vision'
+import { forgetImageMessage, rememberImageMessage } from './image-cache'
 
 const logger = new Logger('satori-ai-middleware')
 
@@ -14,37 +16,46 @@ export function createMiddleware(
   config: MiddlewareConfig & FavorabilityConfig,
 ) {
   return async (session: Session, next: Next) => {
-    if (config.enable_favorability && config.enable_warning && session.channelId === config.warning_group)
-      sat.getWarningList(session)
-    await sat.broadcastManager.seedBroadcast(session)
+    // 纯图片消息不触发对话，但用户紧接着发文字时要把这张图一起识别
+    const images = currentImages(session)
+    const pureImage = images.length > 0 && !hasTextContent(session)
+    if (pureImage) rememberImageMessage(session, images)
+    try {
+      if (config.enable_favorability && config.enable_warning && session.channelId === config.warning_group)
+        sat.getWarningList(session)
+      await sat.broadcastManager.seedBroadcast(session)
 
-    // 私信处理
-    if (config.private && isPrivateSession(session)) {
-      // 游戏进行中：「左 右」「游戏规则」这类输入不是命令，若不拦截会同时触发 AI 对话，
-      // 和游戏回合互相打断。这里直接放行，交给游戏自己的消息监听器处理。
-      if (sat.isGameActive(session)) {
-        sat.proactive.touch(session)
-        return next()
+      // 私信处理
+      if (config.private && isPrivateSession(session)) {
+        // 游戏进行中：「左 右」「游戏规则」这类输入不是命令，若不拦截会同时触发 AI 对话，
+        // 和游戏回合互相打断。这里直接放行，交给游戏自己的消息监听器处理。
+        if (sat.isGameActive(session)) {
+          sat.proactive.touch(session)
+          return next()
+        }
+        return await handlePrivateMessage(sat, session)
       }
-      return await handlePrivateMessage(sat, session)
-    }
 
-    // 昵称处理
-    if (config.nick_name && await hasNickName(ctx, session, config)) {
-      return await handleNickNameMessage(sat, session)
-    }
+      // 昵称处理
+      if (config.nick_name && await hasNickName(ctx, session, config)) {
+        return await handleNickNameMessage(sat, session)
+      }
 
-    // 随机触发处理
-    if (shouldRandomTrigger(session, config)) {
-      // 触发插话的这条消息也要先进群聊环境：否则模型看不到引出它的话题，
-      // 事后群聊记录里也只有 bot 的发言，像是凭空接话。
-      await sat.handleChannelMemoryManager(session)
-      return await sat.handleRandomMiddleware(session)
-    }
-    
-    if (!isSpecialMessage(session)) await sat.handleChannelMemoryManager(session)
+      // 随机触发处理
+      if (shouldRandomTrigger(session, config)) {
+        // 触发插话的这条消息也要先进群聊环境：否则模型看不到引出它的话题，
+        // 事后群聊记录里也只有 bot 的发言，像是凭空接话。
+        await sat.handleChannelMemoryManager(session)
+        return await sat.handleRandomMiddleware(session)
+      }
 
-    return next()
+      if (!isSpecialMessage(session)) await sat.handleChannelMemoryManager(session)
+
+      return next()
+    } finally {
+      // 这个用户发了别的消息，上一条纯图片就不再是「上一条」了
+      if (!pureImage) forgetImageMessage(session)
+    }
   }
 }
 
@@ -101,14 +112,7 @@ function isSpecialMessage(session: Session): boolean {
   if (session.content.includes(':poke')) return true
   // 有正文的消息（哪怕同时带图片或链接）照常触发对话、写入频道记忆；
   // 图片交给识图流程，正文里的标签由 processPrompt 去掉。
-  const text = (session.content || '')
-    .replace(/<img\b[^>]*\/?>/gi, '')
-    .replace(/<file\b[^>]*\/?>/gi, '')
-    .replace(/<at\b[^>]*\/?>/gi, '')
-    .replace(/https?:\/\/\S+/gi, '')
-    .replace(/file:\/\/\S+/gi, '')
-    .trim()
-  if (text) return false
+  if (hasTextContent(session)) return false
   // 纯图片、纯文件、纯 @、纯链接仍然跳过
   return ['img', 'at', 'file'].includes(session.elements[0]?.type)
     || session.content.includes('file://')

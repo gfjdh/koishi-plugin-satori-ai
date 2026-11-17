@@ -12,22 +12,40 @@ export const VISION_MAX_IMAGES = 6
 
 export interface CollectedImage {
   src: string
-  /** 是否来自被引用的消息 */
-  quoted: boolean
+  /** 来源：当前消息 / 被引用的消息 / 用户上一条纯图片消息 */
+  source: 'current' | 'quoted' | 'previous'
+}
+
+/** 去掉图片、文件、@ 和裸链接后还有没有正文 */
+export function hasTextContent(session: Session): boolean {
+  return (session.content || '')
+    .replace(/<img\b[^>]*\/?>/gi, '')
+    .replace(/<file\b[^>]*\/?>/gi, '')
+    .replace(/<at\b[^>]*\/?>/gi, '')
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/file:\/\/\S+/gi, '')
+    .trim().length > 0
+}
+
+/** 本次消息自身的图片（不含引用消息） */
+export function currentImages(session: Session): CollectedImage[] {
+  const result: CollectedImage[] = []
+  for (const element of (session.elements as any[]) || []) {
+    if (element?.type !== 'img') continue
+    const src = String(element.attrs?.src || '').trim()
+    if (src) result.push({ src, source: 'current' })
+  }
+  return result
 }
 
 /** 收集本次消息和被引用消息里的图片，保持出现顺序 */
 export function collectImages(session: Session): CollectedImage[] {
-  const result: CollectedImage[] = []
-  const push = (elements: { type?: string, attrs?: Record<string, any> }[] | undefined, quoted: boolean) => {
-    for (const element of elements || []) {
-      if (element?.type !== 'img') continue
-      const src = String(element.attrs?.src || '').trim()
-      if (src) result.push({ src, quoted })
-    }
+  const result = currentImages(session)
+  for (const element of ((session.quote as any)?.elements as any[]) || []) {
+    if (element?.type !== 'img') continue
+    const src = String(element.attrs?.src || '').trim()
+    if (src) result.push({ src, source: 'quoted' })
   }
-  push(session.elements as any, false)
-  push((session.quote as any)?.elements, true)
   return result.slice(0, VISION_MAX_IMAGES)
 }
 
@@ -74,19 +92,27 @@ export async function downloadImageAsDataUrl(ctx: Context, src: string): Promise
 }
 
 /** 识图提示词：带上本消息正文，并要求重点描述与问题相关的部分 */
-export function buildVisionPrompt(text: string, imageCount: number, quotedCount: number): string {
+export function buildVisionPrompt(
+  text: string,
+  imageCount: number,
+  quotedCount: number,
+  previousCount = 0,
+): string {
   const question = stripImageTags(text)
-  const quotedLine = quotedCount
-    ? `其中 ${quotedCount} 张来自用户引用的消息，其余来自用户这条消息。`
-    : ''
+  const sources = [
+    quotedCount ? `${quotedCount} 张来自用户引用的消息` : '',
+    previousCount ? `${previousCount} 张来自用户上一条消息` : '',
+  ].filter(Boolean).join('，')
+  const sourceLine = sources ? `其中${sources}。` : ''
   return `请描述下面${imageCount > 1 ? ` ${imageCount} 张` : ''}图片的内容，供后续对话使用。
 ${question ? `用户这条消息的正文是：「${question}」` : '用户这条消息没有正文。'}
-${quotedLine}
+${sourceLine}
 
 要求：
 · 重点描述与消息正文相关的内容；正文没提到的地方简单带过。
 · 图中有文字时原样转写。
 · 只描述看得见的内容，不要推测或编造。
+· 如果图中有角色，只需要描述外观、动作、表情等，不需要给出角色的身份等信息。
 · 遇到暴力、色情、违法内容只做中性描述，不展开细节。
 · 按顺序用「图1：」「图2：」分段，每张图不超过 150 字。`
 }

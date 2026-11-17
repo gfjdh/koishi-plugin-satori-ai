@@ -5,9 +5,13 @@ export declare const VISION_MAX_IMAGE_BYTES: number;
 export declare const VISION_MAX_IMAGES = 6;
 export interface CollectedImage {
     src: string;
-    /** 是否来自被引用的消息 */
-    quoted: boolean;
+    /** 来源：当前消息 / 被引用的消息 / 用户上一条纯图片消息 */
+    source: 'current' | 'quoted' | 'previous';
 }
+/** 去掉图片、文件、@ 和裸链接后还有没有正文 */
+export declare function hasTextContent(session: Session): boolean;
+/** 本次消息自身的图片（不含引用消息） */
+export declare function currentImages(session: Session): CollectedImage[];
 /** 收集本次消息和被引用消息里的图片，保持出现顺序 */
 export declare function collectImages(session: Session): CollectedImage[];
 /** 去掉正文里的图片标签；图片本身交给识图或多模态，不留在文本里 */
@@ -20,4 +24,4 @@ export declare function guessImageMime(buffer: Buffer): string;
  */
 export declare function downloadImageAsDataUrl(ctx: Context, src: string): Promise<string | null>;
 /** 识图提示词：带上本消息正文，并要求重点描述与问题相关的部分 */
-export declare function buildVisionPrompt(text: string, imageCount: number, quotedCount: number): string;
+export declare function buildVisionPrompt(text: string, imageCount: number, quotedCount: number, previousCount?: number): string;
