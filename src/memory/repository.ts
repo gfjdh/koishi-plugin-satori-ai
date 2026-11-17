@@ -138,8 +138,29 @@ export class MemoryRepository {
     return [...participants.values()].sort((a, b) => b.count - a.count)
   }
 
-  async countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number> {
-    const query: any = { scopeId, createdAt: { $gt: after } }
+  /**
+   * 最近 24 小时每小时的群消息条数（按本地小时分桶，索引 0-23）。
+   * 报告头部的「24h 活跃轨迹」用它画柱状图。
+   */
+  async getHourlyMessageCounts(
+    scopeId: string,
+    from: Date,
+    to: Date,
+    timezoneOffset: number,
+    kinds?: string[],
+  ): Promise<number[]> {
+    const query: any = { scopeId, createdAt: { $gt: from, $lte: to } }
+    if (kinds?.length) query.kind = { $in: kinds }
+    const rows = await this.ctx.database.get('sat_dialogue', query, { fields: ['createdAt'] })
+    const buckets = new Array(24).fill(0) as number[]
+    for (const row of rows) {
+      const local = new Date(new Date(row.createdAt).getTime() + timezoneOffset * 3_600_000)
+      buckets[local.getUTCHours()]++
+    }
+    return buckets
+  }
+
+  async countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number> {    const query: any = { scopeId, createdAt: { $gt: after } }
     if (kinds?.length) query.kind = { $in: kinds }
     const rows = await this.ctx.database.get('sat_dialogue', query, { fields: ['id'] })
     return rows.length
@@ -298,6 +319,17 @@ export class MemoryRepository {
       lastFavoriteId: userId,
       lastFavoriteName: username,
     })
+  }
+
+  /** 已经发出的报告期数；报头显示「第 N 期」 */
+  async getReportCount(scopeId: string): Promise<number> {
+    const meta = await this.getMeta(scopeId)
+    return meta?.reportCount || 0
+  }
+
+  async setReportCount(scopeId: string, count: number): Promise<void> {
+    await this.ensureMeta(scopeId, new Date())
+    await this.ctx.database.set('sat_meta', { scopeId }, { reportCount: count })
   }
 
   /**

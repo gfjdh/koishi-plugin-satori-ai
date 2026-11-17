@@ -1,7 +1,7 @@
 // src/memory/prompts.ts
 // 记忆系统所有提示词集中在这里，方便调整。
 import { ProfileEntry } from './schema'
-import { GROUP_REPORT_SPECS, GroupReportSpec } from './report-specs'
+import { DEFAULT_REPORT_MASTHEAD, GROUP_REPORT_SPECS, GroupReportSpec } from './report-specs'
 
 export interface ArchiveResult {
   topic?: string
@@ -410,43 +410,75 @@ ${materials}
   }]
 }
 
+export interface GroupReportTaskOptions {
+  /** 上一份报告选中的群友，本期不能重复选 */
+  previousFavoriteName?: string
+  /** 活跃榜候选（按发言条数降序）；为空时不输出活跃榜 */
+  ranking?: { name: string, count: number }[]
+  /** 报纸刊名 */
+  masthead?: string
+}
+
 /**
  * 群聊日报/周报/月报/年报的任务输入。
- * 与省流共用人格与材料格式，但篇幅更长，并要求附一段角色点评；
- * 最后一行让角色选一个最喜欢的群友，供调用方加好感度。
+ *
+ * 输出被要求拆成报纸栏目（头条/导语/要闻/金句/活跃/点评/热词/最喜欢），
+ * 由 report-card 分块渲染；解析不到标记时渲染器会退回整块正文。
  */
 export function buildGroupReportTask(
   materials: string,
   range: string,
   participants: string[],
   spec: GroupReportSpec,
-  previousFavoriteName?: string,
+  options: GroupReportTaskOptions = {},
 ): { role: string; content: string }[] {
+  const { previousFavoriteName, ranking = [], masthead = DEFAULT_REPORT_MASTHEAD } = options
   const names = participants.length ? participants.join('、') : '（本期没有可选的群友）'
   const noRepeat = previousFavoriteName
     ? `· 上一期最喜欢的是 ${previousFavoriteName}，本期不能重复选同一个人。\n`
     : ''
-  const emptyHint = participants.length
-    ? ''
-    : '· 候选列表为空时跳过最喜欢标记，不要输出。\n'
+  const favoriteHint = participants.length
+    ? `【${spec.favoriteLabel}】昵称｜档位｜理由
+（昵称只能从候选列表里选。档位只能是「有点喜欢」「喜欢」「非常喜欢」三选一，按他本期的存在感来定，不要每期都给最高档。理由 15-40 字，必须说清是因为哪件具体的事，不能只写「很活跃」这种空话。）`
+    : '（本期没有候选群友，不要输出最喜欢这一栏。）'
+  const rankingBlock = ranking.length
+    ? `\n活跃榜候选（本期发言条数，可以直接引用这些数字）：\n${ranking
+      .map((item, index) => `${index + 1}. ${item.name} ${item.count} 条`)
+      .join('\n')}\n`
+    : ''
+  const rankingHint = ranking.length
+    ? `【活跃】昵称｜一句人物点评
+（写 ${spec.rankingCount} 条，昵称只能从上面的活跃榜候选里选，点评要结合他本期聊过的内容。）`
+    : '（没有活跃榜候选，不要输出活跃这一栏。）'
+
   return [{
     role: 'user',
-    content: `现在是「群${spec.title}」任务：为 ${range} 这段时间写一份群${spec.title}（${spec.periodLabel}的回顾）。
+    content: `现在是「群${spec.title}」任务：为 ${range} 这段时间（${spec.periodLabel}）写一份群${spec.title}，作为《${masthead}》的一版。
 
 群聊材料：
 ${materials}
-
+${rankingBlock}
 可以选作${spec.favoriteLabel}的群友（只从这个列表里选）：${names}
 
 要求：
-· 用你自己的口吻写，像在群里和大家分享见闻，不要写成报告、列表或标题。
-· 先概括这段时间群里聊了哪些事、气氛如何，不少于 ${spec.summaryChars} 字；再写一段你自己的点评，说说你的看法、吐槽或感受，不少于 ${spec.commentChars} 字。全文 ${spec.targetMin}-${spec.targetMax} 字（不含最后一行标记），分 4-8 段。
-· 多写具体的人、具体的事和群里的原话细节，不要只写笼统印象；写不满 ${spec.targetMin} 字就继续补充材料里的事件。
+· 用你自己的口吻写，可以吐槽、可以有主观判断，但事实必须来自材料。
+· 严格按下面的栏目和顺序输出，每个栏目以【栏目名】开头。不要输出别的标题、markdown、分隔线、字数统计或自我检查。
+· 各栏目不要互相重复同样的内容。全文 ${spec.targetMin}-${spec.targetMax} 字（不含栏目名）。
+· 头条和各条要闻的小标题只客观概括群里发生了什么，不要写你自己的反应、评价或吐槽；你的看法只写在【点评】里。
 · 材料里的「你」是你自己说过的话，其他人按昵称区分。
-· 只写材料里出现过的内容，不要编造；材料没提到的事不要提。
-· 不要用 markdown，不要分点，不要输出字数统计、自我检查或修改说明。
-${noRepeat}${emptyHint}· 最后另起一行，从上面列出的群友里选一个你最喜欢的（只选列表里的），严格按这个格式输出：【${spec.favoriteLabel}】昵称
-· 标记之后不要再写任何内容。`,
+
+【头条】8-16 字，只概括本期群里最值得说的事，不要出现你自己的态度，不要用书名号，结尾不加句号。
+【导语】30-60 字，一句话交代这段时间群里的整体气氛。
+【要闻】小标题｜正文
+（写 ${spec.newsItemCount} 条左右，每条单独一个【要闻】栏目；小标题 6-14 字，只概括这一条讲的事，不要带评论；正文约 ${spec.newsItemChars} 字，可以分多段。按事情的重要性排序，条数由你根据材料决定。多写具体的人、具体的事和群里的原话细节，不要只写笼统印象。）
+【金句】原话 —— 发言人昵称｜一句点评
+（共 ${spec.quoteCount} 条，每条单独一行。原话必须是材料里出现过的，不要改写、不要编造；点评一句话，20 字以内。找不到就少写几条。）
+${rankingHint}
+【点评】你自己的点评，约 ${spec.commentChars} 字，说说你的看法、吐槽或感受。
+【热词】词1 / 词2 / 词3
+（${spec.hotwordCount} 个左右，每个 2-6 字，从本期材料里提炼。）
+${favoriteHint}
+${noRepeat}· 最后一个栏目之后不要再写任何内容。`,
   }]
 }
 
@@ -454,6 +486,7 @@ export function buildGroupDailyDigestTask(
   materials: string,
   range: string,
   participants: string[],
+  options: GroupReportTaskOptions = {},
 ): { role: string; content: string }[] {
-  return buildGroupReportTask(materials, range, participants, GROUP_REPORT_SPECS.daily)
+  return buildGroupReportTask(materials, range, participants, GROUP_REPORT_SPECS.daily, options)
 }

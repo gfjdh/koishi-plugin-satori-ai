@@ -3,14 +3,15 @@
 // 纯逻辑测试，不启动 Koishi、不连数据库。
 //
 // 要保证的事：只选话题记忆（不往粗粒度上找）、游标推进到最后一个话题末尾；
-// 「今日最喜欢」标记能从正文里拆出来；正文保留段落、超长时在句末截断；
-// 模型改写的昵称仍能映射回群友。
+// 报纸栏目能从模型输出里拆出来；正文保留段落、超长时在句末截断；
+// 模型改写的昵称仍能映射回群友；最喜欢的三档按词归一化。
 import {
-  DAILY_DIGEST_MAX_CHARS, DigestParticipant, clampDailyDigest, parseDailyDigest,
-  resolveDigestFavorite, resolveReportPeriod, selectDigestNodes,
+  DAILY_DIGEST_MAX_CHARS, DigestParticipant, clampDailyDigest, parseReportSections,
+  resolveDigestFavorite, resolvePeriodOfKind, resolveReportPeriod, selectDigestNodes,
 } from '../src/memory/group-digest'
-import { GROUP_REPORT_SPECS } from '../src/memory/report-specs'
+import { GROUP_REPORT_SPECS, resolveFavoriteTier } from '../src/memory/report-specs'
 import { buildGroupDailyDigestTask, buildGroupReportTask } from '../src/memory/prompts'
+import { renderReportHtml } from '../src/report-card'
 import { Granularity, SatMemory } from '../src/memory/schema'
 
 const assert = (cond: any, message: string) => {
@@ -125,6 +126,17 @@ async function main() {
     assert(GROUP_REPORT_SPECS.weekly.levels.join(',') === 'day,topic', '周报最高日粒度')
     assert(GROUP_REPORT_SPECS.monthly.levels.join(',') === 'week,day,topic', '月报最高周粒度')
     assert(GROUP_REPORT_SPECS.yearly.levels.join(',') === 'month,week,day,topic', '年报最高月粒度')
+
+    // 预览用的强制周期：月/年取当前所在周期，周取最近一个已闭合的周一
+    const forcedMonthly = resolvePeriodOfKind('monthly', localAt(2026, 11, 18, 12), 8)
+    assert(+forcedMonthly.from === +localAt(2026, 11, 1, 0) && +forcedMonthly.to === +localAt(2026, 12, 1, 0),
+      '强制月报取当前自然月')
+    const forcedYearly = resolvePeriodOfKind('yearly', localAt(2026, 11, 18, 12), 8)
+    assert(+forcedYearly.from === +localAt(2026, 1, 1, 0) && +forcedYearly.to === +localAt(2027, 1, 1, 0),
+      '强制年报取当前自然年')
+    const forcedWeekly = resolvePeriodOfKind('weekly', localAt(2026, 11, 18, 12), 8)
+    assert(+forcedWeekly.from === +localAt(2026, 11, 9, 0) && +forcedWeekly.to === +localAt(2026, 11, 16, 0),
+      '强制周报取最近一个已闭合的周一')
   }
 
   // ---------- 场景 1.6：周报选材只到日粒度 ----------
@@ -146,31 +158,74 @@ async function main() {
       '周报先取日节点，再用话题补空档')
   }
 
-  // ---------- 场景 2：拆出「今日最喜欢」 ----------
+  // ---------- 场景 2：报纸分节 ----------
   {
-    const plain = parseDailyDigest('今天群里很热闹。\n\n【今日最喜欢】小明')
-    assert(plain.favorite === '小明', '「【今日最喜欢】昵称」能解析出昵称')
-    assert(plain.body === '今天群里很热闹。', '标记行从正文里去掉')
+    const full = parseReportSections(`【头条】昨夜群里下了一场猫
+【导语】安静了两天，昨天忽然热闹起来。
+【要闻】猫的政变｜第一段内容。
+第二段内容。
+【要闻】作业战争｜阿柴开始抄答案。
+【金句】猫在键盘上睡着了 —— 小明｜这句最好笑
+【金句】「作业写完了吗」 —— 小红
+【活跃】小明｜今天最能聊
+【点评】我的看法。
+【热词】猫 / 作业 / 深夜
+【今日最喜欢】小明｜非常喜欢｜因为那句猫睡键盘的话`)
 
-    const bracketed = parseDailyDigest('正文。\n【今日最喜欢：小红】')
-    assert(bracketed.favorite === '小红', '「【今日最喜欢：昵称】」也能解析')
-    assert(bracketed.body === '正文。', '第二种写法的标记同样从正文里去掉')
+    assert(full.structured, '完整栏目能被识别为结构化')
+    assert(full.headline === '昨夜群里下了一场猫', '头条单独成栏')
+    assert(full.lead === '安静了两天，昨天忽然热闹起来。', '导语单独成栏')
+    assert(full.news.length === 2, `多条要闻按条拆开（实际 ${full.news.length}）`)
+    assert(full.news[0].title === '猫的政变', '要闻拆出小标题')
+    assert(full.news[0].body === '第一段内容。\n第二段内容。', '要闻保留段落换行')
+    assert(full.news[1].title === '作业战争' && full.news[1].body === '阿柴开始抄答案。', '第二条要闻独立')
+    assert(full.quotes.length === 2, `金句按条拆开（实际 ${full.quotes.length}）`)
+    assert(full.quotes[0].text === '猫在键盘上睡着了' && full.quotes[0].speaker === '小明',
+      '金句拆出原话与发言人')
+    assert(full.quotes[0].comment === '这句最好笑', '金句拆出一句点评')
+    assert(full.quotes[1].text === '作业写完了吗', '金句外层的「」会被剥掉')
+    assert(full.quotes[1].comment === '', '没写点评时留空')
+    assert(full.comment === '我的看法。', '点评单独成栏')
+    assert(full.hotwords.join(',') === '猫,作业,深夜', '热词按分隔符拆成标签')
+    assert(full.ranking[0]?.name === '小明' && full.ranking[0]?.comment === '今天最能聊',
+      '活跃榜拆出昵称与点评')
+    assert(full.favorite?.name === '小明', '最喜欢拆出昵称')
+    assert(full.favorite?.tier === '非常喜欢' && full.favorite?.delta === 30,
+      '最喜欢拆出档位')
+    assert(full.favorite?.reason === '那句猫睡键盘的话', '最喜欢拆出理由并去掉「因为」')
 
-    // 括号过滤会把标记包上省略号、把空白换成点，解析仍要能用
-    const dotted = parseDailyDigest('正文。\n…【今日最喜欢】…安定')
-    assert(dotted.favorite === '安定', '标记前后的省略号会被剥掉')
-    assert(dotted.body === '正文。', '带省略号的标记行从正文里去掉')
+    // 正文另起一行、栏目用冒号，都要能认
+    const colon = parseReportSections('头条：标题\n要闻：正文内容。\n点评：点评内容。')
+    assert(colon.structured && colon.headline === '标题', '「头条：」写法也能识别')
+    assert(colon.news[0]?.body === '正文内容。' && colon.comment === '点评内容。', '冒号栏目的正文归位')
+    assert(colon.news[0]?.title === '', '没有小标题的要闻整段当正文')
 
-    const inline = parseDailyDigest('最后一段。…【今日最喜欢】…小红')
-    assert(inline.favorite === '小红', '标记跟在句尾也能解析')
-    assert(inline.body === '最后一段。', '句尾标记不会把正文一起删掉')
+    // 模型漏了档位时按默认档处理，不能把理由当成档位
+    const noTier = parseReportSections('【要闻】正文。\n【今日最喜欢】小明｜因为他说了句好笑的话')
+    assert(noTier.favorite?.tier === '喜欢' && noTier.favorite?.delta === 20,
+      '漏写档位时退回「喜欢 +20」')
+    assert(noTier.favorite?.reason === '他说了句好笑的话', '漏写档位时第二段仍算理由')
 
-    const periodic = parseDailyDigest('一周回顾。\n【本期最喜欢】安定')
-    assert(periodic.favorite === '安定', '「【本期最喜欢】」也能解析')
-    assert(periodic.body === '一周回顾。', '本期标记行从正文里去掉')
+    // 没有标记时整段原文作为回退
+    const plain = parseReportSections('今天群里很热闹。\n\n没有栏目标记。')
+    assert(!plain.structured, '没有栏目标记时不标为结构化')
+    assert(plain.fallback.includes('今天群里很热闹'), '回退正文保留原文')
 
-    const none = parseDailyDigest('没有标记的日报。')
-    assert(none.favorite === '' && none.body === '没有标记的日报。', '没有标记时正文原样保留')
+    // 缺头条时用要闻第一句顶上
+    const noHeadline = parseReportSections('【要闻】昨夜群里下了一场猫。第二句。\n【点评】点评。')
+    assert(noHeadline.structured && noHeadline.headline === '昨夜群里下了一场猫',
+      '缺头条时用要闻第一句兜底')
+  }
+
+  // ---------- 场景 2.5：最喜欢档位 ----------
+  {
+    assert(resolveFavoriteTier('有点喜欢').delta === 10, '有点喜欢 +10')
+    assert(resolveFavoriteTier('喜欢').delta === 20, '喜欢 +20')
+    assert(resolveFavoriteTier('非常喜欢').delta === 30, '非常喜欢 +30')
+    assert(resolveFavoriteTier('超级喜欢').delta === 30, '超级喜欢归到最高档')
+    assert(resolveFavoriteTier('略有好感').delta === 10, '略带限定词归到最低档')
+    assert(resolveFavoriteTier('').delta === 20, '没写档位时默认 +20')
+    assert(resolveFavoriteTier('看心情').delta === 20, '无法识别时退回中间档')
   }
 
   // ---------- 场景 3：正文清洗与截断 ----------
@@ -209,40 +264,113 @@ async function main() {
 
   // ---------- 场景 5：提示词 ----------
   {
-    const task = buildGroupDailyDigestTask('材料内容', '11-15 04:00 ~ 11-16 04:00', ['小明', '小红'])[0].content
-    assert(task.includes('小明、小红'), '提示词列出候选群友')
-    assert(task.includes('【今日最喜欢】'), '提示词要求输出今日最喜欢标记')
-    assert(task.includes('900-1100 字'), '提示词要求约 1000 字（900-1100）')
-    assert(task.includes('点评'), '提示词要求附角色点评')
-    assert(!task.includes('提问者'), '日报不再标注提问者')
+    const daily = buildGroupDailyDigestTask('材料内容', '11-15 04:00 ~ 11-16 04:00', ['小明', '小红'], {
+      ranking: [{ name: '小明', count: 132 }, { name: '小红', count: 87 }],
+    })[0].content
+    assert(daily.includes('心眼报'), '提示词带上报纸刊名')
+    assert(daily.includes('小明、小红'), '提示词列出候选群友')
+    assert(daily.includes('小明 132 条'), '提示词给出活跃榜候选的发言条数')
+    for (const section of ['【头条】', '【导语】', '【要闻】', '【金句】', '【活跃】', '【点评】', '【热词】']) {
+      assert(daily.includes(section), `提示词要求 ${section} 栏目`)
+    }
+    assert(daily.includes('【今日最喜欢】'), '提示词要求输出今日最喜欢')
+    assert(daily.includes('小标题｜正文'), '提示词要求要闻用小标题｜正文')
+    assert(daily.includes('不要出现你自己的态度'), '标题要求只做客观概括')
+    assert(daily.includes('｜一句点评'), '提示词要求金句带一句点评')
+    assert(daily.includes('1200-1500 字'), '日报篇幅 1200-1500 字')
+    assert(daily.includes('有点喜欢') && daily.includes('非常喜欢'), '提示词限定三档')
+    assert(daily.includes('不要每期都给最高档'), '提示词要求档位不要总是最高')
+    assert(!daily.includes('提问者'), '日报不再标注提问者')
 
     const weekly = buildGroupReportTask('材料内容', '11-09 04:00 ~ 11-16 04:00', ['小明'], GROUP_REPORT_SPECS.weekly)[0].content
     assert(weekly.includes('群周报'), '周报提示词使用周报标题')
-    assert(weekly.includes('1800-2200 字'), '周报篇幅 1800-2200 字')
+    assert(weekly.includes('2000-2500 字'), '周报篇幅 2000-2500 字')
     assert(weekly.includes('【本期最喜欢】'), '周报使用本期最喜欢标记')
     assert(weekly.includes('过去一周'), '周报说明过去一周')
 
     const monthly = buildGroupReportTask('材料内容', '11-01 04:00 ~ 12-01 04:00', ['小明'], GROUP_REPORT_SPECS.monthly)[0].content
     assert(monthly.includes('群月报'), '月报提示词使用月报标题')
-    assert(monthly.includes('2700-3300 字'), '月报篇幅 2700-3300 字')
+    assert(monthly.includes('3000-3600 字'), '月报篇幅 3000-3600 字')
     assert(monthly.includes('上个月'), '月报说明上个月')
 
     const yearly = buildGroupReportTask('材料内容', '2026-01-01 04:00 ~ 2027-01-01 04:00', ['小明'], GROUP_REPORT_SPECS.yearly)[0].content
     assert(yearly.includes('群年报'), '年报提示词使用年报标题')
-    assert(yearly.includes('3600-4400 字'), '年报篇幅 3600-4400 字')
+    assert(yearly.includes('4000-4800 字'), '年报篇幅 4000-4800 字')
     assert(yearly.includes('过去一年'), '年报说明过去一年')
 
     const repeat = buildGroupReportTask(
-      '材料内容', '11-09 04:00 ~ 11-16 04:00', ['小明', '小红'], GROUP_REPORT_SPECS.weekly, '小明',
+      '材料内容', '11-09 04:00 ~ 11-16 04:00', ['小明', '小红'], GROUP_REPORT_SPECS.weekly,
+      { previousFavoriteName: '小明' },
     )[0].content
     assert(repeat.includes('上一期最喜欢的是 小明'), '提示词提醒上一期最喜欢的人')
     assert(repeat.includes('本期不能重复选同一个人'), '提示词要求本期不能重复选')
 
     const empty = buildGroupReportTask(
-      '材料内容', '11-15 04:00 ~ 11-16 04:00', [], GROUP_REPORT_SPECS.daily, '小明',
+      '材料内容', '11-15 04:00 ~ 11-16 04:00', [], GROUP_REPORT_SPECS.daily,
+      { previousFavoriteName: '小明' },
     )[0].content
     assert(empty.includes('本期没有可选的群友'), '候选列表为空时明确提示')
-    assert(empty.includes('跳过最喜欢标记'), '候选列表为空时要求跳过标记')
+    assert(empty.includes('不要输出最喜欢这一栏'), '候选列表为空时要求跳过最喜欢')
+    assert(!empty.includes('【活跃】'), '没有活跃榜候选时不输出活跃栏目')
+  }
+
+  // ---------- 场景 6：报纸卡片 ----------
+  {
+    const sections = parseReportSections(`【头条】键盘上睡了一夜的猫
+【导语】群里忽然热闹起来。
+【要闻】猫的政变｜${'群里聊了很多事。'.repeat(30)}
+【要闻】作业战争｜${'作业也聊了很多。'.repeat(20)}
+【金句】它现在是我的输入法测试工程师 —— 小明｜这句最好笑
+【活跃】小明｜全场节奏担当
+【点评】本觉觉得很有意思。
+【热词】猫 / 作业`)
+    const hourly = new Array(24).fill(0)
+    hourly[21] = 12
+    hourly[22] = 40
+    hourly[23] = 8
+    const html = renderReportHtml({
+      masthead: '心眼报',
+      kindTitle: '群日报',
+      dateLabel: '2026.11.18',
+      issue: 7,
+      range: '2026/11/17 00:00 ~ 2026/11/18 00:00',
+      stats: { messages: 1672, nodes: 13, participants: 42 },
+      hourly,
+      sections,
+      ranking: [{ name: '<小明>', count: 132, comment: '全场节奏担当' }],
+      rankingLabel: '活跃榜',
+      footerName: '觉',
+      footerTime: '2026/11/18 00:05',
+    })
+    assert(html.includes('心眼报') && html.includes('第 7 期'), '报头带刊名与期号')
+    assert(html.includes('键盘上睡了一夜的猫'), '卡片包含头条')
+    assert(html.includes('本期热词'), '热词在顶栏')
+    assert(!html.includes('class="seal"'), '不再渲染红印章')
+    assert(html.includes('24h 活跃轨迹'), '卡片包含 24h 活跃轨迹')
+    assert(html.includes('峰值 22 时 · 40 条'), '活跃轨迹标出峰值')
+    assert(html.includes('&lt;小明&gt;'), '昵称里的尖括号被转义')
+    assert(html.includes('class="news-flow two-col"'), '长要闻使用双栏')
+    assert(html.includes('猫的政变') && html.includes('作业战争'), '多条要闻都渲染')
+    assert(html.includes('qcomment'), '金句带一句点评')
+    assert(html.includes('—— 觉'), '点评落款使用昵称')
+    assert(html.includes('rank-bar'), '活跃榜渲染成条形')
+
+    const fallback = renderReportHtml({
+      masthead: '心眼报',
+      kindTitle: '群日报',
+      dateLabel: '2026.11.18',
+      issue: 1,
+      range: '',
+      stats: { messages: 1, nodes: 0, participants: 1 },
+      hourly: new Array(24).fill(0),
+      sections: parseReportSections('没有栏目的一段纯文本。'),
+      ranking: [],
+      rankingLabel: '活跃榜',
+      footerName: '觉',
+      footerTime: '2026/11/18 00:05',
+    })
+    assert(fallback.includes('class="fallback"'), '没有栏目标记时退回单块正文')
+    assert(!fallback.includes('class="headline"'), '回退时不渲染头条')
   }
 
   console.log('\n全部通过')

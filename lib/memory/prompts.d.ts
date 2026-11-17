@@ -113,16 +113,28 @@ export declare function buildGroupDigestTask(materials: string, range: string): 
     role: string;
     content: string;
 }[];
+export interface GroupReportTaskOptions {
+    /** 上一份报告选中的群友，本期不能重复选 */
+    previousFavoriteName?: string;
+    /** 活跃榜候选（按发言条数降序）；为空时不输出活跃榜 */
+    ranking?: {
+        name: string;
+        count: number;
+    }[];
+    /** 报纸刊名 */
+    masthead?: string;
+}
 /**
  * 群聊日报/周报/月报/年报的任务输入。
- * 与省流共用人格与材料格式，但篇幅更长，并要求附一段角色点评；
- * 最后一行让角色选一个最喜欢的群友，供调用方加好感度。
+ *
+ * 输出被要求拆成报纸栏目（头条/导语/要闻/金句/活跃/点评/热词/最喜欢），
+ * 由 report-card 分块渲染；解析不到标记时渲染器会退回整块正文。
  */
-export declare function buildGroupReportTask(materials: string, range: string, participants: string[], spec: GroupReportSpec, previousFavoriteName?: string): {
+export declare function buildGroupReportTask(materials: string, range: string, participants: string[], spec: GroupReportSpec, options?: GroupReportTaskOptions): {
     role: string;
     content: string;
 }[];
-export declare function buildGroupDailyDigestTask(materials: string, range: string, participants: string[]): {
+export declare function buildGroupDailyDigestTask(materials: string, range: string, participants: string[], options?: GroupReportTaskOptions): {
     role: string;
     content: string;
 }[];

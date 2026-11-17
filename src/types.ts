@@ -234,6 +234,8 @@ export namespace Sat {
     // 分层记忆
     enable_layered_memory: boolean
     enable_group_memory: boolean
+    /** 群日报的报纸刊名 */
+    report_masthead: string
     memory_timezone_offset: number
     memory_day_boundary_hour: number
     topic_switch_check: boolean
@@ -430,6 +432,7 @@ export namespace Sat {
     Schema.object({
       enable_layered_memory: Schema.boolean().default(true).description('是否启用分层长期记忆（话题→日→周→月→季→年的自动归档）。关闭后仅保留短期记忆与常识库'),
       enable_group_memory: Schema.boolean().default(false).description('是否启用群聊记忆：按群建立独立的时间块金字塔与群画像，与按人记忆并存。只记录机器人回过话的群'),
+      report_masthead: Schema.string().default('心眼报').description('群日报的报纸刊名，印在报头'),
       memory_timezone_offset: Schema.number().default(8).description('分层记忆使用的时区偏移（小时），用于计算日界线'),
       memory_day_boundary_hour: Schema.number().min(0).max(23).step(1).default(4).description('日界线小时，默认凌晨 4 点'),
       topic_switch_check: Schema.boolean().default(true).description('是否用辅助模型判断话题切换'),

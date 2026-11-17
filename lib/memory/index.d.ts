@@ -46,7 +46,16 @@ export interface GroupDigestContext {
 }
 /** 群聊日报/周报/月报/年报的选材结果 */
 export interface GroupReportContext extends GroupDigestContext {
+    /** 本期发言的群友，按条数降序（活跃榜用） */
     participants: DigestParticipant[];
+    /** 去掉上一期最喜欢之后的候选列表（模型选人用） */
+    favoriteCandidates: DigestParticipant[];
+    /** 区间内群友的发言总条数（报头数据条用；messageCount 只是未归档原文条数） */
+    totalMessages: number;
+    /** 最近 24 小时每小时消息数，索引 0-23（报头活跃轨迹） */
+    hourly: number[];
+    /** 本次报告的期号 */
+    issue: number;
     /** 本次报告的生成时刻 */
     now: Date;
     /** 报告覆盖的终点；成功后写入日报游标，下一天从这里继续 */
@@ -123,11 +132,15 @@ export declare class MemoryService {
      * 周报 日→话题，月报 周→日→话题，年报 月→周→日→话题。日报仍从上次
      * 日报游标开始，没有游标时取最近 24 小时。
      */
-    buildGroupReportContext(session: Session): Promise<GroupReportContext | null>;
+    buildGroupReportContext(session: Session, options?: {
+        kind?: GroupReportKind;
+    }): Promise<GroupReportContext | null>;
     /** 报告生成成功后推进日报游标：日报推到当前时刻，自然周期推到周期末尾 */
     markDailyDigest(channelId: string, at: Date): Promise<void>;
     /** 记录本期的「最喜欢」，下一份报告不能再选同一个人 */
     markFavorite(channelId: string, userId: string, username: string): Promise<void>;
+    /** 报告发出后记录期号，下一期的报头 +1 */
+    markReportIssued(channelId: string, issue: number): Promise<void>;
     getPromptContext(session: Session, query: string, options?: PromptBuildOptions): Promise<PromptContext>;
     addCommonSense(content: string): Promise<void>;
     addGroupCommonSense(content: string, channelId: string): Promise<void>;

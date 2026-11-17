@@ -208,6 +208,8 @@ export declare namespace Sat {
         schedule_inject_below_entries: number;
         enable_layered_memory: boolean;
         enable_group_memory: boolean;
+        /** 群日报的报纸刊名 */
+        report_masthead: string;
         memory_timezone_offset: number;
         memory_day_boundary_hour: number;
         topic_switch_check: boolean;

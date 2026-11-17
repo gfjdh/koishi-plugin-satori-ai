@@ -44,6 +44,11 @@ export declare class MemoryRepository {
         username: string;
         count: number;
     }[]>;
+    /**
+     * 最近 24 小时每小时的群消息条数（按本地小时分桶，索引 0-23）。
+     * 报告头部的「24h 活跃轨迹」用它画柱状图。
+     */
+    getHourlyMessageCounts(scopeId: string, from: Date, to: Date, timezoneOffset: number, kinds?: string[]): Promise<number[]>;
     countDialoguesAfter(scopeId: string, after: Date, kinds?: string[]): Promise<number>;
     /** after < createdAt < before 的对话数，用于判断一个已关闭的日块是否归档干净 */
     countDialoguesInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<number>;
@@ -86,6 +91,9 @@ export declare class MemoryRepository {
         username: string;
     } | null>;
     setLastFavorite(scopeId: string, userId: string, username: string): Promise<void>;
+    /** 已经发出的报告期数；报头显示「第 N 期」 */
+    getReportCount(scopeId: string): Promise<number>;
+    setReportCount(scopeId: string, count: number): Promise<void>;
     /**
      * 活跃 scope：最近活跃时间不早于 since。不传 limit 时返回全部。
      * `__global__` 只用来记迁移时间，不是对话作用域——它有 meta 但没有对话，

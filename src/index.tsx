@@ -6,14 +6,17 @@ import { promises as fs } from 'fs'
 import { pathToFileURL } from 'url'
 import { EmojiManager } from './emoji'
 import { APIClient } from './api'
-import { GroupDigestContext, MemoryService, MemoryServiceConfig } from './memory'
+import { GroupDigestContext, GroupReportContext, MemoryService, MemoryServiceConfig } from './memory'
 import { isGroupSession } from './memory/group'
 import { PromptBuildOptions } from './memory/context'
 import { buildGroupReportTask, buildGroupDigestTask } from './memory/prompts'
 import {
-  cleanDigest, clampDailyDigest, DigestParticipant, DigestRange, parseDailyDigest,
-  resolveDigestFavorite,
+  cleanDigest, clampDailyDigest, DigestParticipant, DigestRange, parseReportSections,
+  ReportFavorite, ReportSections, resolveDigestFavorite,
 } from './memory/group-digest'
+import { formatTime } from './memory/summarizer'
+import { DEFAULT_REPORT_MASTHEAD, GroupReportKind, ReportFavoriteTier, resolveFavoriteTier } from './memory/report-specs'
+import { renderReportHtml } from './report-card'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck, shouldAppendFavorabilityMark } from './favorability'
 import { createMiddleware } from './middleware'
@@ -45,6 +48,27 @@ function botTag(session: Session): string {
 function formatMsgContent(content: Sat.Msg['content']): string {
   if (typeof content === 'string') return content
   return content.map(part => part.type === 'text' ? part.text : '[图片]').join('')
+}
+
+/** 没有 puppeteer 时把分节报告拼回纯文本 */
+function reportToText(sections: ReportSections, title: string): string {
+  if (!sections.structured) return sections.fallback
+  const parts: string[] = [`【群${title}】`]
+  if (sections.headline) parts.push(`《${sections.headline}》`)
+  if (sections.lead) parts.push(sections.lead)
+  if (sections.news.length) {
+    parts.push(sections.news
+      .map(item => item.title ? `${item.title}\n${item.body}` : item.body)
+      .join('\n\n'))
+  }
+  if (sections.quotes.length) {
+    parts.push('群友金句：\n' + sections.quotes
+      .map(item => `「${item.text}」${item.speaker ? ` —— ${item.speaker}` : ''}${item.comment ? `\n  ${item.comment}` : ''}`)
+      .join('\n'))
+  }
+  if (sections.comment) parts.push(`点评：\n${sections.comment}`)
+  if (sections.hotwords.length) parts.push(`本期热词：${sections.hotwords.join(' / ')}`)
+  return parts.join('\n\n')
 }
 
 export let puppeteer: Puppeteer | null = null
@@ -1240,19 +1264,24 @@ export class SAT extends Sat {
   }
 
   // 群日报/周报/月报/年报共用一条链路：按日期决定类型，选材、篇幅、标题随之变化
-  private async handleGroupReport(session: Session) {
+  private async handleGroupReport(session: Session, kind?: GroupReportKind) {
     if (!isGroupSession(session)) return '「群日报」只能在群里用。'
 
-    const context = await this.memoryService.buildGroupReportContext(session)
+    const context = await this.memoryService.buildGroupReportContext(session, { kind })
     if (!context) return '这段时间群里没什么可写报告的。'
 
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
+    const masthead = this.config.report_masthead || DEFAULT_REPORT_MASTHEAD
     const task = buildGroupReportTask(
       context.materials,
       context.range,
-      context.participants.map(item => item.username),
+      context.favoriteCandidates.map(item => item.username),
       context.spec,
-      context.previousFavorite?.username,
+      {
+        previousFavoriteName: context.previousFavorite?.username,
+        ranking: context.participants.slice(0, 6).map(item => ({ name: item.username, count: item.count })),
+        masthead,
+      },
     )[0].content
     const messages = await this.buildMessages(session, task, {
       skipPyramid: true,
@@ -1267,51 +1296,117 @@ export class SAT extends Sat {
     })
     if (response.error) return `群${context.spec.title}生成失败了，稍后再试。`
 
-    const parsed = parseDailyDigest(response.content)
-    const summary = clampDailyDigest(parsed.body, context.spec.maxChars)
-    if (!summary) return `群${context.spec.title}生成失败了，稍后再试。`
-
-    const favorite = context.allowFavorite
-      ? await this.applyDigestFavorite(parsed.favorite, context.participants, context.previousFavorite)
-      : null
-
-    const card = await this.renderDigestCard({ ...context, summary }, {
-      title: `群${context.spec.title}`,
-    })
-    if (card) await session.send(card)
-    else await session.send(summary)
-    // 最喜欢单独发一条普通消息，并在消息里 @ 该群友
-    if (favorite) {
-      await this.memoryService.markFavorite(session.channelId, favorite.userId, favorite.username)
-      await session.send([
-        `${context.spec.favoriteLabel}：`,
-        h('at', { id: favorite.userId, name: favorite.username }),
-        '（好感度 +20）',
-      ])
+    const sections = parseReportSections(response.content)
+    if (!sections.structured && !sections.fallback) {
+      return `群${context.spec.title}生成失败了，稍后再试。`
+    }
+    // 分栏后每条要闻与点评单独限长，避免某一栏挤掉其它栏目
+    for (const item of sections.news) {
+      item.body = clampDailyDigest(item.body, context.spec.newsItemMaxChars)
+    }
+    sections.comment = clampDailyDigest(sections.comment, context.spec.commentMaxChars)
+    if (!sections.structured) {
+      sections.fallback = clampDailyDigest(
+        sections.fallback,
+        context.spec.newsItemMaxChars * context.spec.newsItemCount,
+      )
     }
 
-    // 发送成功后才推进游标；生成或发送失败时下次会重新覆盖这段时间
+    const favorite = context.allowFavorite
+      ? await this.applyDigestFavorite(sections.favorite, context.favoriteCandidates, context.previousFavorite)
+      : null
+
+    const card = await this.renderReportCard(context, sections)
+    // 图文组合成一条消息：说明 + 报纸图片 + 最喜欢
+    const parts: (string | ReturnType<typeof h>)[] = [`${context.spec.announce}\n`]
+    parts.push(card || reportToText(sections, context.spec.title))
+    if (favorite) {
+      const tail = favorite.reason
+        ? `，因为${favorite.reason}（${favorite.tier.label} +${favorite.tier.delta}）`
+        : `（${favorite.tier.label} +${favorite.tier.delta}）`
+      parts.push(`\n${context.spec.favoriteLabel}：`)
+      parts.push(h('at', { id: favorite.userId, name: favorite.username }))
+      parts.push(tail)
+    }
+    await session.send(parts)
+
+    if (favorite) {
+      await this.memoryService.markFavorite(session.channelId, favorite.userId, favorite.username)
+    }
+    // 发送成功后才推进游标与期号；生成或发送失败时下次会重新覆盖这段时间
+    await this.memoryService.markReportIssued(session.channelId, context.issue)
     await this.memoryService.markDailyDigest(session.channelId, context.to)
   }
 
   /**
-   * 把模型选出的昵称映射回区间内的群友，再给好感度。
+   * 把模型选出的昵称映射回区间内的群友，再按档位加好感度。
    * 返回被选中的群友；未生效时返回 null。
    */
   private async applyDigestFavorite(
-    choice: string,
+    favorite: ReportFavorite | null,
     participants: DigestParticipant[],
     previousFavorite: { userId: string, username: string } | null,
-  ): Promise<DigestParticipant | null> {
-    if (!this.config.enable_favorability || !choice) return null
-    const picked = resolveDigestFavorite(choice, participants)
+  ): Promise<(DigestParticipant & { tier: ReportFavoriteTier, reason: string }) | null> {
+    if (!this.config.enable_favorability || !favorite?.name) return null
+    const picked = resolveDigestFavorite(favorite.name, participants)
     if (!picked) return null
     // 上一份报告选过的人不能重复选（候选列表已排除，这里再兜一层）
     if (previousFavorite && picked.userId === previousFavorite.userId) return null
     const user = await ensureUserExists(this.ctx, picked.userId, picked.username)
     if (!user) return null
-    await updateFavorability(this.ctx, user, 20)
-    return picked
+    const tier = resolveFavoriteTier(favorite.tier)
+    await updateFavorability(this.ctx, user, tier.delta)
+    return { ...picked, tier, reason: favorite.reason }
+  }
+
+  /** 报纸卡片。没有 puppeteer 时返回 null，由调用方退回纯文本 */
+  private async renderReportCard(
+    context: GroupReportContext,
+    sections: ReportSections,
+  ): Promise<string | null> {
+    if (!this.puppeteer) return null
+    const tz = this.config.memory_timezone_offset
+    const nowLabel = formatTime(context.now, tz)
+
+    // 模型只写了昵称，条数由本地统计；把点评映射回 userId 再拼进榜单
+    const comments = new Map<string, string>()
+    for (const entry of sections.ranking) {
+      if (!entry.comment) continue
+      const picked = resolveDigestFavorite(entry.name, context.participants)
+      if (picked) comments.set(picked.userId, entry.comment)
+    }
+    const ranking = context.participants
+      .slice(0, context.spec.rankingCount)
+      .map(item => ({
+        name: item.username,
+        count: item.count,
+        comment: comments.get(item.userId) || '',
+      }))
+
+    const html = renderReportHtml({
+      masthead: this.config.report_masthead || DEFAULT_REPORT_MASTHEAD,
+      kindTitle: `群${context.spec.title}`,
+      dateLabel: nowLabel.slice(0, 10).replace(/\//g, '.'),
+      issue: context.issue,
+      range: context.range,
+      stats: {
+        messages: context.totalMessages,
+        nodes: context.nodeCount,
+        participants: context.participants.length,
+      },
+      hourly: context.hourly,
+      sections,
+      ranking,
+      rankingLabel: context.spec.rankingLabel,
+      footerName: this.getBotName(),
+      footerTime: nowLabel,
+    })
+    try {
+      return await this.puppeteer.render(html)
+    } catch (error) {
+      logger.warn(`群${context.spec.title}图片渲染失败：${error}`)
+      return null
+    }
   }
 
   private async renderDigestCard(

@@ -8,7 +8,7 @@
 // 发言——这是允许的，粗粒度记忆本来就是整段整段的。
 // 最后剩下还没归档的原始消息，直接给原文。
 import { Granularity, SatDialogue, SatMemory } from './schema'
-import { GroupReportKind } from './report-specs'
+import { GroupReportKind, resolveFavoriteTier } from './report-specs'
 import { formatGroupRows, formatTime } from './summarizer'
 
 /** 由粗到细；topic 是最后一级 */
@@ -125,6 +125,39 @@ export function resolveReportPeriod(now: Date, timezoneOffset: number): ReportPe
 }
 
 /**
+ * 指定报告类型时的周期（预览与测试用）。
+ * 与 resolveReportPeriod 不同，这里取「当前时刻所在」的自然月/年，
+ * 方便用当前数据预览月报/年报；weekly 仍取最近一个已闭合的周一。
+ */
+export function resolvePeriodOfKind(
+  kind: GroupReportKind,
+  now: Date,
+  timezoneOffset: number,
+): ReportPeriod {
+  const local = new Date(now.getTime() + timezoneOffset * 3_600_000)
+  const year = local.getUTCFullYear()
+  const monthIndex = local.getUTCMonth()
+  const date = local.getUTCDate()
+  const weekday = local.getUTCDay()
+  if (kind === 'yearly') {
+    return { kind, from: boundaryAt(year, 0, 1, timezoneOffset, 0), to: boundaryAt(year + 1, 0, 1, timezoneOffset, 0) }
+  }
+  if (kind === 'monthly') {
+    return {
+      kind,
+      from: boundaryAt(year, monthIndex, 1, timezoneOffset, 0),
+      to: boundaryAt(year, monthIndex + 1, 1, timezoneOffset, 0),
+    }
+  }
+  if (kind === 'weekly') {
+    const daysSinceMonday = (weekday + 6) % 7
+    const to = new Date(boundaryAt(year, monthIndex, date, timezoneOffset, 0).getTime() - daysSinceMonday * 86_400_000)
+    return { kind, from: new Date(to.getTime() - 7 * 86_400_000), to }
+  }
+  return { kind: 'daily', from: null, to: now }
+}
+
+/**
  * 按「粗粒度优先」挑出覆盖 (from, now] 的记忆节点。
  *
  * 每取完一级就把游标推到该级最后一个节点的末尾，下一级只补之后的空档。
@@ -187,56 +220,14 @@ export function cleanDigest(text: string): string {
     .trim()
 }
 
-export interface DailyDigestParsed {
-  /** 去掉「今日/本期最喜欢」标记后的正文 */
-  body: string
-  /** 模型选中的群友昵称；没有选或没按格式输出时为空字符串 */
-  favorite: string
-}
-
-/**
- * 拆出报告正文和末尾的「今日/本期最喜欢」标记。
- *
- * 标记是模型输出里的元数据，不能出现在卡片上。模型可能写成
- * 「【今日最喜欢】昵称」或「【本期最喜欢：昵称】」，前后还可能带省略号、
- * 句号；标记单独一行或跟在最后一段末尾都要能处理。
- */
-export function parseDailyDigest(text: string): DailyDigestParsed {
-  const source = (text || '').replace(/\r\n?/g, '\n')
-
-  const inline = source.match(/【(?:今日|本期)最喜欢】\s*[：:]?\s*([^\n【】]+)/)
-  if (inline) {
-    const favorite = inline[1]
-      .replace(/^[…\.。\s]+/, '')
-      .replace(/[…\.。\s]+$/, '')
-      .trim()
-    return {
-      body: removeDailyDigestMarker(source, inline.index!, inline[0].length),
-      favorite,
-    }
-  }
-
-  const bracketed = source.match(/【(?:今日|本期)最喜欢[：:]\s*([^】\n]+)】/)
-  if (bracketed) {
-    return {
-      body: removeDailyDigestMarker(source, bracketed.index!, bracketed[0].length),
-      favorite: bracketed[1].trim(),
-    }
-  }
-
-  return { body: source.trim(), favorite: '' }
-}
-
-/** 去掉标记本身；标记独占一行时连整行一起删，跟在句尾时只删标记之后的内容 */
-function removeDailyDigestMarker(source: string, index: number, length: number): string {
-  const lineStart = source.lastIndexOf('\n', index) + 1
-  const beforeMarker = source.slice(lineStart, index)
-  const start = /^[\s…\.。]*$/.test(beforeMarker) ? lineStart : index
-  let end = source.indexOf('\n', index + length)
-  if (end < 0) end = source.length
-  const before = source.slice(0, start).replace(/[…\.\s]+$/, '')
-  const after = source.slice(end)
-  return (before + after).trim()
+/** 去掉代码块、统一换行、压缩多余空行；不做截断 */
+export function normalizeBody(text: string): string {
+  return (text || '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 /**
@@ -244,12 +235,7 @@ function removeDailyDigestMarker(source: string, index: number, length: number):
  * 超出上限时尽量在句末截断，避免把一句话劈成两半。
  */
 export function clampDailyDigest(text: string, max = DAILY_DIGEST_MAX_CHARS): string {
-  const cleaned = (text || '')
-    .replace(/```[a-z]*\n?/gi, '')
-    .replace(/\r\n?/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  const cleaned = normalizeBody(text)
   if (cleaned.length <= max) return cleaned
   const slice = cleaned.slice(0, max)
   const cut = Math.max(
@@ -268,7 +254,6 @@ export interface DigestParticipant {
   username: string
   count: number
 }
-
 /**
  * 把模型选出的昵称映射回群友。模型可能改写昵称（去括号、加句号、用简称），
  * 所以先精确匹配，再退到包含匹配；多个候选时取发言最多的那个。
@@ -293,4 +278,269 @@ export function resolveDigestFavorite(
     (target.length >= 2 && item.username.includes(target))
     || (item.username.length >= 2 && target.includes(item.username)))
   return fuzzy.length ? byCount(fuzzy) : null
+}
+
+// ---------- 报纸分节 ----------
+
+export interface ReportQuote {
+  text: string
+  speaker: string
+  /** 角色对这句的短评 */
+  comment: string
+}
+
+export interface ReportRankingEntry {
+  name: string
+  comment: string
+}
+
+/** 一条要闻：小标题 + 正文（可多段） */
+export interface ReportNewsItem {
+  title: string
+  body: string
+}
+
+export interface ReportFavorite {
+  name: string
+  /** 有点喜欢 / 喜欢 / 非常喜欢 */
+  tier: string
+  /** 10 / 20 / 30 */
+  delta: number
+  reason: string
+}
+
+export interface ReportSections {
+  /** 是否识别出分节标记；false 时只使用 fallback */
+  structured: boolean
+  headline: string
+  lead: string
+  news: ReportNewsItem[]
+  quotes: ReportQuote[]
+  comment: string
+  hotwords: string[]
+  ranking: ReportRankingEntry[]
+  favorite: ReportFavorite | null
+  /** 结构化失败时的原始正文 */
+  fallback: string
+}
+
+const SECTION_KEYS: Record<string, string> = {
+  '头条': 'headline',
+  '标题': 'headline',
+  '导语': 'lead',
+  '要闻': 'news',
+  '本群要闻': 'news',
+  '金句': 'quote',
+  '群友金句': 'quote',
+  '点评': 'comment',
+  '觉的点评': 'comment',
+  '热词': 'hot',
+  '本期热词': 'hot',
+  '活跃': 'ranking',
+  '活跃榜': 'ranking',
+  '今日最喜欢': 'favorite',
+  '本期最喜欢': 'favorite',
+}
+
+function normalizeSectionKey(raw: string): string | null {
+  const key = (raw || '').replace(/\s+/g, '').trim()
+  return SECTION_KEYS[key] || null
+}
+
+/**
+ * 识别一行是不是栏目标记。模型被要求写成 `【要闻】正文`，
+ * 也可能写成 `要闻：正文` 或把正文另起一行，两种都要认。
+ */
+function matchSectionMarker(line: string): { key: string, rest: string } | null {
+  const bracket = line.match(/^\s*[【\[]\s*([^】\]]{1,12}?)\s*[】\]]\s*[：:]?\s*(.*)$/)
+  if (bracket) {
+    const key = normalizeSectionKey(bracket[1])
+    return key ? { key, rest: bracket[2] } : null
+  }
+  const colon = line.match(/^\s*([^\s：:【】\[\]]{2,6})\s*[：:]\s*(.*)$/)
+  if (colon) {
+    const key = normalizeSectionKey(colon[1])
+    if (key) return { key, rest: colon[2] }
+  }
+  return null
+}
+
+function stripWrapping(text: string): string {
+  return (text || '')
+    .replace(/^[【\[（(「『"'“]+/, '')
+    .replace(/[】\]）)」』"'”]+$/, '')
+    .trim()
+}
+
+function parseQuoteLine(lines: string[]): ReportQuote | null {
+  const raw = lines.join(' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^\s*(?:\d+[.、)]|[-*·])\s*/, '')
+    .trim()
+  if (!raw) return null
+  // 先拆末尾的「｜一句点评」，再拆原话与发言人
+  const [quotePart, ...rest] = raw.split(/\s*[｜|]\s*/)
+  const comment = rest.join('｜').trim()
+  const split = quotePart.match(/^(.+?)\s*(?:——|—|--|－|–)\s*(.+)$/)
+  if (split) {
+    const text = stripWrapping(split[1]).replace(/^[“"「『]/, '').replace(/[”"」』]$/, '')
+    return { text, speaker: stripWrapping(split[2]), comment }
+  }
+  return { text: stripWrapping(quotePart), speaker: '', comment }
+}
+
+/** 一条要闻：`小标题｜正文`；没有小标题时整段当正文 */
+function parseNewsItem(lines: string[]): ReportNewsItem | null {
+  const raw = lines.join('\n').trim()
+  if (!raw) return null
+  const split = raw.match(/^([^｜|\n]{1,24})\s*[｜|]\s*([\s\S]+)$/)
+  if (split) {
+    return { title: stripWrapping(split[1]).trim(), body: normalizeBody(split[2]) }
+  }
+  return { title: '', body: normalizeBody(raw) }
+}
+
+function parseRankingLine(lines: string[]): ReportRankingEntry | null {
+  const raw = lines.join(' ').replace(/\s+/g, ' ').trim()
+  if (!raw) return null
+  const split = raw.match(/^(.+?)\s*[｜|]\s*(.+)$/)
+  if (!split) return { name: stripWrapping(raw), comment: '' }
+  return { name: stripWrapping(split[1]), comment: split[2].trim() }
+}
+
+function parseFavoriteLine(lines: string[]): ReportFavorite | null {
+  const raw = lines.join(' ').replace(/\s+/g, ' ').trim()
+    .replace(/^[…\.。\s]+/, '')
+    .replace(/[…\.。\s]+$/, '')
+  if (!raw) return null
+
+  const parts = raw.split(/\s*[｜|]\s*/).map(part => part.trim()).filter(Boolean)
+  let name = parts[0] || ''
+  let tierLabel = ''
+  let reason = ''
+
+  if (parts.length >= 3) {
+    tierLabel = parts[1]
+    reason = parts.slice(2).join('，')
+  } else if (parts.length === 2) {
+    // 「昵称｜因为……」说明模型漏了档位，第二段其实是理由
+    if (/^因为/.test(parts[1])) reason = parts[1]
+    else tierLabel = parts[1]
+  } else {
+    const because = raw.match(/^(.+?)\s*[，,]?\s*因为\s*(.+)$/)
+    if (because) {
+      name = because[1]
+      reason = because[2]
+    }
+  }
+
+  name = stripWrapping(name).replace(/^@/, '').trim()
+  if (!name) return null
+  const tier = resolveFavoriteTier(tierLabel)
+  return {
+    name,
+    tier: tier.label,
+    delta: tier.delta,
+    reason: reason.replace(/^因为\s*/, '').replace(/^[：:，,\s]+/, '').trim(),
+  }
+}
+
+/** 热词可能写成一行、也可能每行一个；统一按分隔符拆开 */
+function parseHotwords(lines: string[]): string[] {
+  const words = lines.join(' ')
+    .split(/[\/、,，·\s]+/)
+    .map(word => stripWrapping(word).replace(/^#/, '').trim())
+    .filter(word => word.length >= 1 && word.length <= 8)
+  return [...new Set(words)].slice(0, 6)
+}
+
+/**
+ * 把模型输出的分节报纸拆成栏目。
+ *
+ * 完全按标记解析；只要拿到要闻且至少有两个标记就认为结构化成功，
+ * 缺的栏目留空由渲染器跳过。解析不到标记时整段原文放进 fallback，
+ * 渲染器退回旧的整块正文样式，不会因为格式漂移导致整张图发不出去。
+ */
+export function parseReportSections(text: string): ReportSections {
+  const source = (text || '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/\r\n?/g, '\n')
+    .trim()
+
+  const empty: ReportSections = {
+    structured: false,
+    headline: '',
+    lead: '',
+    news: [],
+    quotes: [],
+    comment: '',
+    hotwords: [],
+    ranking: [],
+    favorite: null,
+    fallback: source,
+  }
+  if (!source) return empty
+
+  const buckets: { key: string, lines: string[] }[] = []
+  let current: { key: string, lines: string[] } | null = null
+  let markers = 0
+  for (const line of source.split('\n')) {
+    const marker = matchSectionMarker(line)
+    if (marker) {
+      markers++
+      current = { key: marker.key, lines: marker.rest ? [marker.rest] : [] }
+      buckets.push(current)
+      continue
+    }
+    if (current) current.lines.push(line)
+  }
+
+  const pick = (key: string) => buckets.filter(bucket => bucket.key === key)
+  const join = (key: string) => pick(key)
+    .map(bucket => bucket.lines.join('\n').trim())
+    .filter(Boolean)
+    .join('\n\n')
+
+  // 要闻可以有多条，每条一个【要闻】栏目
+  const news = pick('news')
+    .map(bucket => parseNewsItem(bucket.lines))
+    .filter((item): item is ReportNewsItem => !!item && !!item.body)
+  if (!news.length || markers < 2) return empty
+
+  const headline = pick('headline')
+    .map(bucket => bucket.lines.join(' ').trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/^[“"「『]/, '')
+    .replace(/[”"」』]$/, '')
+    .replace(/[。．.！!]+$/, '')
+    .trim()
+
+  return {
+    structured: true,
+    headline: headline || deriveHeadline(news[0].body),
+    lead: join('lead').replace(/\s*\n+\s*/g, ' '),
+    news,
+    // 模型常把多条金句写在同一个【金句】下面，按行拆开
+    quotes: pick('quote')
+      .flatMap(bucket => bucket.lines)
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => parseQuoteLine([line]))
+      .filter((item): item is ReportQuote => !!item),
+    comment: normalizeBody(join('comment')),
+    hotwords: parseHotwords(pick('hot').flatMap(bucket => bucket.lines)),
+    ranking: pick('ranking')
+      .map(bucket => parseRankingLine(bucket.lines))
+      .filter((item): item is ReportRankingEntry => !!item),
+    favorite: parseFavoriteLine(pick('favorite').flatMap(bucket => bucket.lines)),
+    fallback: source,
+  }
+}
+
+/** 模型漏写头条时，用要闻第一句顶上，别让版面空着 */
+function deriveHeadline(news: string): string {
+  const first = news.split(/\n+/)[0] || ''
+  const sentence = first.split(/[。！？!?]/)[0].trim()
+  return sentence.length > 18 ? `${sentence.slice(0, 18)}…` : sentence
 }

@@ -16,7 +16,7 @@ import { GroupRecorder } from './group-recorder'
 import { GROUP_KINDS, groupScopeId, isGroupScope } from './group'
 import {
   DigestParticipant, DigestRange, digestRangeStart, formatDigestMaterials,
-  hasDigestRange, resolveReportPeriod, selectDigestNodes,
+  hasDigestRange, resolvePeriodOfKind, resolveReportPeriod, selectDigestNodes,
 } from './group-digest'
 import { GROUP_REPORT_SPECS, GroupReportKind, GroupReportSpec } from './report-specs'
 import { formatTime } from './summarizer'
@@ -77,7 +77,16 @@ export interface GroupDigestContext {
 
 /** 群聊日报/周报/月报/年报的选材结果 */
 export interface GroupReportContext extends GroupDigestContext {
+  /** 本期发言的群友，按条数降序（活跃榜用） */
   participants: DigestParticipant[]
+  /** 去掉上一期最喜欢之后的候选列表（模型选人用） */
+  favoriteCandidates: DigestParticipant[]
+  /** 区间内群友的发言总条数（报头数据条用；messageCount 只是未归档原文条数） */
+  totalMessages: number
+  /** 最近 24 小时每小时消息数，索引 0-23（报头活跃轨迹） */
+  hourly: number[]
+  /** 本次报告的期号 */
+  issue: number
   /** 本次报告的生成时刻 */
   now: Date
   /** 报告覆盖的终点；成功后写入日报游标，下一天从这里继续 */
@@ -383,13 +392,18 @@ export class MemoryService {
    * 周报 日→话题，月报 周→日→话题，年报 月→周→日→话题。日报仍从上次
    * 日报游标开始，没有游标时取最近 24 小时。
    */
-  async buildGroupReportContext(session: Session): Promise<GroupReportContext | null> {
+  async buildGroupReportContext(
+    session: Session,
+    options: { kind?: GroupReportKind } = {},
+  ): Promise<GroupReportContext | null> {
     const channelId = session.channelId
     if (!channelId) return null
     const scopeId = groupScopeId(channelId)
     const now = new Date()
     const tz = this.config.memory_timezone_offset
-    const period = resolveReportPeriod(now, tz)
+    const period = options.kind
+      ? resolvePeriodOfKind(options.kind, now, tz)
+      : resolveReportPeriod(now, tz)
     const spec = GROUP_REPORT_SPECS[period.kind]
 
     const last = await this.repo.getDailyDigestAt(scopeId)
@@ -432,13 +446,27 @@ export class MemoryService {
 
     // 同一记忆日只奖励一次：同一天重复执行报告时只出正文
     const allowFavorite = !last || localDateKey(last, tz) !== localDateKey(now, tz)
+    const issue = (await this.repo.getReportCount(scopeId)) + 1
+    const totalMessages = participants.reduce((sum, item) => sum + item.count, 0)
+    // 活跃轨迹固定看最近 24 小时，与报告类型无关
+    const hourly = await this.repo.getHourlyMessageCounts(
+      scopeId,
+      new Date(now.getTime() - 24 * 3_600_000),
+      now,
+      tz,
+      GROUP_KINDS,
+    )
 
     return {
       materials,
       range: `${formatTime(from, tz)} ~ ${formatTime(period.to, tz)}`,
       nodeCount: nodes.length,
       messageCount: raw.length,
-      participants: favoriteCandidates,
+      participants,
+      favoriteCandidates,
+      totalMessages,
+      hourly,
+      issue,
       now,
       to: period.to,
       allowFavorite,
@@ -458,6 +486,12 @@ export class MemoryService {
   async markFavorite(channelId: string, userId: string, username: string): Promise<void> {
     if (!channelId || !userId) return
     await this.repo.setLastFavorite(groupScopeId(channelId), userId, username)
+  }
+
+  /** 报告发出后记录期号，下一期的报头 +1 */
+  async markReportIssued(channelId: string, issue: number): Promise<void> {
+    if (!channelId || issue <= 0) return
+    await this.repo.setReportCount(groupScopeId(channelId), issue)
   }
 
   // ---------- 系统提示 ----------

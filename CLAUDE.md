@@ -50,7 +50,8 @@ tsc
 # Regenerate Touhou character data from external/thbwiki (after thbwiki updates)
 #   node -r esbuild-register external/satori-ai/scripts/generate-touhou.ts
 
-# Group report test (daily/weekly/monthly/yearly period resolution, level caps, favorite marker)
+# Group report test (daily/weekly/monthly/yearly period resolution, newspaper
+# section parsing, favorite tiers, prompt contents)
 #   node -r esbuild-register external/satori-ai/scripts/test-group-daily-digest.ts
 
 # Profile entry rendering test (group "member:昵称" keys must keep the nickname)
@@ -92,7 +93,9 @@ The `SAT` class extends Koishi's `Service` and acts as the main orchestrator. It
 | `summarizer.ts` | Topic switch detection and layered summaries (group scopes use structural time blocks) |
 | `group.ts` | Group-chat time-block segmentation and extractive compression; no LLM call |
 | `group-recorder.ts` | Buffers and batch-writes group messages for groups the bot participates in |
-| `group-digest.ts` | "省流" digest: coarse-first memory selection and proportional summary input |
+| `group-digest.ts` | "省流" digest: coarse-first memory selection and proportional summary input; also parses the report's newspaper sections |
+| `report-specs.ts` | Report kinds, section word budgets, favorite tiers (10/20/30) |
+| `report-card.ts` (`src/`) | Newspaper HTML for group reports (masthead, columns, quotes, ranking); screenshot handled by the caller's puppeteer |
 | `heartbeat.ts` | Background scheduler for summarization |
 | `profile.ts` | Incremental user profile, driven by daily summaries (replaces the old user portrait module) |
 | `retrieval.ts` | BM25 retrieval for recall |

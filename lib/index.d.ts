@@ -90,10 +90,12 @@ export declare class SAT extends Sat {
     private handleDigest;
     private handleGroupReport;
     /**
-     * 把模型选出的昵称映射回区间内的群友，再给好感度。
+     * 把模型选出的昵称映射回区间内的群友，再按档位加好感度。
      * 返回被选中的群友；未生效时返回 null。
      */
     private applyDigestFavorite;
+    /** 报纸卡片。没有 puppeteer 时返回 null，由调用方退回纯文本 */
+    private renderReportCard;
     private renderDigestCard;
     dispose(): Promise<void>;
 }

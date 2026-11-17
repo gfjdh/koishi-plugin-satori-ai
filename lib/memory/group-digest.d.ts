@@ -34,6 +34,12 @@ export interface ReportPeriod {
  */
 export declare function resolveReportPeriod(now: Date, timezoneOffset: number): ReportPeriod;
 /**
+ * 指定报告类型时的周期（预览与测试用）。
+ * 与 resolveReportPeriod 不同，这里取「当前时刻所在」的自然月/年，
+ * 方便用当前数据预览月报/年报；weekly 仍取最近一个已闭合的周一。
+ */
+export declare function resolvePeriodOfKind(kind: GroupReportKind, now: Date, timezoneOffset: number): ReportPeriod;
+/**
  * 按「粗粒度优先」挑出覆盖 (from, now] 的记忆节点。
  *
  * 每取完一级就把游标推到该级最后一个节点的末尾，下一级只补之后的空档。
@@ -53,20 +59,8 @@ export interface DigestFormatOptions {
 export declare function formatDigestMaterials(nodes: SatMemory[], rows: SatDialogue[], timezoneOffset: number, options?: DigestFormatOptions): string;
 /** 概要只需要一段话：去掉代码块、压平换行；篇幅由提示词约束，不在这里硬截断 */
 export declare function cleanDigest(text: string): string;
-export interface DailyDigestParsed {
-    /** 去掉「今日/本期最喜欢」标记后的正文 */
-    body: string;
-    /** 模型选中的群友昵称；没有选或没按格式输出时为空字符串 */
-    favorite: string;
-}
-/**
- * 拆出报告正文和末尾的「今日/本期最喜欢」标记。
- *
- * 标记是模型输出里的元数据，不能出现在卡片上。模型可能写成
- * 「【今日最喜欢】昵称」或「【本期最喜欢：昵称】」，前后还可能带省略号、
- * 句号；标记单独一行或跟在最后一段末尾都要能处理。
- */
-export declare function parseDailyDigest(text: string): DailyDigestParsed;
+/** 去掉代码块、统一换行、压缩多余空行；不做截断 */
+export declare function normalizeBody(text: string): string;
 /**
  * 群日报的正文清洗：保留段落换行（卡片是 pre-wrap），压缩多余空行，
  * 超出上限时尽量在句末截断，避免把一句话劈成两半。
@@ -83,3 +77,48 @@ export interface DigestParticipant {
  * 所以先精确匹配，再退到包含匹配；多个候选时取发言最多的那个。
  */
 export declare function resolveDigestFavorite(choice: string, participants: DigestParticipant[]): DigestParticipant | null;
+export interface ReportQuote {
+    text: string;
+    speaker: string;
+    /** 角色对这句的短评 */
+    comment: string;
+}
+export interface ReportRankingEntry {
+    name: string;
+    comment: string;
+}
+/** 一条要闻：小标题 + 正文（可多段） */
+export interface ReportNewsItem {
+    title: string;
+    body: string;
+}
+export interface ReportFavorite {
+    name: string;
+    /** 有点喜欢 / 喜欢 / 非常喜欢 */
+    tier: string;
+    /** 10 / 20 / 30 */
+    delta: number;
+    reason: string;
+}
+export interface ReportSections {
+    /** 是否识别出分节标记；false 时只使用 fallback */
+    structured: boolean;
+    headline: string;
+    lead: string;
+    news: ReportNewsItem[];
+    quotes: ReportQuote[];
+    comment: string;
+    hotwords: string[];
+    ranking: ReportRankingEntry[];
+    favorite: ReportFavorite | null;
+    /** 结构化失败时的原始正文 */
+    fallback: string;
+}
+/**
+ * 把模型输出的分节报纸拆成栏目。
+ *
+ * 完全按标记解析；只要拿到要闻且至少有两个标记就认为结构化成功，
+ * 缺的栏目留空由渲染器跳过。解析不到标记时整段原文放进 fallback，
+ * 渲染器退回旧的整块正文样式，不会因为格式漂移导致整张图发不出去。
+ */
+export declare function parseReportSections(text: string): ReportSections;

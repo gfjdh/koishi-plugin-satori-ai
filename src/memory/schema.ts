@@ -75,6 +75,8 @@ export interface SatMeta {
   /** 上一份报告选中的「最喜欢」群友，下一份报告不能重复选 */
   lastFavoriteId?: string
   lastFavoriteName?: string
+  /** 已经发出的报告期数；报头显示「第 N 期」 */
+  reportCount?: number
 }
 
 declare module 'koishi' {
@@ -159,6 +161,7 @@ export function extendMemoryDatabase(ctx: Context) {
     dailyDigestAt: 'timestamp',
     lastFavoriteId: 'string',
     lastFavoriteName: 'string',
+    reportCount: 'unsigned',
   }, {
     autoInc: true,
     unique: [['scopeId']],
