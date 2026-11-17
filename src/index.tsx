@@ -1322,8 +1322,8 @@ export class SAT extends Sat {
     parts.push(card || reportToText(sections, context.spec.title))
     if (favorite) {
       const tail = favorite.reason
-        ? `，因为${favorite.reason}（${favorite.tier.label} +${favorite.tier.delta}）`
-        : `（${favorite.tier.label} +${favorite.tier.delta}）`
+        ? `，因为${favorite.reason}（${favorite.tier.label} +${favorite.tier.delta}好感）`
+        : `（${favorite.tier.label} +${favorite.tier.delta}好感）`
       parts.push(`\n${context.spec.favoriteLabel}：`)
       parts.push(h('at', { id: favorite.userId, name: favorite.username }))
       parts.push(tail)

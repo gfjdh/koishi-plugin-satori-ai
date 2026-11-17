@@ -280,6 +280,8 @@ async function main() {
     assert(daily.includes('1200-1500 字'), '日报篇幅 1200-1500 字')
     assert(daily.includes('有点喜欢') && daily.includes('非常喜欢'), '提示词限定三档')
     assert(daily.includes('不要每期都给最高档'), '提示词要求档位不要总是最高')
+    assert(daily.includes('不要因为某人发言多'), '选人只看质量和喜好，不看发言频率')
+    assert(daily.includes('不要提发言条数或活跃度'), '理由不能写发言频率')
     assert(!daily.includes('提问者'), '日报不再标注提问者')
 
     const weekly = buildGroupReportTask('材料内容', '11-09 04:00 ~ 11-16 04:00', ['小明'], GROUP_REPORT_SPECS.weekly)[0].content
