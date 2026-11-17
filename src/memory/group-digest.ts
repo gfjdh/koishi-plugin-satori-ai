@@ -23,10 +23,6 @@ const LEVEL_LABELS: Record<string, string> = {
   topic: '话题',
 }
 
-export const DIGEST_MAX_CHARS = 200
-/** 未归档原始消息最多取多少条，避免归档积压时输入失控 */
-export const DIGEST_MAX_RAW_MESSAGES = 300
-
 /** 日报正文的硬上限；周/月/年报的上限在 report-specs.ts 里 */
 export const DAILY_DIGEST_MAX_CHARS = 1600
 
@@ -183,13 +179,12 @@ export function formatDigestMaterials(
   return parts.join('\n\n')
 }
 
-/** 概要只需要一段话：去掉代码块、压平换行，并截到 200 字 */
-export function clampDigest(text: string, max = DIGEST_MAX_CHARS): string {
-  const cleaned = (text || '')
+/** 概要只需要一段话：去掉代码块、压平换行；篇幅由提示词约束，不在这里硬截断 */
+export function cleanDigest(text: string): string {
+  return (text || '')
     .replace(/```[a-z]*\n?/gi, '')
     .replace(/\s*\n+\s*/g, ' ')
     .trim()
-  return cleaned.length > max ? cleaned.slice(0, max).trim() : cleaned
 }
 
 export interface DailyDigestParsed {

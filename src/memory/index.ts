@@ -15,7 +15,7 @@ import { Summarizer } from './summarizer'
 import { GroupRecorder } from './group-recorder'
 import { GROUP_KINDS, groupScopeId, isGroupScope } from './group'
 import {
-  DigestParticipant, DIGEST_MAX_RAW_MESSAGES, DigestRange, digestRangeStart, formatDigestMaterials,
+  DigestParticipant, DigestRange, digestRangeStart, formatDigestMaterials,
   hasDigestRange, resolveReportPeriod, selectDigestNodes,
 } from './group-digest'
 import { GROUP_REPORT_SPECS, GroupReportKind, GroupReportSpec } from './report-specs'
@@ -359,9 +359,9 @@ export class MemoryService {
       (level, after, to) => this.repo.getMemoriesInRange(scopeId, level, after, to),
     )
 
+    // 未归档原文全文召回，不设条数上限：省流要的就是这段时间里的全部内容
     const raw = await this.repo.getDialoguesAfter(scopeId, cursor, {
       kinds: GROUP_KINDS,
-      limit: DIGEST_MAX_RAW_MESSAGES,
     })
     if (!nodes.length && !raw.length) return null
 

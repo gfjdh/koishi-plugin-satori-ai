@@ -49,6 +49,22 @@ export const GROUP_CATEGORY_ORDER = ['identity', 'member', 'relationship', 'topi
  */
 export const GROUP_SUMMARY_MAX_CHARS = 1000
 
+/**
+ * 个人记忆各级汇总的 summary 上限（字），按时间跨度递增。
+ * 参考生产库实测长度（p90）：day 194 / week 555 / month 1006 / season 1381 / year 2449，
+ * 上限压在 p90 附近，日常节点不受影响，只压明显膨胀的。只约束提示词，不做截断。
+ */
+export const SUMMARY_MAX_CHARS: Record<string, number> = {
+  day: 300,
+  week: 600,
+  month: 1000,
+  season: 1500,
+  year: 2000,
+}
+
+/** topic 归档（单日与批量）的 summary 上限，同样只约束提示词 */
+export const TOPIC_SUMMARY_MAX_CHARS = 300
+
 const LEVEL_LABELS: Record<string, string> = {
   day: '一天',
   week: '一周',
@@ -133,6 +149,7 @@ ${dialogues}
 · 综合考虑这段记忆未来被调用的场景和目的，无状态地存储信息。
 · 把“今天”“明天”“最近”“刚才”等相对时间替换成具体的日期或时间范围。
 · summary 简洁但保留关键事实、人物、地点、数字和用户的明确要求。
+· summary 不得超过 ${TOPIC_SUMMARY_MAX_CHARS} 字，这是硬性上限：超出时优先删减细节和原话，保留主线。
 · user_state 只描述此时段用户的处境、作息、情绪或正在做的事，不要写 ${bot}；没有相关信息时留空字符串。
 · 提到 ${bot} 时写「${bot}」，不要用泛称或代号。
 · topic 用不超过 12 个字概括这段对话的主题。
@@ -162,6 +179,7 @@ ${body}
 · 每一天只总结该日期分组内的对话，不要把其他日期的人物、事件混进来。
 · 无状态地存储信息：把“今天”“明天”“最近”“刚才”等相对时间替换成具体的日期或时间范围。
 · summary 简洁但保留关键事实、人物、地点、数字和用户的明确要求。
+· summary 不得超过 ${TOPIC_SUMMARY_MAX_CHARS} 字，这是硬性上限：超出时优先删减细节和原话，保留主线。
 · user_state 只描述该日用户的处境、作息、情绪或正在做的事，不要写 ${bot}；没有相关信息时留空字符串。
 · 提到 ${bot} 时写「${bot}」，不要用泛称或代号。
 · topic 用不超过 12 个字概括该日对话的主题。
@@ -174,6 +192,10 @@ ${body}
 export function buildSummaryPrompt(level: string, children: string, botName?: string): { role: string; content: string }[] {
   const label = LEVEL_LABELS[level] || level
   const bot = resolveBotName(botName)
+  const limit = SUMMARY_MAX_CHARS[level]
+  const limitRule = limit
+    ? `\n· summary 不得超过 ${limit} 字，这是硬性上限：子级记忆再多也要压缩到这个长度内，宁可删减细节也不能超长。`
+    : ''
   return [{
     role: 'user',
     content: `请把以下记忆汇总成对${label}的整体总结。
@@ -185,7 +207,7 @@ ${children}
 · 无状态地存储信息：把相对时间替换成具体日期或时间范围。
 · 优先保留对长期对话有价值的信息：用户的稳定特征、重要事件、明确要求、关系变化。
 · 子级记忆里用「${ROLE_USER}」和「${bot}」区分两人，汇总时保持这个区分，不要合并或互换。
-· 合并重复内容，删除琐碎细节；不要编造子级记忆中不存在的信息。
+· 合并重复内容，删除琐碎细节；不要编造子级记忆中不存在的信息。${limitRule}
 · user_state 描述这段时间用户整体处于什么状态，不要写 ${bot}；没有相关信息时留空字符串。
 · 提到 ${bot} 时写「${bot}」，不要用泛称或代号。
 · 仅输出 JSON，不要包含 markdown 代码块或其他内容：
@@ -347,10 +369,30 @@ ${input}
 }
 
 /**
+ * 省流概要的目标篇幅，按材料长度等比换算。
+ *
+ * 实测（2026-11-17，生产库 8 个群）：默认「上次发言以来」的材料中位数约
+ * 3600 字，500 字对这个量刚好，于是取 7:1——材料 7 字对应概要 1 字。
+ * 材料大多来自未归档原文（一天约 30~60 条、每条 30 字上下），压缩比 7:1
+ * 与常规摘要一致；已归档节点占比高的请求会略偏短，但不会短到没有内容。
+ */
+export const DIGEST_CHARS_PER_MATERIAL = 7
+/** 材料很少时也至少给出一段完整的话 */
+export const DIGEST_MIN_TARGET_CHARS = 150
+/** 材料极多时的上限，避免一次回复刷屏 */
+export const DIGEST_MAX_TARGET_CHARS = 3000
+
+export function digestTargetChars(materials: string): number {
+  const scaled = Math.round(materials.length / DIGEST_CHARS_PER_MATERIAL)
+  return Math.min(DIGEST_MAX_TARGET_CHARS, Math.max(DIGEST_MIN_TARGET_CHARS, scaled))
+}
+
+/**
  * 群聊「省流」的任务输入。
  * 人格、用户画像、好感度等由正常对话的系统提示负责，这里只给群聊材料和任务要求。
  */
 export function buildGroupDigestTask(materials: string, range: string): { role: string; content: string }[] {
+  const target = digestTargetChars(materials)
   return [{
     role: 'user',
     content: `现在是「省流」任务：把 ${range} 到现在群里发生的事，用你自己的口吻讲给我听。
@@ -363,7 +405,7 @@ ${materials}
 · 材料里的「你」是你自己说过的话；标了「提问者」的是我，其他人按昵称区分。
 · 只讲材料里出现过的内容，不要编造；材料没提到的事不要提。
 · 突出群里在聊什么、有没有提到我、有没有和我相关的事。
-· 200 字以内，一段话，不要分点，不要用 markdown。
+· 大约 ${target} 字，一段话，不要分点，不要用 markdown。
 · 直接输出概要正文，不要任何前缀、解释或引号。`,
   }]
 }

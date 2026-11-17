@@ -3,12 +3,12 @@
 // 纯逻辑测试，不启动 Koishi、不连数据库。
 //
 // 要保证的事：粗粒度优先、同一时段不重复、最早的粗节点可以起点早于
-// 用户上次发言、没有节点时退回原文、概要截到 200 字。
+// 用户上次发言、没有节点时退回原文、概要只做清洗不截断。
 import {
-  DIGEST_MAX_CHARS, clampDigest, digestRangeStart, formatDigestMaterials, hasDigestRange,
+  cleanDigest, digestRangeStart, formatDigestMaterials, hasDigestRange,
   selectDigestNodes,
 } from '../src/memory/group-digest'
-import { buildGroupDigestTask } from '../src/memory/prompts'
+import { buildGroupDigestTask, digestTargetChars } from '../src/memory/prompts'
 import { Granularity, SatDialogue, SatMemory } from '../src/memory/schema'
 
 const assert = (cond: any, message: string) => {
@@ -145,26 +145,33 @@ async function main() {
     assert(text.includes('用户（魔理沙）说「我也玩过」'), '其他人的发言不标提问者')
   }
 
-  // ---------- 场景 5：概要截断 ----------
+  // ---------- 场景 5：概要清洗（不截断） ----------
   {
     const long = '这是一段很长的概要。'.repeat(40)
-    const clamped = clampDigest(long)
-    assert(clamped.length === DIGEST_MAX_CHARS, `概要截到 ${DIGEST_MAX_CHARS} 字（实际 ${clamped.length}）`)
+    assert(cleanDigest(long) === long, '超长概要不截断，原样返回')
 
     const messy = '```text\n第一行\n第二行\n```'
-    assert(clampDigest(messy) === '第一行 第二行', '去掉代码块并压平换行')
+    assert(cleanDigest(messy) === '第一行 第二行', '去掉代码块并压平换行')
 
     const short = '就这些'
-    assert(clampDigest(short) === short, '不超过上限时原样返回')
+    assert(cleanDigest(short) === short, '短概要原样返回')
   }
 
   // ---------- 场景 6：任务提示词只给材料和任务要求 ----------
   {
-    const prompt = buildGroupDigestTask('材料', '时间范围').map(item => item.content).join('\n')
+    const materials = '材料'.repeat(1800) // 3600 字，实测一天的典型量
+    const prompt = buildGroupDigestTask(materials, '时间范围').map(item => item.content).join('\n')
     assert(prompt.includes('现在是「省流」任务'), '提示词说明这是省流任务')
     assert(prompt.includes('材料里的「你」是你自己说过的话'), '提示词说明机器人用「你」')
     assert(prompt.includes('标了「提问者」的是我'), '提示词说明提问者标记')
-    assert(prompt.includes('200 字以内'), '提示词限制 200 字')
+    assert(prompt.includes('大约 514 字'), '3600 字材料按 7:1 换算成 514 字')
+  }
+
+  // ---------- 场景 6b：目标篇幅按材料长度换算 ----------
+  {
+    assert(digestTargetChars('材料'.repeat(1800)) === 514, '3600 字材料 → 514 字')
+    assert(digestTargetChars('材料'.repeat(500)) === 150, '材料很少时不低于 150 字')
+    assert(digestTargetChars('字'.repeat(30_000)) === 3000, '材料极多时不超过 3000 字')
   }
 
   // ---------- 场景 7：-d/-m/-y 的范围起点 ----------

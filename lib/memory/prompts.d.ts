@@ -32,6 +32,14 @@ export declare const GROUP_CATEGORY_ORDER: string[];
  */
 export declare const GROUP_SUMMARY_MAX_CHARS = 1000;
 /**
+ * 个人记忆各级汇总的 summary 上限（字），按时间跨度递增。
+ * 参考生产库实测长度（p90）：day 194 / week 555 / month 1006 / season 1381 / year 2449，
+ * 上限压在 p90 附近，日常节点不受影响，只压明显膨胀的。只约束提示词，不做截断。
+ */
+export declare const SUMMARY_MAX_CHARS: Record<string, number>;
+/** topic 归档（单日与批量）的 summary 上限，同样只约束提示词 */
+export declare const TOPIC_SUMMARY_MAX_CHARS = 300;
+/**
  * 归档输入里的固定发言人标签。不随昵称变化：用户的昵称、用户消息里打出的称呼
  * 都可能是任意角色名，靠识别名字区分发言人是穷举不完的，所以只认标签。
  */
@@ -83,6 +91,20 @@ export declare function buildGroupProfilePrompt(existing: ProfileEntry[], input:
     role: string;
     content: string;
 }[];
+/**
+ * 省流概要的目标篇幅，按材料长度等比换算。
+ *
+ * 实测（2026-11-17，生产库 8 个群）：默认「上次发言以来」的材料中位数约
+ * 3600 字，500 字对这个量刚好，于是取 7:1——材料 7 字对应概要 1 字。
+ * 材料大多来自未归档原文（一天约 30~60 条、每条 30 字上下），压缩比 7:1
+ * 与常规摘要一致；已归档节点占比高的请求会略偏短，但不会短到没有内容。
+ */
+export declare const DIGEST_CHARS_PER_MATERIAL = 7;
+/** 材料很少时也至少给出一段完整的话 */
+export declare const DIGEST_MIN_TARGET_CHARS = 150;
+/** 材料极多时的上限，避免一次回复刷屏 */
+export declare const DIGEST_MAX_TARGET_CHARS = 3000;
+export declare function digestTargetChars(materials: string): number;
 /**
  * 群聊「省流」的任务输入。
  * 人格、用户画像、好感度等由正常对话的系统提示负责，这里只给群聊材料和任务要求。

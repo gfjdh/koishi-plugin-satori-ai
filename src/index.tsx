@@ -11,7 +11,7 @@ import { isGroupSession } from './memory/group'
 import { PromptBuildOptions } from './memory/context'
 import { buildGroupReportTask, buildGroupDigestTask } from './memory/prompts'
 import {
-  clampDailyDigest, clampDigest, DigestParticipant, DigestRange, parseDailyDigest,
+  cleanDigest, clampDailyDigest, DigestParticipant, DigestRange, parseDailyDigest,
   resolveDigestFavorite,
 } from './memory/group-digest'
 import { handleFixedDialogues } from './fixed-dialogues'
@@ -1084,7 +1084,7 @@ export class SAT extends Sat {
     const response = await this.getChatResponse(user, messages, task, session)
     if (response.error) return '省流生成失败了，稍后再试。'
 
-    const summary = clampDigest(response.content)
+    const summary = cleanDigest(response.content)
     if (!summary) return '省流生成失败了，稍后再试。'
 
     const card = await this.renderDigestCard({ ...context, summary })

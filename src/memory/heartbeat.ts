@@ -54,8 +54,11 @@ export class Heartbeat {
 
     try {
       const since = new Date(Date.now() - this.config.activeWindowDays * 86_400_000)
-      // 多取一些候选，然后按内部游标轮转，避免永远只处理最活跃的几个 scope
-      const candidates = await this.repo.getActiveMetas(since, this.config.maxScopesPerTick * 3)
+      // 取全部活跃 scope 再按游标轮转。候选集一旦按 lastActiveAt 截断，
+      // 排在后面的 scope 就永远进不了批次；而 lastActiveAt 只在汇总时刷新，
+      // 掉出去之后再也不会回来（2026-11-17 生产上 187 个活跃 scope、上限 180，
+      // 有群积压 1448 条消息 22 小时没被归档）。
+      const candidates = await this.repo.getActiveMetas(since)
 
       if (candidates.length) {
         const start = this.cursor % candidates.length

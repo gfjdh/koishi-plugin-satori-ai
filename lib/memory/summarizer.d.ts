@@ -23,6 +23,8 @@ export declare const BATCH_TOTAL_MAX_DIALOGUES = 80;
 /** 同一天连续失败多少次后跳过，避免一个坏日堵死整个 scope */
 export declare const TOPIC_SKIP_AFTER_FAILURES = 3;
 export declare const MAX_CHILDREN_PER_SUMMARY = 100;
+/** 子记忆正文总和不超过这么多字时，直接拼成父节点，不再调用模型 */
+export declare const PROMOTE_DIRECT_MAX_CHARS = 300;
 /** 单个 scope 一次心跳里最多建立多少个层级节点，防止历史积压把 tick 拖死 */
 export declare const MAX_LEVEL_NODES_PER_TICK = 10;
 /** 每次心跳默认的辅助模型调用上限（归档 + 多子节点汇总 + 日画像） */

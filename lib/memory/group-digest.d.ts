@@ -2,9 +2,6 @@ import { Granularity, SatDialogue, SatMemory } from './schema';
 import { GroupReportKind } from './report-specs';
 /** 由粗到细；topic 是最后一级 */
 export declare const DIGEST_LEVELS: Granularity[];
-export declare const DIGEST_MAX_CHARS = 200;
-/** 未归档原始消息最多取多少条，避免归档积压时输入失控 */
-export declare const DIGEST_MAX_RAW_MESSAGES = 300;
 /** 日报正文的硬上限；周/月/年报的上限在 report-specs.ts 里 */
 export declare const DAILY_DIGEST_MAX_CHARS = 1600;
 /** 「省流 -d/-m/-y」给出的范围；多个单位同时给出时依次往前推 */
@@ -54,8 +51,8 @@ export interface DigestFormatOptions {
     requesterId?: string;
 }
 export declare function formatDigestMaterials(nodes: SatMemory[], rows: SatDialogue[], timezoneOffset: number, options?: DigestFormatOptions): string;
-/** 概要只需要一段话：去掉代码块、压平换行，并截到 200 字 */
-export declare function clampDigest(text: string, max?: number): string;
+/** 概要只需要一段话：去掉代码块、压平换行；篇幅由提示词约束，不在这里硬截断 */
+export declare function cleanDigest(text: string): string;
 export interface DailyDigestParsed {
     /** 去掉「今日/本期最喜欢」标记后的正文 */
     body: string;

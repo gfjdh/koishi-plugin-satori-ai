@@ -301,17 +301,17 @@ export class MemoryRepository {
   }
 
   /**
-   * 活跃 scope：最近活跃时间不早于 since。
+   * 活跃 scope：最近活跃时间不早于 since。不传 limit 时返回全部。
    * `__global__` 只用来记迁移时间，不是对话作用域——它有 meta 但没有对话，
    * 会被心跳当成候选白占一个处理名额（它的 lastActiveAt 每次都被刷新，永远排在前面）。
    */
-  async getActiveMetas(since: Date, limit: number): Promise<SatMeta[]> {
+  async getActiveMetas(since: Date, limit?: number): Promise<SatMeta[]> {
     return this.ctx.database.get('sat_meta', {
       lastActiveAt: { $gte: since },
       scopeId: { $ne: GLOBAL_SCOPE },
     }, {
       sort: { lastActiveAt: 'desc' },
-      limit,
+      ...(limit ? { limit } : {}),
     })
   }
 

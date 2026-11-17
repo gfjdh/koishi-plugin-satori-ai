@@ -54,6 +54,8 @@ export const TOPIC_SKIP_AFTER_FAILURES = 3
 /** 合并归档失败后暂停批处理的时间，避免每轮多花一次无效调用 */
 const BATCH_COOLDOWN_MS = 5 * 60_000
 export const MAX_CHILDREN_PER_SUMMARY = 100
+/** 子记忆正文总和不超过这么多字时，直接拼成父节点，不再调用模型 */
+export const PROMOTE_DIRECT_MAX_CHARS = 300
 /** 单个 scope 一次心跳里最多建立多少个层级节点，防止历史积压把 tick 拖死 */
 export const MAX_LEVEL_NODES_PER_TICK = 10
 /** 每次心跳默认的辅助模型调用上限（归档 + 多子节点汇总 + 日画像） */
@@ -939,34 +941,39 @@ export class Summarizer {
         }
 
         const range = `${formatTime(start, this.tz)} ~ ${formatTime(end, this.tz)}`
-        const single = children.length === 1
+        const totalChars = children.reduce((sum, child) => sum + (child.content || '').length, 0)
+        // 单条子记忆，或正文总和很短时，直接拼成父节点，不必再花一次模型调用
+        const promoteDirectly = children.length === 1 || totalChars <= PROMOTE_DIRECT_MAX_CHARS
         // 历史回填的旧日节点不更新画像：既省下大量模型调用，也避免把
         // 几个月前的信息当成用户近况反复写回。
         const profileUpdate = level === 'day' && !!profile?.shouldUpdate(end)
 
-        if (single) {
+        if (promoteDirectly) {
+          const content = children.map(child => child.content || '').join('\n')
           if (this.config.dryRun) {
-            logger.info(`[dry-run] ${level} 晋升 scope=${scopeId} 周期=${range} 子记忆=1`)
+            logger.info(`[dry-run] ${level} 晋升 scope=${scopeId} 周期=${range}`
+              + ` 子记忆=${children.length} 正文=${totalChars}`)
             return false
           }
-          // 单子节点内容一致，直接晋升，不必再花一次模型调用
           if (profileUpdate && profile) {
             if (budget.calls <= 0) return false
             budget.calls -= 1
-            await profile.summarize(scopeId, children[0].content, children, group ? null : user, end)
+            await profile.summarize(scopeId, content, children, group ? null : user, end)
           }
+          // 多条合并晋升时，用户状态取最近一条非空的
+          const state = [...children].reverse().find(child => child.userState)?.userState || ''
           await this.repo.createMemory({
             scopeId,
             granularity: level,
             topic: '',
-            content: children[0].content,
-            userState: children[0].userState || '',
+            content,
+            userState: state,
             periodStart: start,
             periodEnd: end,
-            sourceCount: 1,
+            sourceCount: children.length,
             createdAt: new Date(),
           })
-          logger.info(`${level} 晋升 scope=${scopeId} 周期=${range}`)
+          logger.info(`${level} 晋升 scope=${scopeId} 周期=${range} 子记忆=${children.length}`)
           nodes += 1
           continue
         }

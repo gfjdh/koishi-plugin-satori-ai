@@ -87,11 +87,11 @@ export declare class MemoryRepository {
     } | null>;
     setLastFavorite(scopeId: string, userId: string, username: string): Promise<void>;
     /**
-     * 活跃 scope：最近活跃时间不早于 since。
+     * 活跃 scope：最近活跃时间不早于 since。不传 limit 时返回全部。
      * `__global__` 只用来记迁移时间，不是对话作用域——它有 meta 但没有对话，
      * 会被心跳当成候选白占一个处理名额（它的 lastActiveAt 每次都被刷新，永远排在前面）。
      */
-    getActiveMetas(since: Date, limit: number): Promise<SatMeta[]>;
+    getActiveMetas(since: Date, limit?: number): Promise<SatMeta[]>;
     /** 某粒度的最新一条（按 periodEnd 排序，服务端 LIMIT 1，等价于 MAX(periodEnd)） */
     getLatestMemory(scopeId: string, granularity: Granularity): Promise<SatMemory | null>;
     /** 区间查询：from < periodEnd <= to，走真正的 SQL 条件而不是 JS 侧过滤 */
