@@ -1,5 +1,5 @@
 // src/utils.ts
-import { Context, Logger, Session } from 'koishi'
+import { Context, Logger, Session, h } from 'koishi'
 import { updateUserP } from './database'
 import { User } from './types'
 import * as fs from 'fs'
@@ -7,9 +7,44 @@ import * as path from 'path'
 
 const logger = new Logger('satori-utils')
 
+/**
+ * 去掉 QQ 在回复消息里附带的「回复：」文本。
+ * 引用内容由 buildQuoteNote 重新说明，避免提示词里出现没有主语的「回复：」。
+ */
+export function stripReplyMarker(text: string): string {
+  return (text || '').replace(/[。.]?\s*回复[：:]\s*$/u, '').trim()
+}
+
+/**
+ * 引用消息的说明文本：「（引用消息：发送者：内容）」。
+ * Satori 的 quote 只有 content 字符串，发送者在 <author name="..."> 里。
+ */
+export function buildQuoteNote(session: Session): string {
+  const quote = session.quote as any
+  if (!quote) return ''
+  const content = typeof quote.content === 'string' ? quote.content : ''
+  if (!content) return ''
+  let elements: any[] = []
+  try {
+    elements = h.parse(content) as any[]
+  } catch {
+    return ''
+  }
+  const author = elements.find(element => element?.type === 'author')
+  const name = String(author?.attrs?.name || author?.attrs?.id || '').trim()
+  const text = elements
+    .filter(element => element?.type === 'text')
+    .map(element => String(element.attrs?.content || ''))
+    .join('')
+    .trim()
+  const hasImage = elements.some(element => element?.type === 'img')
+  const body = [text, hasImage ? '[图片]' : ''].filter(Boolean).join(' ')
+  if (!name && !body) return ''
+  return `（引用消息：${name ? `${name}：` : ''}${body || '（无内容）'}）`
+}
+
 // 取消息里第一个非 bot 的 @ 目标，用于发起对战
-export function getMentionedUser(session: Session): { id: string; name?: string } | null {
-  for (const element of session.elements || []) {
+export function getMentionedUser(session: Session): { id: string; name?: string } | null {  for (const element of session.elements || []) {
     if (element.type !== 'at') continue
     const id = String(element.attrs?.id ?? '')
     if (!id || id === session.selfId) continue

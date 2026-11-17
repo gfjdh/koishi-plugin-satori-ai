@@ -1,5 +1,15 @@
 import { Context, Session } from 'koishi';
 import { User } from './types';
+/**
+ * 去掉 QQ 在回复消息里附带的「回复：」文本。
+ * 引用内容由 buildQuoteNote 重新说明，避免提示词里出现没有主语的「回复：」。
+ */
+export declare function stripReplyMarker(text: string): string;
+/**
+ * 引用消息的说明文本：「（引用消息：发送者：内容）」。
+ * Satori 的 quote 只有 content 字符串，发送者在 <author name="..."> 里。
+ */
+export declare function buildQuoteNote(session: Session): string;
 export declare function getMentionedUser(session: Session): {
     id: string;
     name?: string;

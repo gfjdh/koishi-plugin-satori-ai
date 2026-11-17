@@ -3,6 +3,12 @@ import { Context, Session } from 'koishi';
 export declare const VISION_MAX_IMAGE_BYTES: number;
 /** 一次最多处理多少张图（当前消息 + 引用消息合计） */
 export declare const VISION_MAX_IMAGES = 6;
+/**
+ * Chronocat 的 /v1/assets 在媒体下载超过 1 秒时会返回 500，而第一次请求通常
+ * 已经把媒体拉到了本地。重试几次就能命中缓存。
+ */
+export declare const IMAGE_DOWNLOAD_ATTEMPTS = 3;
+export declare const IMAGE_DOWNLOAD_RETRY_DELAY_MS = 1500;
 export interface CollectedImage {
     src: string;
     /** 来源：当前消息 / 被引用的消息 / 用户上一条纯图片消息 */
@@ -25,6 +31,6 @@ export declare function guessImageMime(buffer: Buffer): string;
  */
 export declare function downloadImageAsDataUrl(ctx: Context, src: string, http?: {
     get: (url: string, config?: any) => Promise<any>;
-}): Promise<string | null>;
+}, retryDelayMs?: number): Promise<string | null>;
 /** 识图提示词：带上本消息正文，并要求重点描述与问题相关的部分 */
 export declare function buildVisionPrompt(text: string, imageCount: number, quotedCount: number, previousCount?: number): string;

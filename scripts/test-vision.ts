@@ -10,6 +10,7 @@ import { consumeVisionUsage } from '../src/database'
 import {
   IMAGE_CACHE_TTL_MS, clearImageCache, forgetImageMessage, rememberImageMessage, takeRecentImageMessage,
 } from '../src/image-cache'
+import { buildQuoteNote, stripReplyMarker } from '../src/utils'
 
 const assert = (cond: any, message: string) => {
   if (!cond) {
@@ -78,6 +79,18 @@ async function main() {
     }
     const viaBot = await downloadImageAsDataUrl(ctx, 'http://127.0.0.1:5504/v1/assets/x', botHttp)
     assert(usedBotHttp && viaBot?.startsWith('data:image/png;base64,'), '传入 http 客户端时优先用它下载')
+
+    // Chronocat 的资源接口在媒体未就绪时返回 500，重试应能拿到
+    let attempts = 0
+    const flaky = {
+      get: async () => {
+        attempts += 1
+        if (attempts < 3) throw new Error('Internal Server Error')
+        return png
+      },
+    }
+    const retried = await downloadImageAsDataUrl(ctx, 'http://127.0.0.1:5504/v1/assets/x', flaky, 0)
+    assert(attempts === 3 && retried?.startsWith('data:image/png;base64,'), '前两次 500 后重试成功')
   }
 
   // ---------- 场景 4：识图提示词带上正文和引用说明 ----------
@@ -140,6 +153,22 @@ async function main() {
     user.visionUsage = 100
     assert(await consumeVisionUsage(ctx, user, 0) === true, '限制为 0 时视为不限制')
     assert(user.visionUsage === 101, '不限制时仍然计数')
+  }
+
+  // ---------- 场景 7：引用消息说明 ----------
+  {
+    const imageQuote = {
+      quote: { content: '<author id="1" name="灵梦" avatar="x"/><img src="https://example.com/a.jpg"/>' },
+    } as any
+    assert(buildQuoteNote(imageQuote) === '（引用消息：灵梦：[图片]）', '引用图片注明发送者')
+
+    const textQuote = { quote: { content: '<author id="1" name="灵梦"/>你好呀' } } as any
+    assert(buildQuoteNote(textQuote) === '（引用消息：灵梦：你好呀）', '引用文字注明发送者')
+
+    assert(buildQuoteNote({} as any) === '', '没有引用时返回空串')
+    assert(stripReplyMarker('看看 。回复：') === '看看', '去掉「。回复：」标记')
+    assert(stripReplyMarker('看看回复:') === '看看', 'ASCII 冒号同样处理')
+    assert(stripReplyMarker('普通消息') === '普通消息', '没有标记时原样返回')
   }
 
   console.log('\n全部通过')

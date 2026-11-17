@@ -19,7 +19,7 @@ import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFa
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage, consumeVisionUsage } from './database'
 import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './types'
-import { addOutputCensor, filterResponse, hasCensorMark, processPrompt, splitSentences, updateUserPWithTicket } from './utils'
+import { addOutputCensor, buildQuoteNote, filterResponse, hasCensorMark, processPrompt, splitSentences, stripReplyMarker, updateUserPWithTicket } from './utils'
 import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
 import { CollectedImage, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, downloadImageAsDataUrl } from './vision'
@@ -407,7 +407,9 @@ export class SAT extends Sat {
     const favorabilityBlock = await this.checkFavorabilityBlock(session)
     if (favorabilityBlock) return favorabilityBlock
     // 处理输入
-    const processedPrompt = await this.processInput(session, prompt)
+    const input = await this.processInput(session, prompt)
+    // 回复消息里 QQ 会附带「回复：」，引用内容改由 buildQuoteNote 说明
+    const processedPrompt = session.quote ? stripReplyMarker(input) : input
     // 前置检查
     const preCheckResult = this.performPreChecks(session, processedPrompt)
     if (preCheckResult) return preCheckResult
@@ -429,14 +431,29 @@ export class SAT extends Sat {
       .slice(0, VISION_MAX_IMAGES)
     let finalPrompt = processedPrompt
     let imageParts: Sat.MsgContentPart[] = []
+    let quotedTotal = 0
+    let quotedUsed = 0
     if (images.length) {
       if (this.apiClient.visionEnabled()) {
-        const description = await this.describeImages(session, processedPrompt, images, user)
-        if (description) finalPrompt = `${processedPrompt}\n\n[图片内容]\n${description}`.trim()
+        const result = await this.describeImages(session, processedPrompt, images, user)
+        quotedTotal = result.quotedTotal
+        quotedUsed = result.quotedUsed
+        if (result.description) finalPrompt = `${processedPrompt}\n\n[图片内容]\n${result.description}`.trim()
       } else {
-        imageParts = await this.loadImageParts(session, images)
+        const result = await this.loadImageParts(session, images)
+        imageParts = result.parts
+        quotedTotal = result.quotedTotal
+        quotedUsed = result.quotedUsed
       }
     }
+    // 引用里有图但取不到时明确告诉模型，避免它假装看过
+    if (quotedUsed < quotedTotal) {
+      const note = quotedUsed ? '引用的部分图片无法识别' : '引用的图片无法识别'
+      finalPrompt = `${finalPrompt}\n\n[${note}]`.trim()
+    }
+    // 引用消息：注明是谁发的、内容是什么
+    const quoteNote = buildQuoteNote(session)
+    if (quoteNote) finalPrompt = `${finalPrompt}\n${quoteNote}`.trim()
     // 生成回复
     const response = await this.generateResponse(session, finalPrompt, imageParts)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
@@ -613,63 +630,76 @@ export class SAT extends Sat {
     text: string,
     images: CollectedImage[],
     user: User,
-  ): Promise<string> {
+  ): Promise<{ description: string, quotedTotal: number, quotedUsed: number }> {
     const dataUrls: string[] = []
-    let quoted = 0
+    let quotedTotal = 0
+    let quotedUsed = 0
     let previous = 0
     for (const image of images) {
+      if (image.source === 'quoted') quotedTotal += 1
       const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src, this.imageHttp(session))
       if (!dataUrl) {
-        logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src.slice(0, 80)}`)
+        logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src}`)
         continue
       }
       dataUrls.push(dataUrl)
-      if (image.source === 'quoted') quoted += 1
+      if (image.source === 'quoted') quotedUsed += 1
       else if (image.source === 'previous') previous += 1
     }
-    if (!dataUrls.length) return ''
+    if (quotedUsed < quotedTotal) {
+      logger.info(`引用图片下载失败，引用内容：${(session.quote as any)?.content || '（空）'}`)
+    }
+    const failed = { description: '', quotedTotal, quotedUsed }
+    if (!dataUrls.length) return failed
 
     // 只有真的发起识图调用才消耗额度；下载全失败时不算次数
     const level = user.userlevel < 5 ? user.userlevel : 4
     const limit = this.config.max_vision_usage[level] || 0
     if (!(await consumeVisionUsage(this.ctx, user, limit))) {
       logger.info(`本轮跳过识图：今日识图次数已达上限（level${level} ${limit} 次） user=${session.userId}`)
-      return ''
+      return failed
     }
 
     const result = await this.apiClient.visionChat(
       dataUrls,
-      buildVisionPrompt(text, dataUrls.length, quoted, previous),
+      buildVisionPrompt(text, dataUrls.length, quotedUsed, previous),
     )
     if (result.error) {
       logger.warn(`识图失败：${result.content}`)
-      return ''
+      return failed
     }
     const description = (result.content || '').trim()
-    if (!description) return ''
+    if (!description) return failed
 
     // 识图结果会进入主模型和长期记忆，按用户输入对待：过审查，命中就整段丢弃
     const censored = this.ctx.censor ? await this.ctx.censor.transform(description, session) : description
     if (hasCensorMark(censored)) {
       logger.warn(`识图内容被安全审查拦截 user=${session.userId} 长度=${description.length}`)
-      return ''
+      return failed
     }
     logger.info(`识图结果（${session.userId}）：${censored}`)
-    return censored
+    return { description: censored, quotedTotal, quotedUsed }
   }
 
   /** 没配识图模型时，把图片作为多模态内容直接附给主模型 */
-  private async loadImageParts(session: Session, images: CollectedImage[]): Promise<Sat.MsgContentPart[]> {
+  private async loadImageParts(
+    session: Session,
+    images: CollectedImage[],
+  ): Promise<{ parts: Sat.MsgContentPart[], quotedTotal: number, quotedUsed: number }> {
     const parts: Sat.MsgContentPart[] = []
+    let quotedTotal = 0
+    let quotedUsed = 0
     for (const image of images) {
+      if (image.source === 'quoted') quotedTotal += 1
       const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src, this.imageHttp(session))
       if (!dataUrl) {
-        logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src.slice(0, 80)}`)
+        logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src}`)
         continue
       }
       parts.push({ type: 'image_url', image_url: { url: dataUrl } })
+      if (image.source === 'quoted') quotedUsed += 1
     }
-    return parts
+    return { parts, quotedTotal, quotedUsed }
   }
 
   // 获取聊天回复
@@ -1158,7 +1188,8 @@ export class SAT extends Sat {
 
   // 频道记忆中间件转接
   public async handleChannelMemoryManager(session: Session): Promise<void> {
-    const processedPrompt = processPrompt(session.content, this.config.nick_name_list, [session.selfId])
+    let processedPrompt = processPrompt(session.content, this.config.nick_name_list, [session.selfId])
+    if (session.quote) processedPrompt = stripReplyMarker(processedPrompt)
     if (this.performPreChecks(session, processedPrompt)) return null
     // 敏感词处理
     let censored = processedPrompt

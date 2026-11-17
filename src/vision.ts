@@ -11,6 +11,12 @@ const logger = new Logger('satori-vision')
 export const VISION_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 /** 一次最多处理多少张图（当前消息 + 引用消息合计） */
 export const VISION_MAX_IMAGES = 6
+/**
+ * Chronocat 的 /v1/assets 在媒体下载超过 1 秒时会返回 500，而第一次请求通常
+ * 已经把媒体拉到了本地。重试几次就能命中缓存。
+ */
+export const IMAGE_DOWNLOAD_ATTEMPTS = 3
+export const IMAGE_DOWNLOAD_RETRY_DELAY_MS = 1500
 
 export interface CollectedImage {
   src: string
@@ -108,19 +114,28 @@ export async function downloadImageAsDataUrl(
   ctx: Context,
   src: string,
   http: { get: (url: string, config?: any) => Promise<any> } = ctx.http,
+  retryDelayMs = IMAGE_DOWNLOAD_RETRY_DELAY_MS,
 ): Promise<string | null> {
   if (!src) return null
   if (src.startsWith('data:')) return src
   if (src.startsWith('base64://')) {
     return toDataUrl(Buffer.from(src.slice('base64://'.length), 'base64'))
   }
-  try {
-    const data = await http.get(src, { responseType: 'arraybuffer', timeout: 15000 })
-    return toDataUrl(Buffer.from(data))
-  } catch (error) {
-    logger.warn(`图片下载失败：${(error as any)?.message || error} ${src.slice(0, 80)}`)
-    return null
+  let lastError: unknown
+  for (let attempt = 1; attempt <= IMAGE_DOWNLOAD_ATTEMPTS; attempt++) {
+    try {
+      const data = await http.get(src, { responseType: 'arraybuffer', timeout: 15000 })
+      return toDataUrl(Buffer.from(data))
+    } catch (error) {
+      lastError = error
+      if (attempt < IMAGE_DOWNLOAD_ATTEMPTS) {
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs))
+      }
+    }
   }
+  logger.warn(`图片下载失败（已重试 ${IMAGE_DOWNLOAD_ATTEMPTS} 次）：`
+    + `${(lastError as any)?.message || lastError} ${src}`)
+  return null
 }
 
 /** 识图提示词：带上本消息正文，并要求重点描述与问题相关的部分 */
