@@ -21,7 +21,10 @@ export declare function guessImageMime(buffer: Buffer): string;
 /**
  * 把图片转成 data URL。
  * QQ 图片链接常带时效或平台鉴权，外部模型自己去抓经常失败，所以先下载再编码。
+ * Satori 的 /v1/assets 接口需要 Bearer token，调用方应优先传 bot.http。
  */
-export declare function downloadImageAsDataUrl(ctx: Context, src: string): Promise<string | null>;
+export declare function downloadImageAsDataUrl(ctx: Context, src: string, http?: {
+    get: (url: string, config?: any) => Promise<any>;
+}): Promise<string | null>;
 /** 识图提示词：带上本消息正文，并要求重点描述与问题相关的部分 */
 export declare function buildVisionPrompt(text: string, imageCount: number, quotedCount: number, previousCount?: number): string;

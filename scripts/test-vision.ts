@@ -30,7 +30,8 @@ async function main() {
         { type: 'img', attrs: { src: 'base64://QUJD' } },
         { type: 'at', attrs: { id: '1', name: '灵梦' } },
       ],
-      quote: { elements: [{ type: 'img', attrs: { src: 'https://example.com/quoted.png' } }] },
+      // Satori 的 quote 通常只有 content 字符串，没有 elements
+      quote: { content: '<img src="https://example.com/quoted.png"/>' },
     } as any
 
     const images = collectImages(session)
@@ -66,6 +67,17 @@ async function main() {
 
     const inline = await downloadImageAsDataUrl(ctx, `base64://${png.toString('base64')}`)
     assert(inline?.startsWith('data:image/png;base64,'), 'base64:// 直接解码，不再下载')
+
+    // Satori 的 /v1/assets 需要 Bearer token，必须用适配器自带的 http 客户端
+    let usedBotHttp = false
+    const botHttp = {
+      get: async () => {
+        usedBotHttp = true
+        return png
+      },
+    }
+    const viaBot = await downloadImageAsDataUrl(ctx, 'http://127.0.0.1:5504/v1/assets/x', botHttp)
+    assert(usedBotHttp && viaBot?.startsWith('data:image/png;base64,'), '传入 http 客户端时优先用它下载')
   }
 
   // ---------- 场景 4：识图提示词带上正文和引用说明 ----------

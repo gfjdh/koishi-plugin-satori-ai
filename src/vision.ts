@@ -3,7 +3,9 @@
 //
 // 只处理「本次消息 + 被引用消息」里的 img 元素；纯图片消息不触发对话，
 // 所以这里不需要自己判断是否该回复。
-import { Context, Session } from 'koishi'
+import { Context, Logger, Session, h } from 'koishi'
+
+const logger = new Logger('satori-vision')
 
 /** 单张图片的大小上限；超过就跳过，避免把内存和请求体撑爆 */
 export const VISION_MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -38,10 +40,27 @@ export function currentImages(session: Session): CollectedImage[] {
   return result
 }
 
+/**
+ * 引用消息的元素。Satori 的 Resource.decode 只把被引用消息塞进
+ * `quote.content` 字符串，`quote.elements` 通常是空的，需要自己解析。
+ */
+function quoteElements(session: Session): any[] {
+  const quote = session.quote as any
+  if (!quote) return []
+  if (Array.isArray(quote.elements) && quote.elements.length) return quote.elements
+  const content = typeof quote.content === 'string' ? quote.content : ''
+  if (!content) return []
+  try {
+    return h.parse(content) as any[]
+  } catch {
+    return []
+  }
+}
+
 /** 收集本次消息和被引用消息里的图片，保持出现顺序 */
 export function collectImages(session: Session): CollectedImage[] {
   const result = currentImages(session)
-  for (const element of ((session.quote as any)?.elements as any[]) || []) {
+  for (const element of quoteElements(session)) {
     if (element?.type !== 'img') continue
     const src = String(element.attrs?.src || '').trim()
     if (src) result.push({ src, source: 'quoted' })
@@ -69,24 +88,37 @@ export function guessImageMime(buffer: Buffer): string {
 }
 
 function toDataUrl(buffer: Buffer): string | null {
-  if (!buffer.length || buffer.length > VISION_MAX_IMAGE_BYTES) return null
+  if (!buffer.length) {
+    logger.warn('图片内容为空，已跳过')
+    return null
+  }
+  if (buffer.length > VISION_MAX_IMAGE_BYTES) {
+    logger.warn(`图片超过大小上限（${buffer.length} 字节），已跳过`)
+    return null
+  }
   return `data:${guessImageMime(buffer)};base64,${buffer.toString('base64')}`
 }
 
 /**
  * 把图片转成 data URL。
  * QQ 图片链接常带时效或平台鉴权，外部模型自己去抓经常失败，所以先下载再编码。
+ * Satori 的 /v1/assets 接口需要 Bearer token，调用方应优先传 bot.http。
  */
-export async function downloadImageAsDataUrl(ctx: Context, src: string): Promise<string | null> {
+export async function downloadImageAsDataUrl(
+  ctx: Context,
+  src: string,
+  http: { get: (url: string, config?: any) => Promise<any> } = ctx.http,
+): Promise<string | null> {
   if (!src) return null
   if (src.startsWith('data:')) return src
   if (src.startsWith('base64://')) {
     return toDataUrl(Buffer.from(src.slice('base64://'.length), 'base64'))
   }
   try {
-    const data = await ctx.http.get(src, { responseType: 'arraybuffer', timeout: 15000 })
+    const data = await http.get(src, { responseType: 'arraybuffer', timeout: 15000 })
     return toDataUrl(Buffer.from(data))
-  } catch {
+  } catch (error) {
+    logger.warn(`图片下载失败：${(error as any)?.message || error} ${src.slice(0, 80)}`)
     return null
   }
 }
@@ -110,7 +142,7 @@ ${sourceLine}
 
 要求：
 · 重点描述与消息正文相关的内容；正文没提到的地方简单带过。
-· 图中有文字时原样转写。
+· 图中有少量文字时原样转写，有大量文字时简要概括。
 · 只描述看得见的内容，不要推测或编造。
 · 如果图中有角色，只需要描述外观、动作、表情等，不需要给出角色的身份等信息。
 · 遇到暴力、色情、违法内容只做中性描述，不展开细节。

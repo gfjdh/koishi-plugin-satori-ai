@@ -46,6 +46,8 @@ export declare class SAT extends Sat {
         error: boolean;
         reasoning_content?: string;
     }>;
+    /** 下载图片优先用适配器自带的 http：Satori 的 /v1/assets 需要 Bearer token */
+    private imageHttp;
     /** 把图片交给识图模型，返回可注入对话的描述；失败返回空串，不影响正常回复 */
     private describeImages;
     /** 没配识图模型时，把图片作为多模态内容直接附给主模型 */

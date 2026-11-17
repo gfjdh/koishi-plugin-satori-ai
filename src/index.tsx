@@ -434,7 +434,7 @@ export class SAT extends Sat {
         const description = await this.describeImages(session, processedPrompt, images, user)
         if (description) finalPrompt = `${processedPrompt}\n\n[图片内容]\n${description}`.trim()
       } else {
-        imageParts = await this.loadImageParts(images)
+        imageParts = await this.loadImageParts(session, images)
       }
     }
     // 生成回复
@@ -602,6 +602,11 @@ export class SAT extends Sat {
     }
   }
 
+  /** 下载图片优先用适配器自带的 http：Satori 的 /v1/assets 需要 Bearer token */
+  private imageHttp(session: Session) {
+    return (session.bot as any)?.http || this.ctx.http
+  }
+
   /** 把图片交给识图模型，返回可注入对话的描述；失败返回空串，不影响正常回复 */
   private async describeImages(
     session: Session,
@@ -613,7 +618,7 @@ export class SAT extends Sat {
     let quoted = 0
     let previous = 0
     for (const image of images) {
-      const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src)
+      const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src, this.imageHttp(session))
       if (!dataUrl) {
         logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src.slice(0, 80)}`)
         continue
@@ -654,10 +659,10 @@ export class SAT extends Sat {
   }
 
   /** 没配识图模型时，把图片作为多模态内容直接附给主模型 */
-  private async loadImageParts(images: CollectedImage[]): Promise<Sat.MsgContentPart[]> {
+  private async loadImageParts(session: Session, images: CollectedImage[]): Promise<Sat.MsgContentPart[]> {
     const parts: Sat.MsgContentPart[] = []
     for (const image of images) {
-      const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src)
+      const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src, this.imageHttp(session))
       if (!dataUrl) {
         logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src.slice(0, 80)}`)
         continue
