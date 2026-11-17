@@ -98,6 +98,19 @@ function shouldRandomTrigger(
 
 // 特殊消息类型判断
 function isSpecialMessage(session: Session): boolean {
-  const firstElement = session.elements[0]
-  return ['img', 'at', 'file'].includes(firstElement?.type) || session.content.includes(':poke') || session.content.includes('file://') || session.content.includes('http://') || session.content.includes('https://')
+  if (session.content.includes(':poke')) return true
+  // 有正文的消息（哪怕同时带图片或链接）照常触发对话、写入频道记忆；
+  // 图片交给识图流程，正文里的标签由 processPrompt 去掉。
+  const text = (session.content || '')
+    .replace(/<img\b[^>]*\/?>/gi, '')
+    .replace(/<file\b[^>]*\/?>/gi, '')
+    .replace(/<at\b[^>]*\/?>/gi, '')
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/file:\/\/\S+/gi, '')
+    .trim()
+  if (text) return false
+  // 纯图片、纯文件、纯 @、纯链接仍然跳过
+  return ['img', 'at', 'file'].includes(session.elements[0]?.type)
+    || session.content.includes('file://')
+    || /https?:\/\//.test(session.content)
 }

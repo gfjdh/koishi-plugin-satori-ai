@@ -17,11 +17,12 @@ import {
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck, shouldAppendFavorabilityMark } from './favorability'
 import { createMiddleware } from './middleware'
-import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage } from './database'
+import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage, consumeVisionUsage } from './database'
 import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './types'
 import { addOutputCensor, filterResponse, hasCensorMark, processPrompt, splitSentences, updateUserPWithTicket } from './utils'
 import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
+import { CollectedImage, buildVisionPrompt, collectImages, downloadImageAsDataUrl } from './vision'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
@@ -36,6 +37,12 @@ const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，�
 // 对话日志用：标识这条消息由哪个 bot 账号收发
 function botTag(session: Session): string {
   return `${session.platform}:${session.selfId}`
+}
+
+/** 日志里展示消息内容：多模态消息把图片块压成占位符 */
+function formatMsgContent(content: Sat.Msg['content']): string {
+  if (typeof content === 'string') return content
+  return content.map(part => part.type === 'text' ? part.text : '[图片]').join('')
 }
 
 export let puppeteer: Puppeteer | null = null
@@ -163,6 +170,9 @@ export class SAT extends Sat {
       auxiliary_LLM_URL: this.config.auxiliary_LLM_URL,
       auxiliary_LLM: this.config.auxiliary_LLM,
       auxiliary_LLM_key: this.config.auxiliary_LLM_key,
+      vision_LLM_URL: this.config.vision_LLM_URL,
+      vision_LLM: this.config.vision_LLM,
+      vision_LLM_key: this.config.vision_LLM_key,
       maxRetryTimes: this.config.maxRetryTimes,
       retry_delay_time: this.config.retry_delay_time,
       temperature: this.config.temperature,
@@ -412,11 +422,23 @@ export class SAT extends Sat {
     // 对话次数检查
     const dialogueCountCheck = await this.checkUserDialogueCount(session, user)
     if (dialogueCountCheck) return dialogueCountCheck
+    // 图片：配了识图模型就转成文字写进本轮输入，否则把图片直接附给主模型
+    const images = collectImages(session)
+    let finalPrompt = processedPrompt
+    let imageParts: Sat.MsgContentPart[] = []
+    if (images.length) {
+      if (this.apiClient.visionEnabled()) {
+        const description = await this.describeImages(session, processedPrompt, images, user)
+        if (description) finalPrompt = `${processedPrompt}\n\n[图片内容]\n${description}`.trim()
+      } else {
+        imageParts = await this.loadImageParts(images)
+      }
+    }
     // 生成回复
-    const response = await this.generateResponse(session, processedPrompt)
+    const response = await this.generateResponse(session, finalPrompt, imageParts)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
     // 更新记忆（短期记忆 + 分层长期记忆）
-    await this.memoryService.recordTurn(session, processedPrompt, response)
+    await this.memoryService.recordTurn(session, finalPrompt, response)
     // 更新用户p
     if (!response.error) await updateUserPWithTicket(this.ctx, user, 10)
 
@@ -547,7 +569,7 @@ export class SAT extends Sat {
   }
 
   // 生成回复
-  public async generateResponse(session: Session, prompt: string) {
+  public async generateResponse(session: Session, prompt: string, imageParts: Sat.MsgContentPart[] = []) {
     if (this.getChannelParallelCount(session) > this.config.max_parallel_count) {
       logger.info(`频道 ${session.channelId} 并发数过高(${this.getChannelParallelCount(session)})，${session.username}等待中...`)
     }
@@ -565,7 +587,7 @@ export class SAT extends Sat {
     await this.updateChannelParallelCount(session, 1)
     try {
       logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
-      const messages = await this.buildMessages(session, prompt)
+      const messages = await this.buildMessages(session, prompt, {}, imageParts)
       const user = await getUser(this.ctx, session.userId)
       let response = await this.getChatResponse(user, messages, prompt, session)
       if (response.error) response = await this.getChatResponse(user, messages, prompt, session)
@@ -575,6 +597,69 @@ export class SAT extends Sat {
       this.onlineUsers = this.onlineUsers.filter(id => id !== session.userId)
       await this.updateChannelParallelCount(session, -1)
     }
+  }
+
+  /** 把图片交给识图模型，返回可注入对话的描述；失败返回空串，不影响正常回复 */
+  private async describeImages(
+    session: Session,
+    text: string,
+    images: CollectedImage[],
+    user: User,
+  ): Promise<string> {
+    const dataUrls: string[] = []
+    let quoted = 0
+    for (const image of images) {
+      const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src)
+      if (!dataUrl) {
+        logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src.slice(0, 80)}`)
+        continue
+      }
+      dataUrls.push(dataUrl)
+      if (image.quoted) quoted += 1
+    }
+    if (!dataUrls.length) return ''
+
+    // 只有真的发起识图调用才消耗额度；下载全失败时不算次数
+    const level = user.userlevel < 5 ? user.userlevel : 4
+    const limit = this.config.max_vision_usage[level] || 0
+    if (!(await consumeVisionUsage(this.ctx, user, limit))) {
+      logger.info(`本轮跳过识图：今日识图次数已达上限（level${level} ${limit} 次） user=${session.userId}`)
+      return ''
+    }
+
+    const result = await this.apiClient.visionChat(
+      dataUrls,
+      buildVisionPrompt(text, dataUrls.length, quoted),
+    )
+    if (result.error) {
+      logger.warn(`识图失败：${result.content}`)
+      return ''
+    }
+    const description = (result.content || '').trim()
+    if (!description) return ''
+
+    // 识图结果会进入主模型和长期记忆，按用户输入对待：过审查，命中就整段丢弃
+    const censored = this.ctx.censor ? await this.ctx.censor.transform(description, session) : description
+    if (hasCensorMark(censored)) {
+      logger.warn(`识图内容被安全审查拦截 user=${session.userId} 长度=${description.length}`)
+      return ''
+    }
+    logger.info(`识图结果（${session.userId}）：${censored}`)
+    return censored
+  }
+
+  /** 没配识图模型时，把图片作为多模态内容直接附给主模型 */
+  private async loadImageParts(images: CollectedImage[]): Promise<Sat.MsgContentPart[]> {
+    const parts: Sat.MsgContentPart[] = []
+    for (const image of images) {
+      const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src)
+      if (!dataUrl) {
+        logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src.slice(0, 80)}`)
+        continue
+      }
+      parts.push({ type: 'image_url', image_url: { url: dataUrl } })
+    }
+    return parts
   }
 
   // 获取聊天回复
@@ -668,7 +753,12 @@ export class SAT extends Sat {
   }
 
   // 构建消息
-  private async buildMessages(session: Session, prompt: string, options: PromptBuildOptions = {}) {
+  private async buildMessages(
+    session: Session,
+    prompt: string,
+    options: PromptBuildOptions = {},
+    imageParts: Sat.MsgContentPart[] = [],
+  ) {
     const messages: Sat.Msg[] = []
     const user = await ensureUserExists(this.ctx, session.userId, session.username)
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
@@ -690,9 +780,12 @@ export class SAT extends Sat {
       const userMemory = this.memoryService.getChannelContext(this.config.personal_memory ? session.userId : session.channelId)
       messages.push(...userMemory)
     }
-    // 添加当前对话
-    messages.push({ role: 'user', content: prompt })
-    let payload = messages.map(msg => msg.role + ':' + msg.content).join('\n')
+    // 添加当前对话（没配识图模型时图片随消息一起发给主模型）
+    messages.push({
+      role: 'user',
+      content: imageParts.length ? [{ type: 'text', text: prompt }, ...imageParts] : prompt,
+    })
+    let payload = messages.map(msg => msg.role + ':' + formatMsgContent(msg.content)).join('\n')
     if (this.config.log_system_prompt) logger.info(`系统提示：\n${payload}`)
     return messages
   }

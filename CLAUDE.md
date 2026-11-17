@@ -41,6 +41,9 @@ tsc
 # Personal memory level test (direct promotion ≤300 chars, per-level prompt limits)
 #   node -r esbuild-register external/satori-ai/scripts/test-personal-levels.ts
 
+# Vision helper test (image extraction from message + quote, data URL, prompt)
+#   node -r esbuild-register external/satori-ai/scripts/test-vision.ts
+
 # Group report test (daily/weekly/monthly/yearly period resolution, level caps, favorite marker)
 #   node -r esbuild-register external/satori-ai/scripts/test-group-daily-digest.ts
 

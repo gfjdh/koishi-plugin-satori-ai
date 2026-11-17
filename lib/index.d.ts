@@ -41,11 +41,15 @@ export declare class SAT extends Sat {
     private updateChannelParallelCount;
     private getChannelParallelCount;
     private processInput;
-    generateResponse(session: Session, prompt: string): Promise<{
+    generateResponse(session: Session, prompt: string, imageParts?: Sat.MsgContentPart[]): Promise<{
         content: string;
         error: boolean;
         reasoning_content?: string;
     }>;
+    /** 把图片交给识图模型，返回可注入对话的描述；失败返回空串，不影响正常回复 */
+    private describeImages;
+    /** 没配识图模型时，把图片作为多模态内容直接附给主模型 */
+    private loadImageParts;
     getChatResponse(user: User, messages: Sat.Msg[], prompt: string, session?: Session, options?: {
         maxOutputTokens?: number;
         preserveFormatting?: boolean;

@@ -30,6 +30,8 @@ export async function createUser(ctx: Context, user: Omit<User, 'id'>): Promise<
     favorability: user.favorability || 0,
     userlevel: user.userlevel || 0,
     usage: user.usage || 0,
+    visionUsage: user.visionUsage || 0,
+    visionLastTime: user.visionLastTime || todayKey(),
     location: user.location || '',
     lastChatTime: user.lastChatTime || todayKey(),
     items: user.items || {}
@@ -72,9 +74,34 @@ export async function updateUserUsage(ctx: Context, user: User, adjustment: numb
   return usage
 }
 
-// 更新用户物品
-export async function updateUserItems(ctx: Context, user: User): Promise<void> {
+// 更新识图次数（与对话次数分开计数，同样按本地日期重置）
+export async function updateVisionUsage(ctx: Context, user: User, adjustment: number = 1): Promise<number | void> {
   if (!user) return
+  const today = todayKey()
+  if (user.visionLastTime !== today) user.visionUsage = 0
+  const usage = Math.max(0, (user.visionUsage || 0) + adjustment)
+  user.visionUsage = usage
+  user.visionLastTime = today
+  await ctx.database.set('p_system', { userid: user.userid }, { visionUsage: usage, visionLastTime: today })
+  return usage
+}
+
+/**
+ * 消耗一次识图额度：limit 为 0 表示不限制（仍然计数）。
+ * 达到上限时返回 false，调用方跳过识图，文字消息照常回复。
+ * 通行证用户不额外豁免，和普通用户同一套限额。
+ */
+export async function consumeVisionUsage(ctx: Context, user: User, limit: number): Promise<boolean> {
+  if (!user) return false
+  const today = todayKey()
+  if (user.visionLastTime !== today) user.visionUsage = 0
+  if (limit && (user.visionUsage || 0) >= limit) return false
+  await updateVisionUsage(ctx, user, 1)
+  return true
+}
+
+// 更新用户物品
+export async function updateUserItems(ctx: Context, user: User): Promise<void> {  if (!user) return
   await ctx.database.set('p_system', { userid: user.userid }, { items: user.items })
 }
 
@@ -127,6 +154,8 @@ export function extendDatabase(ctx: Context) {
     favorability: 'integer',
     userlevel: 'integer',
     usage: 'integer',
+    visionUsage: 'integer',
+    visionLastTime: 'integer',
     location: 'string',
     lastChatTime: 'integer',
     items: 'object'

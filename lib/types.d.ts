@@ -10,6 +10,10 @@ export interface User {
     usage: number;
     location: string;
     lastChatTime?: number;
+    /** 当日识图次数，用于识图模型的每日限额 */
+    visionUsage?: number;
+    /** 识图次数对应的本地日期键（YYYYMMDD），跨天时重置 */
+    visionLastTime?: number;
     items?: Record<string, ItemInfo>;
 }
 export interface ItemInfo {
@@ -105,6 +109,9 @@ export interface APIConfig {
     auxiliary_LLM_URL: string;
     auxiliary_LLM: string;
     auxiliary_LLM_key: string[];
+    vision_LLM_URL: string;
+    vision_LLM: string;
+    vision_LLM_key: string[];
     temperature: number;
     frequency_penalty: number;
     presence_penalty: number;
@@ -141,9 +148,19 @@ export declare class Sat extends Service {
     constructor(ctx: Context, config: Sat.Config);
 }
 export declare namespace Sat {
+    /** 多模态消息内容：纯文本，或 OpenAI 兼容的文本 + 图片块数组 */
+    type MsgContentPart = {
+        type: 'text';
+        text: string;
+    } | {
+        type: 'image_url';
+        image_url: {
+            url: string;
+        };
+    };
     interface Msg {
         role: string;
-        content: string;
+        content: string | MsgContentPart[];
     }
     interface Config {
         baseURL: string;
@@ -157,6 +174,9 @@ export declare namespace Sat {
         auxiliary_LLM_URL: string;
         auxiliary_LLM: string;
         auxiliary_LLM_key: string[];
+        vision_LLM_URL: string;
+        vision_LLM: string;
+        vision_LLM_key: string[];
         prompt: string;
         reasoner_prompt: string;
         no_system_prompt: boolean;
@@ -206,6 +226,7 @@ export declare namespace Sat {
         profile_update_window_days: number;
         enable_reasoner_like: boolean;
         max_usage: number[];
+        max_vision_usage: number[];
         private: boolean;
         nick_name: boolean;
         nick_name_list: string[];

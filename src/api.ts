@@ -13,6 +13,19 @@ const TICKET_FAILURE_COOLDOWN_STATUSES = new Set([401, 402, 403, 404, 422, 429])
 const MAX_RATE_LIMIT_BACKOFF_MS = 30_000
 const MAX_RETRY_AFTER_MS = 60_000
 
+/** 消息正文的文本长度；多模态消息只算 text 块 */
+function messageTextLength(content: Sat.Msg['content'] | undefined): number {
+  if (!content) return 0
+  if (typeof content === 'string') return content.length
+  return content.filter(part => part.type === 'text').map(part => part.text).join('').length
+}
+
+/** 最后一条消息是否带图片：带图时固定走主模型，非思考模型不一定支持视觉 */
+function hasImageContent(messages: Sat.Msg[]): boolean {
+  const content = messages[messages.length - 1]?.content
+  return typeof content !== 'string' && (content || []).some(part => part.type === 'image_url')
+}
+
 export class APIClient {
   private currentKeyIndex = 0
   private ticketFailedUntil = new Map<string, number>()
@@ -44,13 +57,15 @@ export class APIClient {
       baseURL = ticket?.baseURL
       const not_reasoner_model = ticket?.not_reasoner_model
       const length = ticket?.use_not_reasoner_LLM_length
-      if (not_reasoner_model && length && messages[messages.length - 1].content.length <= length) {
+      if (not_reasoner_model && length && !hasImageContent(messages)
+        && messageTextLength(messages[messages.length - 1]?.content) <= length) {
         thinkingType = "disabled"
         modle = not_reasoner_model
       }
     } else {
       const config = this.config;
-      const useNotReasoner = messages[messages.length - 1].content.length <= config.use_not_reasoner_LLM_length;
+      const useNotReasoner = !hasImageContent(messages)
+        && messageTextLength(messages[messages.length - 1]?.content) <= config.use_not_reasoner_LLM_length;
       const mainKeys = (config.keys || []).filter(Boolean)
       const notReasonerKeys = (config.not_reasoner_LLM_key || []).filter(Boolean)
       if (useNotReasoner && !notReasonerKeys.length) {
@@ -117,6 +132,57 @@ export class APIClient {
     }
 
     return this.requestAuxiliary(this.defaultAuxiliaryRoute(), messages)
+  }
+
+  /** 识图模型是否配置完整（地址、模型名、key 三项都填了） */
+  public visionEnabled(): boolean {
+    return !!(this.config.vision_LLM_URL && this.config.vision_LLM
+      && (this.config.vision_LLM_key || []).some(Boolean))
+  }
+
+  /**
+   * 识图请求：把图片（data URL）和提示词一起发给识图模型，返回描述文本。
+   * 与辅助模型同一套重试节奏；不参与主模型的 key 轮换。
+   */
+  public async visionChat(
+    images: string[],
+    prompt: string,
+    maxAttempts = Math.max(1, this.config.maxRetryTimes || 1),
+  ): Promise<{ content: string, error: boolean }> {
+    const keys = (this.config.vision_LLM_key || []).filter(Boolean)
+    if (!keys.length || !this.config.vision_LLM || !this.config.vision_LLM_URL) {
+      return { content: '未配置识图模型', error: true }
+    }
+    const url = `${trimSlash(this.config.vision_LLM_URL)}/chat/completions`
+    const headers = this.createHeaders(keys)
+    const retryDelay = Math.max(0, this.config.retry_delay_time || 5000)
+    const payload = {
+      model: this.config.vision_LLM,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          ...images.map(src => ({ type: 'image_url', image_url: { url: src } })),
+        ],
+      }],
+      temperature: 0.2,
+      max_tokens: 2048,
+    }
+
+    for (let i = 1; i <= maxAttempts; i++) {
+      try {
+        const response = await this.ctx.http.post(url, payload, { headers, timeout: 120000 })
+        const content = response?.choices?.[0]?.message?.content
+        return { content: typeof content === 'string' ? content : '', error: false }
+      } catch (error) {
+        if (i == maxAttempts) return { ...this.handleAPIError(error), error: true }
+        const status = this.statusOf(error)
+        const delay = this.retryDelayFor(status, i, retryDelay, this.retryAfterMs(error))
+        logger.warn(`识图模型请求失败(${error})，${Math.round(delay / 1000 * 10) / 10}秒后重试(第${i}次)...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+    return { content: '识图请求失败', error: true }
   }
 
   /**
@@ -199,7 +265,7 @@ export class APIClient {
     // 与 chat() 保持一致：输入较短的请求使用非思考模型
     const last = messages[messages.length - 1]
     if (metadata.not_reasoner_model && metadata.use_not_reasoner_LLM_length
-      && last && (last.content || '').length <= metadata.use_not_reasoner_LLM_length) {
+      && last && messageTextLength(last.content) <= metadata.use_not_reasoner_LLM_length) {
       model = metadata.not_reasoner_model
     }
     if (metadata.key && model && metadata.baseURL) {

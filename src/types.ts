@@ -12,6 +12,10 @@ export interface User {
   usage: number
   location: string
   lastChatTime?: number
+  /** 当日识图次数，用于识图模型的每日限额 */
+  visionUsage?: number
+  /** 识图次数对应的本地日期键（YYYYMMDD），跨天时重置 */
+  visionLastTime?: number
   items?: Record<string, ItemInfo>;
 }
 
@@ -122,6 +126,9 @@ export interface APIConfig {
   auxiliary_LLM_URL: string
   auxiliary_LLM: string
   auxiliary_LLM_key: string[]
+  vision_LLM_URL: string
+  vision_LLM: string
+  vision_LLM_key: string[]
   temperature: number
   frequency_penalty: number
   presence_penalty: number
@@ -167,9 +174,14 @@ export class Sat extends Service {
 
 
 export namespace Sat {
+  /** 多模态消息内容：纯文本，或 OpenAI 兼容的文本 + 图片块数组 */
+  export type MsgContentPart =
+    | { type: 'text', text: string }
+    | { type: 'image_url', image_url: { url: string } }
+
   export interface Msg {
     role: string
-    content: string
+    content: string | MsgContentPart[]
   }
 
   export interface Config {
@@ -184,6 +196,9 @@ export namespace Sat {
     auxiliary_LLM_URL: string
     auxiliary_LLM: string
     auxiliary_LLM_key: string[]
+    vision_LLM_URL: string
+    vision_LLM: string
+    vision_LLM_key: string[]
     prompt: string
     reasoner_prompt: string
 
@@ -238,6 +253,7 @@ export namespace Sat {
 
     enable_reasoner_like: boolean
     max_usage: number[]
+    max_vision_usage: number[]
     private: boolean
     nick_name: boolean
     nick_name_list: string[]
@@ -358,6 +374,12 @@ export namespace Sat {
         Schema.array(String).role('secret'),
         Schema.transform(String, value => [value]),
       ]).default([]).role('secret').description('辅助模型api_key'),
+      vision_LLM_URL: Schema.string().default('').description('识图模型请求地址（三项都填写才启用；留空则图片直接交给主模型）'),
+      vision_LLM: Schema.string().default('').description('识图模型名称（留空则不启用识图）'),
+      vision_LLM_key: Schema.union([
+        Schema.array(String).role('secret'),
+        Schema.transform(String, value => [value]),
+      ]).default([]).role('secret').description('识图模型api_key（留空则不启用识图）'),
       prompt: Schema.string().role('textarea').description('人格设定'),
       reasoner_prompt: Schema.string().role('textarea').description('思考提示词（对于非深度思考模型模仿思维链时生效）')
       .default('你在思考时应当逐步分析以下内容：1.当前对话的禁止事项；2.是否与群聊中其他人的发言有关联；3.是否与当前用户之前说的话有关联；4.对话的具体要求；5.用户的意图如何；6.最终的发言的主要内容。'),
@@ -428,6 +450,7 @@ export namespace Sat {
 
     Schema.object({
       max_usage: Schema.tuple([Number, Number, Number, Number, Number]).default([40, 240, 3000, 9999, 0]).description('每日最大使用次数(对应用户level0~level4)(0为不限制)'),
+      max_vision_usage: Schema.tuple([Number, Number, Number, Number, Number]).default([30, 30, 30, 30, 30]).description('每日最大识图次数(对应用户level0~level4)(0为不限制)；超过后不再识图，但文字消息照常回复。通行证用户同样受限'),
       private: Schema.boolean().default(false).description('开启后私聊AI可触发对话, 不需要使用指令'),
       nick_name: Schema.boolean().default(true).description('是否使用昵称触发对话（发言中含有昵称时）（把qq号加入昵称可以被at和戳一戳触发）'),
       nick_name_list: Schema.array(String).default(['昵称1']).description('昵称列表'),

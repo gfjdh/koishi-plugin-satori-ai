@@ -166,6 +166,8 @@ export const EMPTY_PROMPT = '（空）'
 export function processPrompt(prompt: string, botNames: string[] = [], botIds: string[] = []): string {
   if (!prompt) return '';
   if (prompt.includes(':poke')) return '戳戳';
+  // 图片由识图模型或多模态输入单独处理，正文里不保留 <img> 标签
+  prompt = prompt.replace(/<img\b[^>]*\/?>/gi, '');
   const names = botNames.filter(Boolean);
   const ids = botIds.filter(Boolean);
   // 只 @ 了 bot、没有正文时保留这条 @ 的名字：一律删掉会让消息变成空串，

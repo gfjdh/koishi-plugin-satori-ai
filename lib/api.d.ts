@@ -18,6 +18,16 @@ export declare class APIClient {
         content: string;
         error: boolean;
     }>;
+    /** 识图模型是否配置完整（地址、模型名、key 三项都填了） */
+    visionEnabled(): boolean;
+    /**
+     * 识图请求：把图片（data URL）和提示词一起发给识图模型，返回描述文本。
+     * 与辅助模型同一套重试节奏；不参与主模型的 key 轮换。
+     */
+    visionChat(images: string[], prompt: string, maxAttempts?: number): Promise<{
+        content: string;
+        error: boolean;
+    }>;
     /**
      * 辅助请求的实际发送与重试。
      * 所有失败之间都有 retry_delay_time 的间隔；429/503 按指数退避并带抖动，
