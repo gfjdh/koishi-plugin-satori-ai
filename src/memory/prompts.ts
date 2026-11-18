@@ -387,6 +387,20 @@ export function digestTargetChars(materials: string): number {
   return Math.min(DIGEST_MAX_TARGET_CHARS, Math.max(DIGEST_MIN_TARGET_CHARS, scaled))
 }
 
+/** 思维链与采样波动的余量；completion_tokens 把思维链也算在内 */
+export const DIGEST_OUTPUT_TOKEN_MARGIN = 1024
+/** 与群日报一致的单次输出上限 */
+export const DIGEST_MAX_OUTPUT_TOKENS = 8192
+
+/**
+ * 省流的输出预算。默认的 max_output_tokens 面向短对话，装不下
+ * “目标篇幅 + 思维链”；按中文约 0.7 token/字估算正文，再留固定余量。
+ */
+export function digestMaxOutputTokens(materials: string): number {
+  const body = Math.ceil(digestTargetChars(materials) / 0.7)
+  return Math.min(DIGEST_MAX_OUTPUT_TOKENS, body + DIGEST_OUTPUT_TOKEN_MARGIN)
+}
+
 /**
  * 群聊「省流」的任务输入。
  * 人格、用户画像、好感度等由正常对话的系统提示负责，这里只给群聊材料和任务要求。

@@ -8,7 +8,7 @@ import {
   cleanDigest, digestRangeStart, formatDigestMaterials, hasDigestRange,
   selectDigestNodes,
 } from '../src/memory/group-digest'
-import { buildGroupDigestTask, digestTargetChars } from '../src/memory/prompts'
+import { buildGroupDigestTask, digestMaxOutputTokens, digestTargetChars } from '../src/memory/prompts'
 import { Granularity, SatDialogue, SatMemory } from '../src/memory/schema'
 
 const assert = (cond: any, message: string) => {
@@ -172,6 +172,15 @@ async function main() {
     assert(digestTargetChars('材料'.repeat(1800)) === 514, '3600 字材料 → 514 字')
     assert(digestTargetChars('材料'.repeat(500)) === 150, '材料很少时不低于 150 字')
     assert(digestTargetChars('字'.repeat(30_000)) === 3000, '材料极多时不超过 3000 字')
+  }
+
+  // ---------- 场景 6c：输出预算要装下正文与思维链 ----------
+  {
+    // 生产事故：材料约 4900 字（目标 705 字），思维链+正文用了 747 token，
+    // 撞上默认的 max_output_tokens=512 被当成截断丢弃
+    assert(digestMaxOutputTokens('材料'.repeat(1800)) > 747, '一天量的材料预算高于 747 token')
+    assert(digestMaxOutputTokens('材料'.repeat(500)) >= 1024, '材料很少时也留出思维链余量')
+    assert(digestMaxOutputTokens('字'.repeat(30_000)) <= 8192, '材料极多时不超过 8192')
   }
 
   // ---------- 场景 7：-d/-m/-y 的范围起点 ----------

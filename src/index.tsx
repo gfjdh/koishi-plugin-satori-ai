@@ -9,7 +9,7 @@ import { APIClient } from './api'
 import { GroupDigestContext, GroupReportContext, MemoryService, MemoryServiceConfig } from './memory'
 import { isGroupSession } from './memory/group'
 import { PromptBuildOptions } from './memory/context'
-import { buildGroupReportTask, buildGroupDigestTask } from './memory/prompts'
+import { buildGroupReportTask, buildGroupDigestTask, digestMaxOutputTokens } from './memory/prompts'
 import {
   cleanDigest, clampDailyDigest, DigestParticipant, DigestRange, parseReportSections,
   ReportFavorite, ReportSections, resolveDigestFavorite,
@@ -1247,7 +1247,9 @@ export class SAT extends Sat {
     // 人格、用户画像、好感度、心情等都在，只是不注入个人/群金字塔和记忆召回
     const task = buildGroupDigestTask(context.materials, context.range)[0].content
     const messages = await this.buildMessages(session, task, { skipPyramid: true, skipRecall: true })
-    const response = await this.getChatResponse(user, messages, task, session)
+    const response = await this.getChatResponse(user, messages, task, session, {
+      maxOutputTokens: digestMaxOutputTokens(context.materials),
+    })
     if (response.error) return '省流生成失败了，稍后再试。'
 
     const summary = cleanDigest(response.content)
