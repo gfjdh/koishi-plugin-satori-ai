@@ -9,7 +9,7 @@
 import { Logger } from 'koishi'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { scoreBM25, segment } from './memory/retrieval'
+import { scoreBM25, segment, truncate } from './memory/retrieval'
 import bundledCharacters from './data/touhou-characters.json'
 
 const logger = new Logger('satori-touhou')
@@ -30,6 +30,28 @@ export const CHARACTER_MATCH_MIN_SCORE = 15
  * 分数整体偏低，用命中词数兜底（默认 176 个角色时，相关描述命中 8~14 个，无关描述 2 个）。
  */
 export const CHARACTER_MATCH_MIN_TOKENS = 6
+
+/** 候选说明里每个角色最多带多少字的外观摘要 */
+export const CHARACTER_SUMMARY_MAX_CHARS = 80
+/** 用户正文参与角色检索的最大长度：太长会把外观特征稀释掉 */
+export const MATCH_QUERY_USER_TEXT_MAX = 200
+/** 摘要里每个方面（发/瞳/标志物）最多保留多少字 */
+const SUMMARY_LINE_MAX_CHARS = 32
+
+/** 头发：优先「一头…发」这类正面描述，避开身高/年龄的设定行 */
+const SUMMARY_HAIR_HINTS: [RegExp, number][] = [
+  [/一头/, 2],
+  [/有着.{0,12}发/, 2],
+  [/短发|长发|及肩|及腰|及胸/, 1],
+  [/发饰|头发/, 1],
+  [/身高|年龄|外表是|属于/, -2],
+]
+
+const SUMMARY_EYE_HINTS: [RegExp, number][] = [
+  [/瞳/, 3],
+  [/眼睛/, 2],
+  [/身高|年龄|外表是|属于/, -2],
+]
 
 /** 角色库文档：名字 + 别名 + 外观；外观是匹配的主要依据。纯数字别名不参与，容易误伤 */
 function buildDocs(list: TouhouCharacter[]) {
@@ -63,6 +85,90 @@ let docTokenSets: Set<string>[] = buildTokenSets(docs)
 
 function buildTokenSets(list: ReturnType<typeof buildDocs>): Set<string>[] {
   return list.map(doc => new Set(segment(doc.content)))
+}
+
+/**
+ * 标志物：同一行里信号越多越可能是第三只眼/道具那一段。
+ * 只按「第一个命中」取会被「鞋子上链接着第三只眼」这类服装行抢走。
+ */
+const SUMMARY_PROP_HINTS: [RegExp, number][] = [
+  [/第三只眼/, 3],
+  [/周身|缠绕|环绕|周围/, 2],
+  [/手持|拿着|武器|背着|翅膀|尾巴/, 2],
+]
+
+/** 去掉括号和引用标记，按逗号取前几个短句，避免把整句百字长文塞进候选说明 */
+function condenseLine(line: string): string {
+  const clauses = line
+    .replace(/[（(\[【][^）)\]】]*[）)\]】]/g, '')
+    .split(/[，。；;]/)
+    .map(clause => clause.trim())
+    .filter(Boolean)
+  let text = ''
+  for (const clause of clauses) {
+    if (!text) {
+      text = clause
+      continue
+    }
+    if (text.length + clause.length + 1 > SUMMARY_LINE_MAX_CHARS) break
+    text += `，${clause}`
+  }
+  return truncate(text || line, SUMMARY_LINE_MAX_CHARS).replace(/^[她他它](?:的)?/, '')
+}
+
+/** 挑一行：命中的提示词权重之和最高的行（分数必须为正） */
+function pickLine(lines: string[], picked: Set<number>, hints: [RegExp, number][]): number {
+  let best = -1
+  let bestScore = 0
+  lines.forEach((line, index) => {
+    if (picked.has(index)) return
+    let score = 0
+    for (const [rule, weight] of hints) {
+      if (rule.test(line)) score += weight
+    }
+    if (score > bestScore) {
+      best = index
+      bestScore = score
+    }
+  })
+  return best
+}
+
+/**
+ * 从角色库的外观长文里压出一行摘要（发/瞳/标志物），给主模型核对用。
+ * 官方外观里写着瞳色和第三只眼这类信息，主模型据此判断比凭记忆可靠。
+ */
+export function summarizeAppearance(appearance: string, name = ''): string {
+  if (!appearance || appearance.includes('暂无相关资料')) return ''
+  const lines = appearance.split('\n').map(line => line.trim()).filter(Boolean)
+  if (!lines.length) return ''
+
+  const picked = new Set<number>()
+  for (const hints of [SUMMARY_HAIR_HINTS, SUMMARY_EYE_HINTS, SUMMARY_PROP_HINTS]) {
+    const index = pickLine(lines, picked, hints)
+    if (index >= 0) picked.add(index)
+  }
+  if (!picked.size) picked.add(0)
+
+  const summary = [...picked]
+    .sort((a, b) => a - b)
+    .map(index => condenseLine(lines[index]))
+    .filter(Boolean)
+    .join('；')
+  return truncate(stripNamePrefix(summary, name), CHARACTER_SUMMARY_MAX_CHARS)
+}
+
+/** 外观长文常以角色名开头（「恋有着…」「魔理沙有着…」），摘要里去掉 */
+function stripNamePrefix(text: string, name: string): string {
+  if (!name) return text
+  for (let length = Math.min(4, name.length); length >= 1; length--) {
+    const prefix = name.slice(-length)
+    if (!text.startsWith(prefix)) continue
+    if (/^(有着|属于|身穿|头戴|长着|留着|是)/.test(text.slice(prefix.length))) {
+      return text.slice(prefix.length)
+    }
+  }
+  return text
 }
 
 function applyCharacters(list: TouhouCharacter[]): void {
@@ -105,6 +211,8 @@ export interface CharacterMatch {
   name: string
   aliases: string[]
   score: number
+  /** 官方外观摘要（发/瞳/标志物），供主模型核对；没有资料时为空串 */
+  summary: string
 }
 
 export function matchCharacters(description: string, topN = 3): CharacterMatch[] {
@@ -123,11 +231,35 @@ export function matchCharacters(description: string, topN = 3): CharacterMatch[]
       name: characters[id].name,
       aliases: characters[id].alias,
       score,
+      summary: summarizeAppearance(characters[id].appearance, characters[id].name),
     }))
 }
 
-/** 注入主模型提示词的候选说明 */
+/** 识图描述里的「特征」行；模型没按格式输出时返回空串 */
+export function extractFeatureLines(description: string): string {
+  return (description || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => /^特征[:：]/.test(line))
+    .join(' ')
+}
+
+/**
+ * 角色检索的查询：特征行 + 用户正文。
+ * 整段描述里的动作、背景、衣服上的字母等词会稀释外观特征，所以只取特征行；
+ * 用户在正文里点名的角色（如「看这个恋恋」）是最强先验，必须一起参与检索。
+ */
+export function buildMatchQuery(description: string, userText = ''): string {
+  const features = extractFeatureLines(description) || (description || '').trim()
+  const text = (userText || '').trim().slice(0, MATCH_QUERY_USER_TEXT_MAX)
+  return `${features} ${text}`.trim()
+}
+
+/** 注入主模型提示词的候选说明：带上官方外观摘要，供模型与图中描述核对 */
 export function buildCharacterNote(matches: CharacterMatch[]): string {
   if (!matches.length) return ''
-  return `[可能的角色：${matches.map(match => match.name).join('、')}]（仅供参考，不确定就不要下结论）`
+  const items = matches
+    .map(match => match.summary ? `${match.name}（${match.summary}）` : match.name)
+    .join('；')
+  return `[角色候选：${items}]（按识图描述检索，仅供参考；候选特征与图中对不上就忽略，不要仅凭候选否定用户说的角色）`
 }

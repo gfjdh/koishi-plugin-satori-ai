@@ -25,9 +25,9 @@ import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './ty
 import { addOutputCensor, buildQuoteNote, filterResponse, hasCensorMark, processPrompt, splitSentences, stripReplyMarker, updateUserPWithTicket } from './utils'
 import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
-import { CollectedImage, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, downloadImageAsDataUrl } from './vision'
+import { CollectedImage, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, downloadImageAsDataUrl, stripImageTags } from './vision'
 import { takeRecentImageMessage } from './image-cache'
-import { buildCharacterNote, loadTouhouCharacters, matchCharacters } from './touhou'
+import { buildCharacterNote, buildMatchQuery, loadTouhouCharacters, matchCharacters } from './touhou'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
@@ -467,8 +467,9 @@ export class SAT extends Sat {
         quotedUsed = result.quotedUsed
         if (result.description) {
           finalPrompt = `${processedPrompt}\n\n[图片内容]\n${result.description}`.trim()
-          // 用识图描述在东方角色库里检索候选，只给参考，不下结论
-          const characterNote = buildCharacterNote(matchCharacters(result.description))
+          // 用特征行 + 用户正文在东方角色库里检索候选，只给参考，不下结论
+          const matchQuery = buildMatchQuery(result.description, stripImageTags(processedPrompt))
+          const characterNote = buildCharacterNote(matchCharacters(matchQuery))
           if (characterNote) finalPrompt = `${finalPrompt}\n${characterNote}`.trim()
         }
       } else {
