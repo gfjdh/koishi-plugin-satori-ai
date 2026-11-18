@@ -27,7 +27,7 @@ import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
 import { CollectedImage, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, downloadImageAsDataUrl, stripImageTags } from './vision'
 import { takeRecentImageMessage } from './image-cache'
-import { buildCharacterNote, buildMatchQuery, loadTouhouCharacters, matchCharacters } from './touhou'
+import { buildCharacterNoteFromGroups, loadTouhouCharacters, matchCharacterGroups } from './touhou'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
@@ -464,16 +464,21 @@ export class SAT extends Sat {
     let imageParts: Sat.MsgContentPart[] = []
     let quotedTotal = 0
     let quotedUsed = 0
+    let imageTotal = 0
+    let imageUsed = 0
     if (images.length) {
       if (this.apiClient.visionEnabled()) {
         const result = await this.describeImages(session, processedPrompt, images, user)
         quotedTotal = result.quotedTotal
         quotedUsed = result.quotedUsed
+        imageTotal = result.total
+        imageUsed = result.used
         if (result.description) {
           finalPrompt = `${processedPrompt}\n\n[图片内容]\n${result.description}`.trim()
-          // 用特征行 + 用户正文在东方角色库里检索候选，只给参考，不下结论
-          const matchQuery = buildMatchQuery(result.description, stripImageTags(processedPrompt))
-          const characterNote = buildCharacterNote(matchCharacters(matchQuery))
+          // 按角色分别检索东方角色库，只给参考，不下结论
+          const characterNote = buildCharacterNoteFromGroups(
+            matchCharacterGroups(result.description, stripImageTags(processedPrompt)),
+          )
           if (characterNote) finalPrompt = `${finalPrompt}\n${characterNote}`.trim()
         }
       } else {
@@ -481,12 +486,16 @@ export class SAT extends Sat {
         imageParts = result.parts
         quotedTotal = result.quotedTotal
         quotedUsed = result.quotedUsed
+        imageTotal = result.total
+        imageUsed = result.used
       }
     }
-    // 引用里有图但取不到时明确告诉模型，避免它假装看过
-    if (quotedUsed < quotedTotal) {
-      const note = quotedUsed ? '引用的部分图片无法识别' : '引用的图片无法识别'
-      finalPrompt = `${finalPrompt}\n\n[${note}]`.trim()
+    // 有图没取到时明确告诉模型它看不到，避免它编造画面
+    if (imageUsed < imageTotal) {
+      const note = quotedUsed < quotedTotal
+        ? '[引用的图片无法识别：你看不到这张图，不要描述或猜测图中内容，直接告诉用户图片没加载出来]'
+        : '[图片无法识别：你看不到这张图，不要描述或猜测图中内容]'
+      finalPrompt = `${finalPrompt}\n\n${note}`.trim()
     }
     // 引用消息：注明是谁发的、内容是什么
     const quoteNote = buildQuoteNote(session)
@@ -667,7 +676,7 @@ export class SAT extends Sat {
     text: string,
     images: CollectedImage[],
     user: User,
-  ): Promise<{ description: string, quotedTotal: number, quotedUsed: number }> {
+  ): Promise<{ description: string, total: number, used: number, quotedTotal: number, quotedUsed: number }> {
     const dataUrls: string[] = []
     let quotedTotal = 0
     let quotedUsed = 0
@@ -686,7 +695,7 @@ export class SAT extends Sat {
     if (quotedUsed < quotedTotal) {
       logger.info(`引用图片下载失败，引用内容：${(session.quote as any)?.content || '（空）'}`)
     }
-    const failed = { description: '', quotedTotal, quotedUsed }
+    const failed = { description: '', total: images.length, used: 0, quotedTotal, quotedUsed }
     if (!dataUrls.length) return failed
 
     // 只有真的发起识图调用才消耗额度；下载全失败时不算次数
@@ -715,14 +724,14 @@ export class SAT extends Sat {
       return failed
     }
     logger.info(`识图结果（${session.userId}）：${censored}`)
-    return { description: censored, quotedTotal, quotedUsed }
+    return { description: censored, total: images.length, used: dataUrls.length, quotedTotal, quotedUsed }
   }
 
   /** 没配识图模型时，把图片作为多模态内容直接附给主模型 */
   private async loadImageParts(
     session: Session,
     images: CollectedImage[],
-  ): Promise<{ parts: Sat.MsgContentPart[], quotedTotal: number, quotedUsed: number }> {
+  ): Promise<{ parts: Sat.MsgContentPart[], total: number, used: number, quotedTotal: number, quotedUsed: number }> {
     const parts: Sat.MsgContentPart[] = []
     let quotedTotal = 0
     let quotedUsed = 0
@@ -736,7 +745,7 @@ export class SAT extends Sat {
       parts.push({ type: 'image_url', image_url: { url: dataUrl } })
       if (image.source === 'quoted') quotedUsed += 1
     }
-    return { parts, quotedTotal, quotedUsed }
+    return { parts, total: images.length, used: parts.length, quotedTotal, quotedUsed }
   }
 
   // 获取聊天回复

@@ -4,8 +4,9 @@
 // 要保证的事：特征明显的描述能命中对应角色；无关描述不产生候选；
 // 候选说明的格式固定。
 import {
-  buildCharacterNote, buildMatchQuery, extractFeatureLines, getTouhouCharacters, loadTouhouCharacters,
-  matchCharacters, summarizeAppearance, TOUHOU_CHARACTERS_FILE,
+  buildCharacterNote, buildCharacterNoteFromGroups, buildMatchQuery, extractFeatureGroups, extractFeatureLines,
+  getTouhouCharacters, loadTouhouCharacters, matchCharacterGroups, matchCharacters, summarizeAppearance,
+  TOUHOU_CHARACTERS_FILE,
 } from '../src/touhou'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -47,16 +48,17 @@ const assert = (cond: any, message: string) => {
   assert(matches.every(m => m.score > 0), '候选都有正的匹配分')
   assert(matches.every(m => m.summary.length > 0), '候选都带外观摘要')
 
+  const tail = '（这些只是按识图描述检索出的猜测；图中描述与候选外观摘要对不上就当作没有候选，'
+    + '不要在回复里说出候选名字，更不要仅凭候选否定用户说的角色）'
   const note = buildCharacterNote([{
     name: '博丽灵梦', aliases: ['灵梦'], score: 30, summary: '黑发，黑色或棕色眼瞳，红色巫女服',
   }])
   assert(
-    note === '[角色候选：博丽灵梦（黑发，黑色或棕色眼瞳，红色巫女服）]'
-      + '（按识图描述检索，仅供参考；候选特征与图中对不上就忽略，不要仅凭候选否定用户说的角色）',
+    note === `[角色候选：博丽灵梦（黑发，黑色或棕色眼瞳，红色巫女服）]${tail}`,
     '候选说明带外观摘要且格式固定',
   )
-  assert(buildCharacterNote([{ name: '无资料角色', aliases: [], score: 20, summary: '' }]) === '[角色候选：无资料角色]'
-    + '（按识图描述检索，仅供参考；候选特征与图中对不上就忽略，不要仅凭候选否定用户说的角色）', '没有摘要时只给名字')
+  assert(buildCharacterNote([{ name: '无资料角色', aliases: [], score: 20, summary: '' }]) === `[角色候选：无资料角色]${tail}`,
+    '没有摘要时只给名字')
   assert(buildCharacterNote([]) === '', '没有候选时不输出说明')
 }
 
@@ -96,6 +98,43 @@ const assert = (cond: any, message: string) => {
 
   const noFeatures = buildMatchQuery('一位浅绿卷发少女，绿色眼睛。', '')
   assert(noFeatures === '一位浅绿卷发少女，绿色眼睛。', '没有特征行时退回整段描述')
+}
+
+// ---------- 场景 3.7：多角色图按角色分别检索 + 发色冲突过滤 ----------
+{
+  // 线上真实误认案例（2026-11-18 14:51）：粉发角色旁边是浅金发戴帽的角色，
+  // 整段描述检索会把金色短发的秋穰子排到第一，主模型照抄成「旁边那个是秋穰子」。
+  const description = [
+    '图1：画面中央是一个粉色短发的角色，正趴在桌面上闭眼睡觉，头枕着双臂。画面左侧另有一个浅金色头发的角色，戴着帽子，绿瞳。',
+    '特征：粉发、短发、闭眼、蓝色荷叶边长袖衣、黑色发带带黄色爱心装饰。',
+    '图2：画面中央同样是粉色短发的角色趴在桌上，脸上戴着粉色睡眠眼罩。',
+    '特征：粉发、短发、粉色圈圈眼眼罩、蓝色荷叶边长袖衣、黑色发带带黄色爱心装饰。',
+  ].join('\n')
+
+  const groups = extractFeatureGroups(description)
+  assert(groups.length === 2, `多角色描述拆成两组特征（实际 ${groups.length}）`)
+  assert(groups[0].startsWith('粉发') && !groups[0].includes('特征'), '特征组去掉「特征N：」前缀')
+
+  const candidates = matchCharacterGroups(description, '觉大人这图里是谁')
+  const names = candidates.flatMap(group => group.matches.map(match => match.name))
+  assert(names.includes('古明地觉'), `粉发角色命中古明地觉（实际 ${names.join('、') || '无'}）`)
+  assert(!names.includes('秋穰子'), `发色对不上的秋穰子不进候选（实际 ${names.join('、') || '无'}）`)
+
+  const note = buildCharacterNoteFromGroups(candidates)
+  assert(!note.includes('秋穰子'), '候选说明里不再出现秋穰子')
+  assert(note === '' || note.includes('图中角色') || candidates.length === 1, '多角色候选按角色分组说明')
+  assert(buildCharacterNoteFromGroups([]) === '', '没有候选时不输出说明')
+
+  // 直接检索也要挡住发色冲突
+  const direct = matchCharacters('粉发、短发、闭眼、蓝色荷叶边长袖衣、黑色发带带黄色爱心装饰')
+  assert(!direct.some(match => match.name === '秋穰子'), '粉发描述不返回金色短发的秋穰子')
+}
+
+// ---------- 场景 3.8：没有特征行时退回整段描述 ----------
+{
+  assert(extractFeatureGroups('一张没有特征行的描述').length === 0, '没有特征行时分组为空')
+  const groups = matchCharacterGroups('一位黑发红眼的巫女，头戴红色大蝴蝶结，身穿红白配色的巫女服，手里拿着御币。', '')
+  assert(groups[0]?.matches[0]?.name === '博丽灵梦', `退回整段描述仍能命中（实际 ${groups[0]?.matches[0]?.name}）`)
 }
 
 // ---------- 场景 4：从 dataDir 的 JSON 加载角色库 ----------

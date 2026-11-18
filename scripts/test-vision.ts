@@ -100,7 +100,8 @@ async function main() {
     assert(prompt.includes('2 张'), '提示词写明图片数量')
     assert(prompt.includes('1 张来自用户引用的消息'), '提示词说明引用来源')
     assert(prompt.includes('重点描述与消息正文相关的内容'), '提示词要求聚焦问题相关内容')
-    assert(prompt.includes('显眼道具必须写进这一行'), '提示词要求把标志物写进特征行')
+    assert(prompt.includes('显眼道具必须写进'), '提示词要求把标志物写进特征行')
+    assert(prompt.includes('特征1：') && prompt.includes('每个角色单独一行'), '提示词要求多角色分别写特征行')
     assert(prompt.includes('只做中性描述'), '提示词带内容安全软约束')
 
     const withPrevious = buildVisionPrompt('这是什么？', 2, 0, 1)

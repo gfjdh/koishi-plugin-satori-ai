@@ -38,6 +38,56 @@ export const MATCH_QUERY_USER_TEXT_MAX = 200
 /** 摘要里每个方面（发/瞳/标志物）最多保留多少字 */
 const SUMMARY_LINE_MAX_CHARS = 32
 
+/** 颜色字表：用于发色/瞳色冲突过滤 */
+const COLOR_CHARS = '红橙黄绿青蓝紫粉黑白金银棕灰褐'
+/**
+ * 色系归并：金≈黄、银/灰≈白、青≈蓝绿、棕≈褐。
+ * 检索只给候选，宁可按「同色系」放宽，也不要因为写法不同把对得上的角色筛掉。
+ */
+const COLOR_FAMILIES: Record<string, string[]> = {
+  金: ['黄', '金'], 黄: ['黄', '金'],
+  银: ['白', '银', '灰'], 白: ['白', '银'], 灰: ['灰', '银', '白'],
+  青: ['青', '蓝', '绿'], 蓝: ['蓝', '青'], 绿: ['绿', '青'],
+  棕: ['棕', '褐'], 褐: ['褐', '棕'],
+}
+
+/**
+ * 从外观描述里取某一维度的色系。
+ * 发色按短句取（特征行用顿号分隔，混在一起的服装颜色不能算发色）；
+ * 瞳色按整句取（「瞳色……为深绿色」颜色常在后半句）。
+ */
+function collectColorFamilies(text: string, splitter: RegExp, noun: RegExp): Set<string> {
+  const families = new Set<string>()
+  for (const raw of (text || '').split(splitter)) {
+    // 发卡/发带/发饰/发箍/发型是配饰，不是头发
+    const clause = raw.replace(/发[饰卡带箍型]/g, '')
+    if (!noun.test(clause)) continue
+    for (const match of clause.matchAll(new RegExp(`[${COLOR_CHARS}]{1,2}`, 'g'))) {
+      for (const char of match[0]) {
+        for (const family of COLOR_FAMILIES[char] || [char]) families.add(family)
+      }
+    }
+  }
+  return families
+}
+
+/** 发色色系；没有提到发色时返回空集 */
+export function hairColorFamilies(text: string): Set<string> {
+  return collectColorFamilies(text, /[。\n，、]/, /头发|发/)
+}
+
+/** 瞳色色系；没有提到瞳色时返回空集 */
+export function eyeColorFamilies(text: string): Set<string> {
+  return collectColorFamilies(text, /[。\n]/, /瞳|眼睛|眼眸/)
+}
+
+/** 两边都明确写了颜色、且没有任何共同色系时视为冲突 */
+function colorConflict(a: Set<string>, b: Set<string>): boolean {
+  if (!a.size || !b.size) return false
+  for (const color of a) if (b.has(color)) return false
+  return true
+}
+
 /** 头发：优先「一头…发」这类正面描述，避开身高/年龄的设定行 */
 const SUMMARY_HAIR_HINTS: [RegExp, number][] = [
   [/一头/, 2],
@@ -215,11 +265,23 @@ export interface CharacterMatch {
   summary: string
 }
 
-export function matchCharacters(description: string, topN = 3): CharacterMatch[] {
+/**
+ * 检索候选角色。
+ * `colorSource` 是取发色/瞳色的文本：多角色图按角色分别检索时传该角色自己的特征行，
+ * 避免把一个角色的粉发和另一个角色的金发混在一起，导致发色对不上的角色也进候选。
+ */
+export function matchCharacters(description: string, topN = 3, colorSource = description): CharacterMatch[] {
   if (!description) return []
   const queryTokens = [...new Set(segment(description))].filter(token => token.length >= 2)
+  const queryHair = hairColorFamilies(colorSource)
+  const queryEyes = eyeColorFamilies(colorSource)
   const scores = scoreBM25(description, docs)
   return [...scores.entries()]
+    .filter(([id]) => {
+      const appearance = characters[id].appearance
+      return !colorConflict(queryHair, hairColorFamilies(appearance))
+        && !colorConflict(queryEyes, eyeColorFamilies(appearance))
+    })
     .filter(([id, score]) => {
       if (score >= CHARACTER_MATCH_MIN_SCORE) return true
       const matched = queryTokens.filter(token => docTokenSets[id].has(token)).length
@@ -245,6 +307,20 @@ export function extractFeatureLines(description: string): string {
 }
 
 /**
+ * 每个角色的特征行（不含「特征N：」前缀）。
+ * 单角色图是「特征：…」；多角色图按提示词要求写成「特征1：…」「特征2：…」，
+ * 每个角色各占一行，检索时分别匹配，避免把两个角色的特征混在一起。
+ */
+export function extractFeatureGroups(description: string): string[] {
+  const groups: string[] = []
+  for (const line of (description || '').split('\n')) {
+    const match = line.trim().match(/^特征\s*\d*\s*[:：]\s*(.+)$/)
+    if (match && match[1].trim()) groups.push(match[1].trim())
+  }
+  return groups
+}
+
+/**
  * 角色检索的查询：特征行 + 用户正文。
  * 整段描述里的动作、背景、衣服上的字母等词会稀释外观特征，所以只取特征行；
  * 用户在正文里点名的角色（如「看这个恋恋」）是最强先验，必须一起参与检索。
@@ -255,11 +331,53 @@ export function buildMatchQuery(description: string, userText = ''): string {
   return `${features} ${text}`.trim()
 }
 
+export interface CharacterCandidateGroup {
+  /** 角色编号，用于多角色图的候选说明 */
+  label: string
+  matches: CharacterMatch[]
+}
+
+/**
+ * 多角色图按角色分别检索：每个「特征N」行单独匹配，候选按角色分组。
+ * 没有特征行时退回整段描述（老格式描述仍然可用）。
+ */
+export function matchCharacterGroups(description: string, userText = '', topN = 2): CharacterCandidateGroup[] {
+  const features = extractFeatureGroups(description)
+  const sources = features.length ? features : [(description || '').trim()]
+  const text = (userText || '').trim().slice(0, MATCH_QUERY_USER_TEXT_MAX)
+  const seen = new Set<string>()
+  const groups: CharacterCandidateGroup[] = []
+  for (const source of sources) {
+    if (!source) continue
+    const matches = matchCharacters(`${source} ${text}`.trim(), topN, source)
+      .filter((match) => {
+        if (seen.has(match.name)) return false
+        seen.add(match.name)
+        return true
+      })
+    if (matches.length) groups.push({ label: `角色${groups.length + 1}`, matches })
+  }
+  return groups
+}
+
+const CHARACTER_NOTE_TAIL = '（这些只是按识图描述检索出的猜测；图中描述与候选外观摘要对不上就当作没有候选，'
+  + '不要在回复里说出候选名字，更不要仅凭候选否定用户说的角色）'
+
+function formatMatch(match: CharacterMatch): string {
+  return match.summary ? `${match.name}（${match.summary}）` : match.name
+}
+
 /** 注入主模型提示词的候选说明：带上官方外观摘要，供模型与图中描述核对 */
 export function buildCharacterNote(matches: CharacterMatch[]): string {
   if (!matches.length) return ''
-  const items = matches
-    .map(match => match.summary ? `${match.name}（${match.summary}）` : match.name)
-    .join('；')
-  return `[角色候选：${items}]（按识图描述检索，仅供参考；候选特征与图中对不上就忽略，不要仅凭候选否定用户说的角色）`
+  return `[角色候选：${matches.map(formatMatch).join('；')}]${CHARACTER_NOTE_TAIL}`
+}
+
+/** 多角色图的候选说明：每个角色分开写，避免把候选安到错误的角色身上 */
+export function buildCharacterNoteFromGroups(groups: CharacterCandidateGroup[]): string {
+  const filled = groups.filter(group => group.matches.length)
+  if (!filled.length) return ''
+  if (filled.length === 1) return buildCharacterNote(filled[0].matches)
+  const items = filled.map(group => `图中${group.label}可能为 ${group.matches.map(formatMatch).join(' 或 ')}`)
+  return `[角色候选：${items.join('；')}]${CHARACTER_NOTE_TAIL}`
 }
