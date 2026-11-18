@@ -23,8 +23,6 @@ export interface GroupReportSpec {
     kind: GroupReportKind;
     /** 卡片标题与提示词里的名称 */
     title: string;
-    /** 图片前的一句话，例如「今天的日报」 */
-    announce: string;
     /** 「今日最喜欢」或「本期最喜欢」 */
     favoriteLabel: string;
     /** 粗粒度优先选材的最高层级；例如周报最高到 day */
@@ -46,8 +44,9 @@ export interface GroupReportSpec {
     commentChars: number;
     /** 点评栏目的硬上限 */
     commentMaxChars: number;
-    /** 金句条数 */
-    quoteCount: number;
+    /** 金句条数区间，由模型在候选里自行决定 */
+    quoteMin: number;
+    quoteMax: number;
     /** 活跃榜条数 */
     rankingCount: number;
     /** 热词个数 */

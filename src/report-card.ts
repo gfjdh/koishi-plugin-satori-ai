@@ -96,18 +96,15 @@ function renderStats(input: ReportCardInput): string {
 
 function renderNews(sections: ReportSections): string {
   if (!sections.news.length) return ''
-  const totalChars = sections.news.reduce((sum, item) => sum + item.body.length, 0)
-  // 短稿单栏，长稿双栏；每条要闻不跨栏
-  const columns = totalChars > 300 ? ' two-col' : ''
   const items = sections.news.map(item => {
     const title = item.title ? `<div class="news-title">${escapeHtml(item.title)}</div>` : ''
     const body = paragraphs(item.body).map(line => `<p>${escapeHtml(line)}</p>`).join('')
-    return `<div class="news-item">${title}<div class="news-body">${body}</div></div>`
+    // 首段以引号/括号开头时这张卡片不做首字下沉，否则标点会被一起放大
+    const firstChar = (item.body || '').trim()[0] || ''
+    const noDrop = /[「『“"（(《【]/.test(firstChar) ? ' no-drop' : ''
+    return `<div class="news-item${noDrop}">${title}<div class="news-body">${body}</div></div>`
   }).join('')
-  // 首段以引号/括号开头时不做首字下沉，否则标点会被一起放大
-  const firstChar = (sections.news[0].body || '').trim()[0] || ''
-  const noDrop = /[「『“"（(《【]/.test(firstChar) ? ' no-drop' : ''
-  return `${sectionTitle('本群要闻')}<div class="news-flow${columns}${noDrop}">${items}</div>`
+  return `${sectionTitle('本群要闻')}<div class="news-grid">${items}</div>`
 }
 
 function renderQuotes(sections: ReportSections): string {
@@ -115,8 +112,10 @@ function renderQuotes(sections: ReportSections): string {
   if (!quotes.length) return ''
   const body = quotes.map(item => `<div class="quote">
     <div class="qtext">${escapeHtml(item.text)}</div>
-    ${item.speaker ? `<div class="qwho">—— ${escapeHtml(item.speaker)}</div>` : ''}
-    ${item.comment ? `<div class="qcomment">${escapeHtml(item.comment)}</div>` : ''}
+    <div class="qfoot">
+      ${item.comment ? `<span class="qcomment">${escapeHtml(item.comment)}</span>` : '<span></span>'}
+      ${item.speaker ? `<span class="qwho">—— ${escapeHtml(item.speaker)}</span>` : ''}
+    </div>
   </div>`).join('')
   return `${sectionTitle('群友金句')}<div class="quotes">${body}</div>`
 }
@@ -233,34 +232,41 @@ export function renderReportHtml(input: ReportCardInput): string {
     letter-spacing: 4px; color: #5b4636; border-left: 4px solid #6d4f8f;
   }
 
-  .news-flow { font-size: 15px; line-height: 1.95; text-align: justify; }
-  .news-flow.two-col { column-count: 2; column-gap: 28px; column-rule: 1px solid #e2d6c2; }
-  .news-item { break-inside: avoid; margin-bottom: 16px; }
-  .news-title { font-size: 17px; font-weight: 700; line-height: 1.5; color: #3a3029; margin-bottom: 4px; }
-  .news-body p { margin: 0 0 8px; text-indent: 2em; }
+  .news-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; align-items: start; }
+  .news-item {
+    padding: 10px 12px; background: #fffdf8;
+    border: 1px solid #e6dccb; border-radius: 5px;
+  }
+  /* 奇数条时最后一条横跨两栏，变得宽而短 */
+  .news-item:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .news-title { font-size: 16px; font-weight: 700; line-height: 1.5; color: #7b5aa6; margin-bottom: 4px; }
+  .news-body { font-size: 14.5px; line-height: 1.75; text-align: justify; color: #3a3029; }
+  .news-body p { margin: 0 0 6px; }
   .news-body p:last-child { margin-bottom: 0; }
-  .news-flow > .news-item:first-child .news-body p:first-child { text-indent: 0; }
-  .news-flow > .news-item:first-child .news-body p:first-child::first-letter {
-    float: left; margin: 5px 7px 0 0; font-size: 44px; line-height: .92;
+  .news-grid > .news-item .news-body p:first-child::first-letter {
+    float: left; margin: 3px 6px 0 0; font-size: 36px; line-height: .92;
     font-weight: 700; color: #6d4f8f;
     font-family: "Noto Serif CJK SC", "SimSun", serif;
   }
-  .news-flow.no-drop > .news-item:first-child .news-body p:first-child::first-letter {
+  .news-grid > .news-item.no-drop .news-body p:first-child::first-letter {
     float: none; margin: 0; font-size: inherit; line-height: inherit;
     font-weight: inherit; color: inherit; font-family: inherit;
   }
 
-  .quotes { display: flex; flex-direction: column; gap: 14px; }
-  .quote { position: relative; padding: 2px 0 2px 20px; }
-  .quote::before {
-    content: "“"; position: absolute; left: 0; top: -6px;
-    font-family: Georgia, "Noto Serif CJK SC", serif; font-size: 38px;
-    line-height: 1; color: #c6b4dc;
+  .quotes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+  .quote {
+    padding: 5px 10px 6px; background: #f7f3fb;
+    border-left: 3px solid #c9b3e0; border-radius: 4px;
   }
-  .qtext { font-size: 16px; line-height: 1.8; color: #3a3029; }
-  .qwho { margin-top: 3px; text-align: right; font-size: 12px; color: #8b7a66; }
-  .qcomment { margin-top: 5px; padding-left: 16px; font-size: 12px; line-height: 1.7; color: #6d4f8f; }
+  .qtext { font-size: 14.5px; line-height: 1.65; color: #3a3029; }
+  .qtext::before {
+    content: "“"; margin-right: 1px; color: #b9a4d2;
+    font-family: Georgia, "Noto Serif CJK SC", serif; font-size: 18px; line-height: 1;
+  }
+  .qfoot { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 2px; }
+  .qcomment { font-size: 10.5px; line-height: 1.5; color: #6d4f8f; }
   .qcomment::before { content: "▸ "; color: #a98cc4; }
+  .qwho { font-size: 10.5px; color: #8b7a66; white-space: nowrap; }
 
   .rank-item { margin-bottom: 10px; }
   .rank-line { display: flex; align-items: center; gap: 10px; }

@@ -15,8 +15,8 @@ import { Summarizer } from './summarizer'
 import { GroupRecorder } from './group-recorder'
 import { GROUP_KINDS, groupScopeId, isGroupScope } from './group'
 import {
-  DigestParticipant, DigestRange, digestRangeStart, formatDigestMaterials,
-  hasDigestRange, resolvePeriodOfKind, resolveReportPeriod, selectDigestNodes,
+  DigestParticipant, DigestRange, buildQuoteCandidates, digestRangeStart, formatDigestMaterials,
+  formatQuoteCandidates, hasDigestRange, resolvePeriodOfKind, resolveReportPeriod, selectDigestNodes,
 } from './group-digest'
 import { GROUP_REPORT_SPECS, GroupReportKind, GroupReportSpec } from './report-specs'
 import { formatTime } from './summarizer'
@@ -85,11 +85,13 @@ export interface GroupReportContext extends GroupDigestContext {
   totalMessages: number
   /** 最近 24 小时每小时消息数，索引 0-23（报头活跃轨迹） */
   hourly: number[]
+  /** 金句候选（已去重、带复读次数），由提示词直接使用 */
+  quoteText: string
   /** 本次报告的期号 */
   issue: number
   /** 本次报告的生成时刻 */
   now: Date
-  /** 报告覆盖的终点；成功后写入日报游标，下一天从这里继续 */
+  /** 报告覆盖的终点；成功后记录时间，只用于同一天不重复奖励 */
   to: Date
   /** 当前记忆日还没出过报告时为 true：只有第一份报告能给「最喜欢」加好感度 */
   allowFavorite: boolean
@@ -406,10 +408,10 @@ export class MemoryService {
       : resolveReportPeriod(now, tz)
     const spec = GROUP_REPORT_SPECS[period.kind]
 
+    // 选材完全由自然周期决定：日报是前一天 00:00 ~ 当天 00:00，
+    // 周/月/年报是上一个自然周期。游标只用于同一天不重复奖励，不参与选材。
     const last = await this.repo.getDailyDigestAt(scopeId)
-    const from = period.kind === 'daily'
-      ? (last || new Date(now.getTime() - 24 * 3_600_000))
-      : period.from!
+    const from = period.from
 
     const { nodes, cursor } = await selectDigestNodes(
       from,
@@ -448,6 +450,15 @@ export class MemoryService {
     const allowFavorite = !last || localDateKey(last, tz) !== localDateKey(now, tz)
     const issue = (await this.repo.getReportCount(scopeId)) + 1
     const totalMessages = participants.reduce((sum, item) => sum + item.count, 0)
+    // 金句候选从整个区间的群友消息里抽，不受话题归档和原文上限影响
+    const quoteRows = await this.repo.getDialoguesAfter(scopeId, from, {
+      kinds: ['ambient'],
+      before: period.to,
+    })
+    const quoteText = formatQuoteCandidates(
+      buildQuoteCandidates(quoteRows, totalMessages, from, period.to),
+      tz,
+    )
     // 活跃轨迹固定看最近 24 小时，与报告类型无关
     const hourly = await this.repo.getHourlyMessageCounts(
       scopeId,
@@ -466,6 +477,7 @@ export class MemoryService {
       favoriteCandidates,
       totalMessages,
       hourly,
+      quoteText,
       issue,
       now,
       to: period.to,
@@ -476,7 +488,7 @@ export class MemoryService {
     }
   }
 
-  /** 报告生成成功后推进日报游标：日报推到当前时刻，自然周期推到周期末尾 */
+  /** 记录本次报告时间：只用于同一天不重复奖励，不参与选材 */
   async markDailyDigest(channelId: string, at: Date): Promise<void> {
     if (!channelId) return
     await this.repo.setDailyDigestAt(groupScopeId(channelId), at)

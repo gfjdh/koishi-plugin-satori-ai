@@ -292,7 +292,7 @@ export class MemoryRepository {
     await this.ctx.database.set('sat_meta', { scopeId }, { migratedAt: at })
   }
 
-  /** 上一次群日报的时间；没有发过时返回 null */
+  /** 上一次报告的时间；只用于同一天不重复奖励，不参与选材 */
   async getDailyDigestAt(scopeId: string): Promise<Date | null> {
     const meta = await this.getMeta(scopeId)
     return meta?.dailyDigestAt ? new Date(meta.dailyDigestAt) : null

@@ -19,9 +19,9 @@ export declare function digestRangeStart(now: Date, timezoneOffset: number, rang
 export declare function hasDigestRange(range?: DigestRange): boolean;
 export interface ReportPeriod {
     kind: GroupReportKind;
-    /** 日报为 null，由上次日报游标决定；其余为固定自然周期起点 */
-    from: Date | null;
-    /** 报告覆盖的终点（自然周期是已闭合的零点，日报是当前时刻） */
+    /** 报告覆盖的起点：日报是前一天 00:00，周/月/年报是对应自然周期起点 */
+    from: Date;
+    /** 报告覆盖的终点（自然周期是已闭合的零点，日报是当天 00:00） */
     to: Date;
 }
 /**
@@ -31,6 +31,9 @@ export interface ReportPeriod {
  * 记忆金字塔自己的日界线（默认 04:00）不参与报告类型判断；周期末尾的
  * 最后几个小时如果还没形成日节点，会自然退回话题/原始消息。
  * 优先级：年 > 月 > 周 > 日（1 月 1 日只出年报，1 号只出月报，周一才出周报）。
+ *
+ * 日报固定取「前一天 00:00 ~ 当天 00:00」，不看上次报告时间；
+ * 同一天重复执行会重新生成同一段内容，不依赖游标。
  */
 export declare function resolveReportPeriod(now: Date, timezoneOffset: number): ReportPeriod;
 /**
@@ -122,3 +125,25 @@ export interface ReportSections {
  * 渲染器退回旧的整块正文样式，不会因为格式漂移导致整张图发不出去。
  */
 export declare function parseReportSections(text: string): ReportSections;
+export interface QuoteCandidate {
+    text: string;
+    /** 第一个说这句话的群友 */
+    speaker: string;
+    /** 被复读的总次数（含第一次） */
+    count: number;
+    time: Date;
+}
+/**
+ * 候选条数：按当期总消息数取对数，1500 条拟合到 150 条。
+ * 100 条 -> 69，1500 条 -> 150，1 万条 -> 171，4.5 万条 -> 192。
+ */
+export declare function quoteCandidateCount(total: number): number;
+/**
+ * 从区间内的群友消息里抽金句候选。
+ *
+ * 相同内容去重，记录被复读的总次数，发言人取第一个说这句话的群友；
+ * 超过上限时按时间分 24 桶轮流取，避免候选全挤在某个时段。
+ */
+export declare function buildQuoteCandidates(rows: SatDialogue[], total: number, from: Date, to: Date): QuoteCandidate[];
+/** 金句候选的提示词格式：MM/DD HH:mm 昵称：原话（复读 N 次） */
+export declare function formatQuoteCandidates(candidates: QuoteCandidate[], timezoneOffset: number): string;

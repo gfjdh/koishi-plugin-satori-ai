@@ -78,9 +78,9 @@ function boundaryAt(
 
 export interface ReportPeriod {
   kind: GroupReportKind
-  /** 日报为 null，由上次日报游标决定；其余为固定自然周期起点 */
-  from: Date | null
-  /** 报告覆盖的终点（自然周期是已闭合的零点，日报是当前时刻） */
+  /** 报告覆盖的起点：日报是前一天 00:00，周/月/年报是对应自然周期起点 */
+  from: Date
+  /** 报告覆盖的终点（自然周期是已闭合的零点，日报是当天 00:00） */
   to: Date
 }
 
@@ -91,6 +91,9 @@ export interface ReportPeriod {
  * 记忆金字塔自己的日界线（默认 04:00）不参与报告类型判断；周期末尾的
  * 最后几个小时如果还没形成日节点，会自然退回话题/原始消息。
  * 优先级：年 > 月 > 周 > 日（1 月 1 日只出年报，1 号只出月报，周一才出周报）。
+ *
+ * 日报固定取「前一天 00:00 ~ 当天 00:00」，不看上次报告时间；
+ * 同一天重复执行会重新生成同一段内容，不依赖游标。
  */
 export function resolveReportPeriod(now: Date, timezoneOffset: number): ReportPeriod {
   const local = new Date(now.getTime() + timezoneOffset * 3_600_000)
@@ -121,7 +124,11 @@ export function resolveReportPeriod(now: Date, timezoneOffset: number): ReportPe
       to,
     }
   }
-  return { kind: 'daily', from: null, to: now }
+  return {
+    kind: 'daily',
+    from: boundaryAt(year, monthIndex, date - 1, timezoneOffset, 0),
+    to,
+  }
 }
 
 /**
@@ -154,7 +161,11 @@ export function resolvePeriodOfKind(
     const to = new Date(boundaryAt(year, monthIndex, date, timezoneOffset, 0).getTime() - daysSinceMonday * 86_400_000)
     return { kind, from: new Date(to.getTime() - 7 * 86_400_000), to }
   }
-  return { kind: 'daily', from: null, to: now }
+  return {
+    kind: 'daily',
+    from: boundaryAt(year, monthIndex, date - 1, timezoneOffset, 0),
+    to: boundaryAt(year, monthIndex, date, timezoneOffset, 0),
+  }
 }
 
 /**
@@ -221,8 +232,7 @@ export function cleanDigest(text: string): string {
 }
 
 /** 去掉代码块、统一换行、压缩多余空行；不做截断 */
-export function normalizeBody(text: string): string {
-  return (text || '')
+export function normalizeBody(text: string): string {  return (text || '')
     .replace(/```[a-z]*\n?/gi, '')
     .replace(/\r\n?/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
@@ -389,13 +399,31 @@ function parseQuoteLine(lines: string[]): ReportQuote | null {
   return { text: stripWrapping(quotePart), speaker: '', comment }
 }
 
+/** 模型有时会把提示词里的占位词（正文/内容）原样抄成正文的第一行，去掉它 */
+function stripBodyPlaceholder(body: string): string {
+  const lines = body.split('\n')
+  const first = lines[0].trim()
+  // 只有整行就是占位词时才删，避免误伤「正文内容。」这种正常开头
+  if (/^(?:正文内容|具体内容|正文|内容)$/.test(first)) {
+    return lines.slice(1).join('\n').trimStart()
+  }
+  const inline = first.match(/^(?:正文内容|具体内容|正文|内容)\s*[:：]\s*(.+)$/)
+  if (inline) {
+    return [inline[1], ...lines.slice(1)].join('\n').trimStart()
+  }
+  return body
+}
+
 /** 一条要闻：`小标题｜正文`；没有 `｜` 时首行短句也当作小标题 */
 function parseNewsItem(lines: string[]): ReportNewsItem | null {
   const raw = lines.join('\n').trim()
   if (!raw) return null
   const split = raw.match(/^([^｜|\n]{1,24})\s*[｜|]\s*([\s\S]+)$/)
   if (split) {
-    return { title: stripWrapping(split[1]).trim(), body: normalizeBody(split[2]) }
+    return {
+      title: stripWrapping(split[1]).trim(),
+      body: stripBodyPlaceholder(normalizeBody(split[2])),
+    }
   }
 
   // 模型也常写成「小标题独占一行，正文另起」：首行短、不带句末标点、不是引语时当标题
@@ -408,10 +436,13 @@ function parseNewsItem(lines: string[]): ReportNewsItem | null {
       && !/[。！？!?；;，,]$/.test(first)
       && !/^[「『“"]/.test(rawFirst)
     if (looksLikeTitle) {
-      return { title: first, body: normalizeBody(rows.slice(1).join('\n')) }
+      return {
+        title: first,
+        body: stripBodyPlaceholder(normalizeBody(rows.slice(1).join('\n'))),
+      }
     }
   }
-  return { title: '', body: normalizeBody(raw) }
+  return { title: '', body: stripBodyPlaceholder(normalizeBody(raw)) }
 }
 
 function parseRankingLine(lines: string[]): ReportRankingEntry | null {
@@ -564,4 +595,122 @@ function deriveHeadline(news: string): string {
   const first = news.split(/\n+/)[0] || ''
   const sentence = first.split(/[。！？!?]/)[0].trim()
   return sentence.length > 18 ? `${sentence.slice(0, 18)}…` : sentence
+}
+
+// ---------- 金句候选 ----------
+
+export interface QuoteCandidate {
+  text: string
+  /** 第一个说这句话的群友 */
+  speaker: string
+  /** 被复读的总次数（含第一次） */
+  count: number
+  time: Date
+}
+
+/**
+ * 候选条数：按当期总消息数取对数，1500 条拟合到 150 条。
+ * 100 条 -> 69，1500 条 -> 150，1 万条 -> 171，4.5 万条 -> 192。
+ */
+export function quoteCandidateCount(total: number): number {
+  if (total <= 0) return 0
+  return Math.max(1, Math.round(150 * Math.log(total) / Math.log(1500)))
+}
+
+const QUOTE_MIN_CHARS = 6
+const QUOTE_MAX_CHARS = 40
+
+function normalizeQuoteText(text: string): string {
+  return (text || '').replace(/\s+/g, ' ').trim()
+}
+
+/** 过滤掉链接、命令、纯表情、复读同一个字这类不适合当金句的消息 */
+function isQuotable(text: string): boolean {
+  if (text.length < QUOTE_MIN_CHARS || text.length > QUOTE_MAX_CHARS) return false
+  if (/^https?:\/\//i.test(text) || text.includes('://')) return false
+  if (/^[/!.]/.test(text)) return false
+  if (text === '[图片]') return false
+  const meaningful = text.replace(/[^\p{L}\p{N}]/gu, '')
+  if (meaningful.length < 4) return false
+  if (/^(.)\1+$/.test(meaningful)) return false
+  return true
+}
+
+/**
+ * 从区间内的群友消息里抽金句候选。
+ *
+ * 相同内容去重，记录被复读的总次数，发言人取第一个说这句话的群友；
+ * 超过上限时按时间分 24 桶轮流取，避免候选全挤在某个时段。
+ */
+export function buildQuoteCandidates(
+  rows: SatDialogue[],
+  total: number,
+  from: Date,
+  to: Date,
+): QuoteCandidate[] {
+  const limit = quoteCandidateCount(total)
+  if (!limit) return []
+
+  const map = new Map<string, QuoteCandidate>()
+  for (const row of rows) {
+    if (row.kind !== 'ambient') continue
+    const text = normalizeQuoteText(row.userContent)
+    if (!isQuotable(text)) continue
+    const time = new Date(row.createdAt)
+    const existing = map.get(text)
+    if (existing) {
+      existing.count++
+      if (time.getTime() < existing.time.getTime()) {
+        existing.time = time
+        existing.speaker = row.username || row.userId || '群友'
+      }
+    } else {
+      map.set(text, {
+        text,
+        speaker: row.username || row.userId || '群友',
+        count: 1,
+        time,
+      })
+    }
+  }
+
+  const all = [...map.values()]
+  if (all.length <= limit) return all.sort((a, b) => +a.time - +b.time)
+
+  const span = Math.max(1, to.getTime() - from.getTime())
+  const buckets: QuoteCandidate[][] = Array.from({ length: 24 }, () => [])
+  for (const item of all) {
+    const index = Math.min(23, Math.max(0, Math.floor((item.time.getTime() - from.getTime()) / span * 24)))
+    buckets[index].push(item)
+  }
+  const score = (item: QuoteCandidate) => {
+    let value = item.count * 3 + Math.min(item.text.length, 30) / 10
+    if (/[！？!?…]/.test(item.text)) value += 2
+    if (item.count > 1) value += 4
+    return value
+  }
+  for (const bucket of buckets) bucket.sort((a, b) => score(b) - score(a))
+
+  const picked: QuoteCandidate[] = []
+  for (let round = 0; picked.length < limit; round++) {
+    let added = false
+    for (const bucket of buckets) {
+      const item = bucket[round]
+      if (!item) continue
+      picked.push(item)
+      added = true
+      if (picked.length >= limit) break
+    }
+    if (!added) break
+  }
+  return picked.sort((a, b) => +a.time - +b.time)
+}
+
+/** 金句候选的提示词格式：MM/DD HH:mm 昵称：原话（复读 N 次） */
+export function formatQuoteCandidates(candidates: QuoteCandidate[], timezoneOffset: number): string {
+  return candidates.map(item => {
+    const time = formatTime(item.time, timezoneOffset).slice(5)
+    const repeat = item.count > 1 ? `（复读 ${item.count} 次）` : ''
+    return `${time} ${item.speaker}：${item.text}${repeat}`
+  }).join('\n')
 }

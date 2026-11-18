@@ -6,13 +6,14 @@
 // 报纸栏目能从模型输出里拆出来；正文保留段落、超长时在句末截断；
 // 模型改写的昵称仍能映射回群友；最喜欢的三档按词归一化。
 import {
-  DAILY_DIGEST_MAX_CHARS, DigestParticipant, clampDailyDigest, parseReportSections,
+  DAILY_DIGEST_MAX_CHARS, DigestParticipant, buildQuoteCandidates, clampDailyDigest,
+  formatQuoteCandidates, parseReportSections, quoteCandidateCount,
   resolveDigestFavorite, resolvePeriodOfKind, resolveReportPeriod, selectDigestNodes,
 } from '../src/memory/group-digest'
 import { GROUP_REPORT_SPECS, resolveFavoriteTier } from '../src/memory/report-specs'
 import { buildGroupDailyDigestTask, buildGroupReportTask } from '../src/memory/prompts'
 import { renderReportHtml } from '../src/report-card'
-import { Granularity, SatMemory } from '../src/memory/schema'
+import { Granularity, SatDialogue, SatMemory } from '../src/memory/schema'
 
 const assert = (cond: any, message: string) => {
   if (!cond) {
@@ -90,22 +91,29 @@ async function main() {
     // 2026-11-16 是周一；零点之后就算周一，不再等 04:00
     const weekly = period(2026, 11, 16, 0, 30)
     assert(weekly.kind === 'weekly', '周一 00:00 后生成周报')
-    assert(+weekly.from! === +localAt(2026, 11, 9, 0), '周报从上周一 00:00 开始')
+    assert(+weekly.from === +localAt(2026, 11, 9, 0), '周报从上周一 00:00 开始')
     assert(+weekly.to === +localAt(2026, 11, 16, 0), '周报到本周一 00:00 结束')
 
     const weeklyLater = period(2026, 11, 16, 4, 30)
     assert(weeklyLater.kind === 'weekly', '周一 04:00 后仍然是同一份周报')
-    assert(+weeklyLater.from! === +localAt(2026, 11, 9, 0), '周报范围不随执行时刻变化')
+    assert(+weeklyLater.from === +localAt(2026, 11, 9, 0), '周报范围不随执行时刻变化')
 
     const sundayLate = period(2026, 11, 15, 23, 59)
     assert(sundayLate.kind === 'daily', '周日 23:59 仍然是日报')
 
+    // 日报固定取前一天 00:00 ~ 当天 00:00，和上次报告时间无关
     const daily = period(2026, 11, 17, 0, 30)
-    assert(daily.kind === 'daily' && daily.from === null, '普通工作日生成日报，起点交给游标')
+    assert(daily.kind === 'daily', '普通工作日生成日报')
+    assert(+daily.from === +localAt(2026, 11, 16, 0), '日报从前一天 00:00 开始')
+    assert(+daily.to === +localAt(2026, 11, 17, 0), '日报到当天 00:00 结束')
+
+    const dailyLate = period(2026, 11, 17, 23, 59)
+    assert(+dailyLate.from === +localAt(2026, 11, 16, 0) && +dailyLate.to === +localAt(2026, 11, 17, 0),
+      '日报范围不随执行时刻变化')
 
     const monthly = period(2026, 12, 1, 0, 30)
     assert(monthly.kind === 'monthly', '每月 1 日零点后生成月报')
-    assert(+monthly.from! === +localAt(2026, 11, 1, 0), '月报从上一个自然月 1 日 00:00 开始')
+    assert(+monthly.from === +localAt(2026, 11, 1, 0), '月报从上一个自然月 1 日 00:00 开始')
     assert(+monthly.to === +localAt(2026, 12, 1, 0), '月报到本月 1 日 00:00 结束')
 
     const monthlyOverWeekly = period(2025, 12, 1, 0, 30)
@@ -113,7 +121,7 @@ async function main() {
 
     const yearly = period(2027, 1, 1, 0, 30)
     assert(yearly.kind === 'yearly', '1 月 1 日零点后生成年报')
-    assert(+yearly.from! === +localAt(2026, 1, 1, 0), '年报从去年 1 月 1 日 00:00 开始')
+    assert(+yearly.from === +localAt(2026, 1, 1, 0), '年报从去年 1 月 1 日 00:00 开始')
     assert(+yearly.to === +localAt(2027, 1, 1, 0), '年报到现在 1 月 1 日 00:00 结束')
 
     const yearlyOverAll = period(2024, 1, 1, 0, 30)
@@ -137,6 +145,9 @@ async function main() {
     const forcedWeekly = resolvePeriodOfKind('weekly', localAt(2026, 11, 18, 12), 8)
     assert(+forcedWeekly.from === +localAt(2026, 11, 9, 0) && +forcedWeekly.to === +localAt(2026, 11, 16, 0),
       '强制周报取最近一个已闭合的周一')
+    const forcedDaily = resolvePeriodOfKind('daily', localAt(2026, 11, 18, 12), 8)
+    assert(+forcedDaily.from === +localAt(2026, 11, 17, 0) && +forcedDaily.to === +localAt(2026, 11, 18, 0),
+      '强制日报也取前一天 00:00 ~ 当天 00:00')
   }
 
   // ---------- 场景 1.6：周报选材只到日粒度 ----------
@@ -218,6 +229,14 @@ async function main() {
     const quoteLead = parseReportSections('【要闻】“杨浦体育大学你赢了”\n后面还有正文。\n【点评】点评。')
     assert(quoteLead.news[0]?.title === '', '引语开头的首行不当小标题')
 
+    // 模型会把提示词里的占位词原样抄进正文开头
+    const placeholder = parseReportSections('【要闻】标题｜正文\n真正的正文。\n【点评】点评。')
+    assert(placeholder.news[0]?.body === '真正的正文。', '正文占位词会被去掉')
+    const placeholder2 = parseReportSections('【要闻】标题｜具体内容\n真正的正文。\n【点评】点评。')
+    assert(placeholder2.news[0]?.body === '真正的正文。', '具体内容占位词会被去掉')
+    const placeholder3 = parseReportSections('【要闻】标题\n正文\n真正的正文。\n【点评】点评。')
+    assert(placeholder3.news[0]?.body === '真正的正文。', '另起一行的正文占位词会被去掉')
+
     // 模型漏了档位时按默认档处理，不能把理由当成档位
     const noTier = parseReportSections('【要闻】正文。\n【今日最喜欢】小明｜因为他说了句好笑的话')
     assert(noTier.favorite?.tier === '喜欢' && noTier.favorite?.delta === 20,
@@ -284,6 +303,7 @@ async function main() {
   {
     const daily = buildGroupDailyDigestTask('材料内容', '11-15 04:00 ~ 11-16 04:00', ['小明', '小红'], {
       ranking: [{ name: '小明', count: 132 }, { name: '小红', count: 87 }],
+      quoteText: '11/18 10:00 小明：这句话真好笑啊（复读 3 次）',
     })[0].content
     assert(daily.includes('心眼报'), '提示词带上报纸刊名')
     assert(daily.includes('小明、小红'), '提示词列出候选群友')
@@ -293,9 +313,12 @@ async function main() {
       assert(daily.includes(section), `提示词要求 ${section} 栏目`)
     }
     assert(daily.includes('【今日最喜欢】'), '提示词要求输出今日最喜欢')
-    assert(daily.includes('小标题｜正文'), '提示词要求要闻用小标题｜正文')
+    assert(daily.includes('小标题｜具体内容'), '提示词要求要闻用小标题｜具体内容')
     assert(daily.includes('不要出现你自己的态度'), '标题要求只做客观概括')
     assert(daily.includes('｜一句点评'), '提示词要求金句带一句点评')
+    assert(daily.includes('不要选你自己的话'), '提示词禁止金句选自己')
+    assert(daily.includes('金句候选'), '提示词附带金句候选列表')
+    assert(daily.includes('只能从上面的「金句候选」里选'), '金句只能从候选列表里选')
     assert(daily.includes('1200-1500 字'), '日报篇幅 1200-1500 字')
     assert(daily.includes('有点喜欢') && daily.includes('非常喜欢'), '提示词限定三档')
     assert(daily.includes('不要每期都给最高档'), '提示词要求档位不要总是最高')
@@ -370,7 +393,7 @@ async function main() {
     assert(html.includes('24h 活跃轨迹'), '卡片包含 24h 活跃轨迹')
     assert(html.includes('峰值 22 时 · 40 条'), '活跃轨迹标出峰值')
     assert(html.includes('&lt;小明&gt;'), '昵称里的尖括号被转义')
-    assert(html.includes('class="news-flow two-col"'), '长要闻使用双栏')
+    assert(html.includes('class="news-grid"'), '要闻使用卡片网格')
     assert(html.includes('猫的政变') && html.includes('作业战争'), '多条要闻都渲染')
     assert(html.includes('qcomment'), '金句带一句点评')
     assert(html.includes('—— 觉'), '点评落款使用昵称')
@@ -392,23 +415,42 @@ async function main() {
     })
     assert(fallback.includes('class="fallback"'), '没有栏目标记时退回单块正文')
     assert(!fallback.includes('class="headline"'), '回退时不渲染头条')
+  }
 
-    // 首段以引号开头时不做首字下沉，避免标点被一起放大
-    const quoteHtml = renderReportHtml({
-      masthead: '心眼报',
-      kindTitle: '群日报',
-      dateLabel: '',
-      issue: 0,
-      range: '',
-      stats: { messages: 0, nodes: 0, participants: 0 },
-      hourly: new Array(24).fill(0),
-      sections: parseReportSections('【要闻】标题｜“引用开头”的正文。\n【点评】点评。'),
-      ranking: [],
-      rankingLabel: '',
-      footerName: '',
-      footerTime: '',
+  // ---------- 场景 7：金句候选 ----------
+  {
+    assert(quoteCandidateCount(1500) === 150, '1500 条消息取 150 条候选')
+    assert(quoteCandidateCount(100) < 150 && quoteCandidateCount(10000) > 150,
+      '候选数随总数按对数增长')
+
+    const row = (id: number, userId: string, username: string, content: string, minute: number): SatDialogue => ({
+      id,
+      scopeId: 'g:123',
+      userId,
+      username,
+      kind: 'ambient',
+      userContent: content,
+      aiContent: '',
+      createdAt: new Date(Date.UTC(2026, 10, 18, 2, minute)),
     })
-    assert(quoteHtml.includes('no-drop'), '首段以引号开头时取消首字下沉')
+    const rows = [
+      row(1, 'u1', '小明', '这句话真好笑啊', 0),
+      row(2, 'u2', '小红', '这句话真好笑啊', 1),
+      row(3, 'u3', '阿柴', '这句话真好笑啊', 2),
+      row(4, 'u2', '小红', '另一个句子也很不错', 30),
+      row(5, 'u4', '群友', '[图片]', 40),
+      { ...row(6, 'bot', '机器人', '你自己的话', 41), kind: 'ambient-bot' },
+    ]
+    const candidates = buildQuoteCandidates(
+      rows, 100, new Date(Date.UTC(2026, 10, 18, 0)), new Date(Date.UTC(2026, 10, 19, 0)),
+    )
+    const repeated = candidates.find(item => item.text === '这句话真好笑啊')
+    assert(repeated?.count === 3, '相同内容合并并记录复读次数')
+    assert(repeated?.speaker === '小明', '发言人取第一个说这句话的群友')
+    assert(!candidates.some(item => item.text === '[图片]'), '图片消息不进候选')
+    assert(!candidates.some(item => item.text === '你自己的话'), '机器人消息不进候选')
+    const text = formatQuoteCandidates(candidates, 8)
+    assert(text.includes('（复读 3 次）'), '候选文本标注复读次数')
   }
 
   console.log('\n全部通过')

@@ -54,11 +54,13 @@ export interface GroupReportContext extends GroupDigestContext {
     totalMessages: number;
     /** 最近 24 小时每小时消息数，索引 0-23（报头活跃轨迹） */
     hourly: number[];
+    /** 金句候选（已去重、带复读次数），由提示词直接使用 */
+    quoteText: string;
     /** 本次报告的期号 */
     issue: number;
     /** 本次报告的生成时刻 */
     now: Date;
-    /** 报告覆盖的终点；成功后写入日报游标，下一天从这里继续 */
+    /** 报告覆盖的终点；成功后记录时间，只用于同一天不重复奖励 */
     to: Date;
     /** 当前记忆日还没出过报告时为 true：只有第一份报告能给「最喜欢」加好感度 */
     allowFavorite: boolean;
@@ -135,7 +137,7 @@ export declare class MemoryService {
     buildGroupReportContext(session: Session, options?: {
         kind?: GroupReportKind;
     }): Promise<GroupReportContext | null>;
-    /** 报告生成成功后推进日报游标：日报推到当前时刻，自然周期推到周期末尾 */
+    /** 记录本次报告时间：只用于同一天不重复奖励，不参与选材 */
     markDailyDigest(channelId: string, at: Date): Promise<void>;
     /** 记录本期的「最喜欢」，下一份报告不能再选同一个人 */
     markFavorite(channelId: string, userId: string, username: string): Promise<void>;

@@ -53,7 +53,7 @@ export interface SatMeta {
     topicStart: Date;
     lastActiveAt: Date;
     migratedAt: Date;
-    /** 上一次群日报的时间；null 表示还没发过日报 */
+    /** 上一次报告的时间；只用于同一天不重复奖励，不参与选材 */
     dailyDigestAt?: Date;
     /** 上一份报告选中的「最喜欢」群友，下一份报告不能重复选 */
     lastFavoriteId?: string;

@@ -431,6 +431,8 @@ export interface GroupReportTaskOptions {
   ranking?: { name: string, count: number }[]
   /** 报纸刊名 */
   masthead?: string
+  /** 金句候选（已去重、带复读次数）；为空时不输出金句栏目 */
+  quoteText?: string
 }
 
 /**
@@ -446,7 +448,7 @@ export function buildGroupReportTask(
   spec: GroupReportSpec,
   options: GroupReportTaskOptions = {},
 ): { role: string; content: string }[] {
-  const { previousFavoriteName, ranking = [], masthead = DEFAULT_REPORT_MASTHEAD } = options
+  const { previousFavoriteName, ranking = [], masthead = DEFAULT_REPORT_MASTHEAD, quoteText = '' } = options
   const names = participants.length ? participants.join('、') : '（本期没有可选的群友）'
   const noRepeat = previousFavoriteName
     ? `· 上一期最喜欢的是 ${previousFavoriteName}，本期不能重复选同一个人。\n`
@@ -464,6 +466,13 @@ export function buildGroupReportTask(
     ? `【活跃】昵称｜一句人物点评
 （写 ${spec.rankingCount} 条，昵称只能从上面的活跃榜候选里选，点评要结合他本期聊过的内容。）`
     : '（没有活跃榜候选，不要输出活跃这一栏。）'
+  const quoteBlock = quoteText
+    ? `\n金句候选（只能从这里选，括号里是这句话被复读的次数）：\n${quoteText}\n`
+    : ''
+  const quoteHint = quoteText
+    ? `【金句】原话 —— 发言人昵称｜一句点评
+（写 ${spec.quoteMin}-${spec.quoteMax} 条，数量由你根据候选质量决定；每条单独一行。只能从上面的「金句候选」里选，原话不要改写；括号里的「复读 N 次」说明这句话被多人重复过，可以写进点评。不要选你自己的话。找不到合适的就少写几条。）`
+    : '（本期没有可用的金句候选，不要输出金句栏目。）'
 
   return [{
     role: 'user',
@@ -471,7 +480,7 @@ export function buildGroupReportTask(
 
 群聊材料：
 ${materials}
-${rankingBlock}
+${quoteBlock}${rankingBlock}
 可以选作${spec.favoriteLabel}的群友（只从这个列表里选）：${names}
 
 要求：
@@ -484,10 +493,9 @@ ${rankingBlock}
 
 【头条】8-16 字，只概括本期群里最值得说的事，不要出现你自己的态度，不要用书名号，结尾不加句号。
 【导语】30-60 字，一句话交代这段时间群里的整体气氛。
-【要闻】小标题｜正文
+【要闻】小标题｜具体内容
 （写 ${spec.newsItemCount} 条左右，每条单独一个【要闻】栏目；小标题 6-14 字，只概括这一条讲的事，不要带评论；正文约 ${spec.newsItemChars} 字，可以分多段。按事情的重要性排序，条数由你根据材料决定。多写具体的人、具体的事和群里的原话细节，不要只写笼统印象。）
-【金句】原话 —— 发言人昵称｜一句点评
-（共 ${spec.quoteCount} 条，每条单独一行。原话必须是材料里出现过的，不要改写、不要编造；点评一句话，20 字以内。找不到就少写几条。）
+${quoteHint}
 ${rankingHint}
 【点评】你自己的点评，约 ${spec.commentChars} 字，说说你的看法、吐槽或感受。
 【热词】词1 / 词2 / 词3

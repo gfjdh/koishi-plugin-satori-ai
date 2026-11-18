@@ -132,6 +132,8 @@ export interface GroupReportTaskOptions {
     }[];
     /** 报纸刊名 */
     masthead?: string;
+    /** 金句候选（已去重、带复读次数）；为空时不输出金句栏目 */
+    quoteText?: string;
 }
 /**
  * 群聊日报/周报/月报/年报的任务输入。

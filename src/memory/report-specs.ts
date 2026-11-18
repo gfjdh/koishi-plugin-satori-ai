@@ -31,8 +31,6 @@ export interface GroupReportSpec {
   kind: GroupReportKind
   /** 卡片标题与提示词里的名称 */
   title: string
-  /** 图片前的一句话，例如「今天的日报」 */
-  announce: string
   /** 「今日最喜欢」或「本期最喜欢」 */
   favoriteLabel: string
   /** 粗粒度优先选材的最高层级；例如周报最高到 day */
@@ -54,8 +52,9 @@ export interface GroupReportSpec {
   commentChars: number
   /** 点评栏目的硬上限 */
   commentMaxChars: number
-  /** 金句条数 */
-  quoteCount: number
+  /** 金句条数区间，由模型在候选里自行决定 */
+  quoteMin: number
+  quoteMax: number
   /** 活跃榜条数 */
   rankingCount: number
   /** 热词个数 */
@@ -73,7 +72,6 @@ export const GROUP_REPORT_SPECS: Record<GroupReportKind, GroupReportSpec> = {
   daily: {
     kind: 'daily',
     title: '日报',
-    announce: '今天的日报',
     favoriteLabel: '今日最喜欢',
     levels: ['topic'],
     targetMin: 1200,
@@ -85,7 +83,8 @@ export const GROUP_REPORT_SPECS: Record<GroupReportKind, GroupReportSpec> = {
     newsItemMaxChars: 450,
     commentChars: 300,
     commentMaxChars: 500,
-    quoteCount: 3,
+    quoteMin: 2,
+    quoteMax: 4,
     rankingCount: 3,
     hotwordCount: 4,
     periodLabel: '这段时间',
@@ -94,7 +93,6 @@ export const GROUP_REPORT_SPECS: Record<GroupReportKind, GroupReportSpec> = {
   weekly: {
     kind: 'weekly',
     title: '周报',
-    announce: '本周周报',
     favoriteLabel: '本期最喜欢',
     levels: ['day', 'topic'],
     targetMin: 2000,
@@ -106,7 +104,8 @@ export const GROUP_REPORT_SPECS: Record<GroupReportKind, GroupReportSpec> = {
     newsItemMaxChars: 550,
     commentChars: 550,
     commentMaxChars: 850,
-    quoteCount: 4,
+    quoteMin: 3,
+    quoteMax: 5,
     rankingCount: 3,
     hotwordCount: 4,
     periodLabel: '过去一周',
@@ -115,7 +114,6 @@ export const GROUP_REPORT_SPECS: Record<GroupReportKind, GroupReportSpec> = {
   monthly: {
     kind: 'monthly',
     title: '月报',
-    announce: '本月月报',
     favoriteLabel: '本期最喜欢',
     levels: ['week', 'day', 'topic'],
     targetMin: 3000,
@@ -127,7 +125,8 @@ export const GROUP_REPORT_SPECS: Record<GroupReportKind, GroupReportSpec> = {
     newsItemMaxChars: 650,
     commentChars: 800,
     commentMaxChars: 1200,
-    quoteCount: 4,
+    quoteMin: 3,
+    quoteMax: 5,
     rankingCount: 3,
     hotwordCount: 5,
     periodLabel: '上个月',
@@ -136,7 +135,6 @@ export const GROUP_REPORT_SPECS: Record<GroupReportKind, GroupReportSpec> = {
   yearly: {
     kind: 'yearly',
     title: '年报',
-    announce: '本年年报',
     favoriteLabel: '本期最喜欢',
     levels: ['month', 'week', 'day', 'topic'],
     targetMin: 4000,
@@ -148,7 +146,8 @@ export const GROUP_REPORT_SPECS: Record<GroupReportKind, GroupReportSpec> = {
     newsItemMaxChars: 750,
     commentChars: 1100,
     commentMaxChars: 1600,
-    quoteCount: 5,
+    quoteMin: 4,
+    quoteMax: 6,
     rankingCount: 3,
     hotwordCount: 5,
     periodLabel: '过去一年',

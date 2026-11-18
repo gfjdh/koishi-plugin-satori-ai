@@ -82,7 +82,7 @@ export declare class MemoryRepository {
      */
     setTopicStart(scopeId: string, at: Date): Promise<void>;
     setMigratedAt(scopeId: string, at: Date): Promise<void>;
-    /** 上一次群日报的时间；没有发过时返回 null */
+    /** 上一次报告的时间；只用于同一天不重复奖励，不参与选材 */
     getDailyDigestAt(scopeId: string): Promise<Date | null>;
     setDailyDigestAt(scopeId: string, at: Date): Promise<void>;
     /** 上一份报告选中的「最喜欢」；没有时返回 null */

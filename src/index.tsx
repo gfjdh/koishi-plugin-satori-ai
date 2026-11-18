@@ -1284,6 +1284,7 @@ export class SAT extends Sat {
         previousFavoriteName: context.previousFavorite?.username,
         ranking: context.participants.slice(0, 6).map(item => ({ name: item.username, count: item.count })),
         masthead,
+        quoteText: context.quoteText,
       },
     )[0].content
     const messages = await this.buildMessages(session, task, {
@@ -1320,18 +1321,21 @@ export class SAT extends Sat {
       : null
 
     const card = await this.renderReportCard(context, sections)
-    // 图文组合成一条消息：说明 + 报纸图片 + 最喜欢
-    const parts: (string | ReturnType<typeof h>)[] = [`${context.spec.announce}\n`]
-    parts.push(card || reportToText(sections, context.spec.title))
+    // 图片和文字分开两条发：数组里的字符串不会被 h.normalize 解析成元素，
+    // 图文混排时图片会退化成一段 base64 文本，整条消息只剩 @ 能显示。
+    if (card) await session.send(card)
+    else await session.send(reportToText(sections, context.spec.title))
+
     if (favorite) {
       const tail = favorite.reason
         ? `，因为${favorite.reason}（${favorite.tier.label} +${favorite.tier.delta}好感）`
         : `（${favorite.tier.label} +${favorite.tier.delta}好感）`
-      parts.push(`\n${context.spec.favoriteLabel}：`)
-      parts.push(h('at', { id: favorite.userId, name: favorite.username }))
-      parts.push(tail)
+      await session.send([
+        `${context.spec.favoriteLabel}：`,
+        h('at', { id: favorite.userId, name: favorite.username }),
+        tail,
+      ])
     }
-    await session.send(parts)
 
     if (favorite) {
       await this.memoryService.markFavorite(session.channelId, favorite.userId, favorite.username)
