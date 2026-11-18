@@ -189,6 +189,16 @@ async function main() {
     assert(full.hotwords.join(',') === '猫,作业,深夜', '热词按分隔符拆成标签')
     assert(full.ranking[0]?.name === '小明' && full.ranking[0]?.comment === '今天最能聊',
       '活跃榜拆出昵称与点评')
+
+    // 模型常把多条活跃榜写在同一个【活跃】下面，必须按行拆开
+    const multiRank = parseReportSections(`【要闻】正文。
+【活跃】小明｜点评一
+小红｜点评二
+3. 阿柴｜点评三`)
+    assert(multiRank.ranking.length === 3, `同一栏目的多条活跃榜按行拆开（实际 ${multiRank.ranking.length}）`)
+    assert(multiRank.ranking[1]?.name === '小红' && multiRank.ranking[1]?.comment === '点评二',
+      '第二条活跃榜独立')
+    assert(multiRank.ranking[2]?.name === '阿柴', '活跃榜行首序号会被剥掉')
     assert(full.favorite?.name === '小明', '最喜欢拆出昵称')
     assert(full.favorite?.tier === '非常喜欢' && full.favorite?.delta === 30,
       '最喜欢拆出档位')
@@ -199,6 +209,14 @@ async function main() {
     assert(colon.structured && colon.headline === '标题', '「头条：」写法也能识别')
     assert(colon.news[0]?.body === '正文内容。' && colon.comment === '点评内容。', '冒号栏目的正文归位')
     assert(colon.news[0]?.title === '', '没有小标题的要闻整段当正文')
+
+    // 模型也常写成「小标题独占一行，正文另起」
+    const lineTitle = parseReportSections('【要闻】宿舍噪音成话题\n一？？芙兰室友大声打游戏。\n【点评】点评。')
+    assert(lineTitle.news[0]?.title === '宿舍噪音成话题', '首行短句也能当小标题')
+    assert(lineTitle.news[0]?.body === '一？？芙兰室友大声打游戏。', '小标题之后的行归正文')
+
+    const quoteLead = parseReportSections('【要闻】“杨浦体育大学你赢了”\n后面还有正文。\n【点评】点评。')
+    assert(quoteLead.news[0]?.title === '', '引语开头的首行不当小标题')
 
     // 模型漏了档位时按默认档处理，不能把理由当成档位
     const noTier = parseReportSections('【要闻】正文。\n【今日最喜欢】小明｜因为他说了句好笑的话')
@@ -269,7 +287,8 @@ async function main() {
     })[0].content
     assert(daily.includes('心眼报'), '提示词带上报纸刊名')
     assert(daily.includes('小明、小红'), '提示词列出候选群友')
-    assert(daily.includes('小明 132 条'), '提示词给出活跃榜候选的发言条数')
+    assert(daily.includes('1. 小明'), '提示词给出活跃榜候选顺序')
+    assert(!daily.includes('132 条'), '提示词不再暴露发言条数')
     for (const section of ['【头条】', '【导语】', '【要闻】', '【金句】', '【活跃】', '【点评】', '【热词】']) {
       assert(daily.includes(section), `提示词要求 ${section} 栏目`)
     }
@@ -281,7 +300,7 @@ async function main() {
     assert(daily.includes('有点喜欢') && daily.includes('非常喜欢'), '提示词限定三档')
     assert(daily.includes('不要每期都给最高档'), '提示词要求档位不要总是最高')
     assert(daily.includes('不要因为某人发言多'), '选人只看质量和喜好，不看发言频率')
-    assert(daily.includes('不要提发言条数或活跃度'), '理由不能写发言频率')
+    assert(daily.includes('不要提条数、排行、话痨、活跃度'), '理由不能写发言频率')
     assert(!daily.includes('提问者'), '日报不再标注提问者')
 
     const weekly = buildGroupReportTask('材料内容', '11-09 04:00 ~ 11-16 04:00', ['小明'], GROUP_REPORT_SPECS.weekly)[0].content
@@ -313,7 +332,7 @@ async function main() {
     )[0].content
     assert(empty.includes('本期没有可选的群友'), '候选列表为空时明确提示')
     assert(empty.includes('不要输出最喜欢这一栏'), '候选列表为空时要求跳过最喜欢')
-    assert(!empty.includes('【活跃】'), '没有活跃榜候选时不输出活跃栏目')
+    assert(empty.includes('不要输出活跃这一栏'), '没有活跃榜候选时不输出活跃栏目')
   }
 
   // ---------- 场景 6：报纸卡片 ----------
@@ -373,6 +392,23 @@ async function main() {
     })
     assert(fallback.includes('class="fallback"'), '没有栏目标记时退回单块正文')
     assert(!fallback.includes('class="headline"'), '回退时不渲染头条')
+
+    // 首段以引号开头时不做首字下沉，避免标点被一起放大
+    const quoteHtml = renderReportHtml({
+      masthead: '心眼报',
+      kindTitle: '群日报',
+      dateLabel: '',
+      issue: 0,
+      range: '',
+      stats: { messages: 0, nodes: 0, participants: 0 },
+      hourly: new Array(24).fill(0),
+      sections: parseReportSections('【要闻】标题｜“引用开头”的正文。\n【点评】点评。'),
+      ranking: [],
+      rankingLabel: '',
+      footerName: '',
+      footerTime: '',
+    })
+    assert(quoteHtml.includes('no-drop'), '首段以引号开头时取消首字下沉')
   }
 
   console.log('\n全部通过')

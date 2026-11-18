@@ -104,7 +104,10 @@ function renderNews(sections: ReportSections): string {
     const body = paragraphs(item.body).map(line => `<p>${escapeHtml(line)}</p>`).join('')
     return `<div class="news-item">${title}<div class="news-body">${body}</div></div>`
   }).join('')
-  return `${sectionTitle('本群要闻')}<div class="news-flow${columns}">${items}</div>`
+  // 首段以引号/括号开头时不做首字下沉，否则标点会被一起放大
+  const firstChar = (sections.news[0].body || '').trim()[0] || ''
+  const noDrop = /[「『“"（(《【]/.test(firstChar) ? ' no-drop' : ''
+  return `${sectionTitle('本群要闻')}<div class="news-flow${columns}${noDrop}">${items}</div>`
 }
 
 function renderQuotes(sections: ReportSections): string {
@@ -242,6 +245,10 @@ export function renderReportHtml(input: ReportCardInput): string {
     font-weight: 700; color: #6d4f8f;
     font-family: "Noto Serif CJK SC", "SimSun", serif;
   }
+  .news-flow.no-drop > .news-item:first-child .news-body p:first-child::first-letter {
+    float: none; margin: 0; font-size: inherit; line-height: inherit;
+    font-weight: inherit; color: inherit; font-family: inherit;
+  }
 
   .quotes { display: flex; flex-direction: column; gap: 14px; }
   .quote { position: relative; padding: 2px 0 2px 20px; }
@@ -277,9 +284,9 @@ export function renderReportHtml(input: ReportCardInput): string {
   .fallback { font-size: 15px; line-height: 1.95; white-space: pre-wrap; word-break: break-word; text-align: justify; }
 
   .footer {
-    display: flex; justify-content: space-between; gap: 16px;
-    margin-top: 26px; padding-top: 10px;
-    font-size: 11px; color: #9a8a76; border-top: 1px solid #d9cbb4;
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px;
+    margin-top: 20px; padding-top: 9px;
+    font-size: 10px; color: #9a8a76; border-top: 1px solid #d9cbb4;
   }
 </style></head><body><div class="paper">
   <div class="masthead">

@@ -389,7 +389,7 @@ function parseQuoteLine(lines: string[]): ReportQuote | null {
   return { text: stripWrapping(quotePart), speaker: '', comment }
 }
 
-/** 一条要闻：`小标题｜正文`；没有小标题时整段当正文 */
+/** 一条要闻：`小标题｜正文`；没有 `｜` 时首行短句也当作小标题 */
 function parseNewsItem(lines: string[]): ReportNewsItem | null {
   const raw = lines.join('\n').trim()
   if (!raw) return null
@@ -397,11 +397,28 @@ function parseNewsItem(lines: string[]): ReportNewsItem | null {
   if (split) {
     return { title: stripWrapping(split[1]).trim(), body: normalizeBody(split[2]) }
   }
+
+  // 模型也常写成「小标题独占一行，正文另起」：首行短、不带句末标点、不是引语时当标题
+  const rows = raw.split('\n').map(line => line.trim()).filter(Boolean)
+  if (rows.length >= 2) {
+    const rawFirst = rows[0]
+    const first = stripWrapping(rawFirst).replace(/[：:]$/, '').trim()
+    const looksLikeTitle = first.length > 0
+      && first.length <= 24
+      && !/[。！？!?；;，,]$/.test(first)
+      && !/^[「『“"]/.test(rawFirst)
+    if (looksLikeTitle) {
+      return { title: first, body: normalizeBody(rows.slice(1).join('\n')) }
+    }
+  }
   return { title: '', body: normalizeBody(raw) }
 }
 
 function parseRankingLine(lines: string[]): ReportRankingEntry | null {
-  const raw = lines.join(' ').replace(/\s+/g, ' ').trim()
+  const raw = lines.join(' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^\s*(?:\d+[.、)]|[-*·])\s*/, '')
+    .trim()
   if (!raw) return null
   const split = raw.match(/^(.+?)\s*[｜|]\s*(.+)$/)
   if (!split) return { name: stripWrapping(raw), comment: '' }
@@ -530,8 +547,12 @@ export function parseReportSections(text: string): ReportSections {
       .filter((item): item is ReportQuote => !!item),
     comment: normalizeBody(join('comment')),
     hotwords: parseHotwords(pick('hot').flatMap(bucket => bucket.lines)),
+    // 模型常把多条活跃榜写在同一个【活跃】下面，按行拆开
     ranking: pick('ranking')
-      .map(bucket => parseRankingLine(bucket.lines))
+      .flatMap(bucket => bucket.lines)
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => parseRankingLine([line]))
       .filter((item): item is ReportRankingEntry => !!item),
     favorite: parseFavoriteLine(pick('favorite').flatMap(bucket => bucket.lines)),
     fallback: source,
