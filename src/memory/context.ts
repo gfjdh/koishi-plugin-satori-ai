@@ -288,7 +288,10 @@ export class ContextBuilder {
 
   private async buildRecall(scopeId: string, query: string, excluded: Set<number>): Promise<string> {
     if (!query) return ''
-    const since = new Date(this.now().getTime() - this.config.retentionDays * 86_400_000)
+    // 0 = 永久保留：召回不受时间窗限制
+    const since = this.config.retentionDays > 0
+      ? new Date(this.now().getTime() - this.config.retentionDays * 86_400_000)
+      : new Date(0)
     const candidates = await this.repo.getRecallCandidates(scopeId, ['topic', 'day'], since)
     if (!candidates.length) return ''
 

@@ -68,9 +68,12 @@ export class Heartbeat {
 
         await this.runBatch(batch)
       }
-      const before = new Date(Date.now() - this.config.retentionDays * 86_400_000)
-      const pruned = await this.repo.pruneDialogues(before)
-      if (pruned) logger.info(`已清理 ${pruned} 条超过 ${this.config.retentionDays} 天的对话`)
+      // 0 = 永久保留：不清理原始对话，累计统计与召回才能覆盖完整历史
+      if (this.config.retentionDays > 0) {
+        const before = new Date(Date.now() - this.config.retentionDays * 86_400_000)
+        const pruned = await this.repo.pruneDialogues(before)
+        if (pruned) logger.info(`已清理 ${pruned} 条超过 ${this.config.retentionDays} 天的对话`)
+      }
       // 群聊原始消息只是归档素材，保留期远短于按人对话
       const groupBefore = new Date(Date.now() - GROUP_RETENTION_DAYS * 86_400_000)
       const prunedGroups = await this.repo.pruneGroupDialogues(groupBefore)

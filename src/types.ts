@@ -441,7 +441,7 @@ export namespace Sat {
       summary_max_calls_per_tick: Schema.number().default(8).description('每个用户/群每次心跳最多发起的辅助模型调用数（归档与分层汇总各占一半预算；历史积压时调大可加快补齐）'),
       summary_concurrency: Schema.number().default(10).description('同时处理的用户/群数量。单个用户/群内部仍串行以保证归档顺序；不同用户/群之间可并发，调大能明显加快历史积压补齐'),
       memory_active_window_days: Schema.number().default(7).description('只对最近多少天内活跃过的用户/群做汇总'),
-      memory_retention_days: Schema.number().default(180).description('原始对话保留天数'),
+      memory_retention_days: Schema.number().min(0).default(0).description('原始对话保留天数；0 = 永久保留（默认），正数则按天数清理'),
       memory_recall_topN: Schema.number().default(5).description('关键词召回的历史记忆条数'),
       dialogue_stats_enabled: Schema.boolean().default(true).description('是否注入近期对话时间与频率统计（最近一天/一周/一月及距上次对话的时间）'),
       summary_dry_run: Schema.boolean().default(false).description('调试用：只记录将要执行的汇总，不调用模型、不写库'),
