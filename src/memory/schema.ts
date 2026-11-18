@@ -63,6 +63,22 @@ export interface SatProfile {
   updatedAt: Date
 }
 
+// 往期报刊：图片存 dataDir/reports/，这里存路径与结构化内容
+export interface SatReport {
+  id: number
+  scopeId: string
+  /** 报刊号，按生成日期 YYYYMMDD */
+  issueDate: string
+  /** daily / weekly / monthly / yearly */
+  kind: string
+  title: string
+  /** 相对 dataDir 的图片路径；没有渲染图片时为空字符串 */
+  imagePath: string
+  /** 重新渲染所需的完整 ReportCardInput + favorite */
+  data: any
+  createdAt: Date
+}
+
 // 每个 scope 的游标与状态
 export interface SatMeta {
   id: number
@@ -86,6 +102,7 @@ declare module 'koishi' {
     sat_knowledge: SatKnowledge
     sat_profile: SatProfile
     sat_meta: SatMeta
+    sat_report: SatReport
   }
 }
 
@@ -165,5 +182,19 @@ export function extendMemoryDatabase(ctx: Context) {
   }, {
     autoInc: true,
     unique: [['scopeId']],
+  })
+
+  ctx.model.extend('sat_report', {
+    id: 'unsigned',
+    scopeId: 'string',
+    issueDate: 'string',
+    kind: 'string',
+    title: 'string',
+    imagePath: 'string',
+    data: 'json',
+    createdAt: 'timestamp',
+  }, {
+    autoInc: true,
+    unique: [['scopeId', 'issueDate']],
   })
 }

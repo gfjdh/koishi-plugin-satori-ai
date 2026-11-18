@@ -9,7 +9,7 @@ import { Heartbeat } from './heartbeat'
 import { Migrator } from './migrate'
 import { ProfileManager } from './profile'
 import { MemoryRepository } from './repository'
-import { extendMemoryDatabase } from './schema'
+import { SatReport, extendMemoryDatabase } from './schema'
 import { ShortTermMemory } from './short-term'
 import { Summarizer } from './summarizer'
 import { GroupRecorder } from './group-recorder'
@@ -492,6 +492,33 @@ export class MemoryService {
   async markDailyDigest(channelId: string, at: Date): Promise<void> {
     if (!channelId) return
     await this.repo.setDailyDigestAt(groupScopeId(channelId), at)
+  }
+
+  // ---------- 往期报刊 ----------
+
+  async saveReport(
+    channelId: string,
+    issueDate: string,
+    kind: string,
+    title: string,
+    imagePath: string,
+    data: any,
+  ): Promise<void> {
+    if (!channelId || !issueDate) return
+    await this.repo.saveReport({
+      scopeId: groupScopeId(channelId),
+      issueDate,
+      kind,
+      title,
+      imagePath,
+      data,
+      createdAt: new Date(),
+    })
+  }
+
+  async getReport(channelId: string, issueDate: string): Promise<SatReport | null> {
+    if (!channelId || !issueDate) return null
+    return this.repo.getReport(groupScopeId(channelId), issueDate)
   }
 
   /** 记录本期的「最喜欢」，下一份报告不能再选同一个人 */

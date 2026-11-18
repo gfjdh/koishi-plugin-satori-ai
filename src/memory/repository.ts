@@ -2,7 +2,7 @@
 // 数据访问层：所有对 sat_* 表的读写都集中在这里。
 import { Context, $ } from 'koishi'
 import {
-  GLOBAL_SCOPE, Granularity, ProfileData, SatDialogue, SatKnowledge, SatMemory, SatMeta, SatProfile,
+  GLOBAL_SCOPE, Granularity, ProfileData, SatDialogue, SatKnowledge, SatMemory, SatMeta, SatProfile, SatReport,
 } from './schema'
 import { GROUP_BOT_KIND, GROUP_KINDS, GROUP_MEMBER_KIND } from './group'
 
@@ -330,6 +330,23 @@ export class MemoryRepository {
   async setReportCount(scopeId: string, count: number): Promise<void> {
     await this.ensureMeta(scopeId, new Date())
     await this.ctx.database.set('sat_meta', { scopeId }, { reportCount: count })
+  }
+
+  // ---------- 往期报刊 ----------
+
+  async getReport(scopeId: string, issueDate: string): Promise<SatReport | null> {
+    const rows = await this.ctx.database.get('sat_report', { scopeId, issueDate }, { limit: 1 })
+    return rows[0] || null
+  }
+
+  /** 同一群同一天重复生成时覆盖旧的一期 */
+  async saveReport(row: Omit<SatReport, 'id'>): Promise<void> {
+    const existing = await this.getReport(row.scopeId, row.issueDate)
+    if (existing) {
+      await this.ctx.database.set('sat_report', { id: existing.id }, row)
+    } else {
+      await this.ctx.database.create('sat_report', row)
+    }
   }
 
   /**

@@ -95,7 +95,14 @@ export declare class SAT extends Sat {
      */
     private applyDigestFavorite;
     /** 报纸卡片。没有 puppeteer 时返回 null，由调用方退回纯文本 */
+    private buildReportCardInput;
+    /** 报纸卡片。没有 puppeteer 时 image 为 null，但结构化内容仍返回供存档 */
     private renderReportCard;
+    /** 往期报刊：图片写 dataDir/reports/，数据库只存相对路径和结构化内容 */
+    private saveReportArchive;
+    private writeReportImage;
+    /** 往期报刊指令：按 YYYYMMDD 取当前群的那一期 */
+    private handlePastReport;
     private renderDigestCard;
     dispose(): Promise<void>;
 }

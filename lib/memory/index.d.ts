@@ -2,6 +2,7 @@ import { Context, Session } from 'koishi';
 import { APIClient } from '../api';
 import { MemoryConfig } from '../types';
 import { PromptBuildOptions, PromptContext } from './context';
+import { SatReport } from './schema';
 import { DigestParticipant, DigestRange } from './group-digest';
 import { GroupReportKind, GroupReportSpec } from './report-specs';
 export interface MemoryServiceConfig extends MemoryConfig {
@@ -139,6 +140,8 @@ export declare class MemoryService {
     }): Promise<GroupReportContext | null>;
     /** 记录本次报告时间：只用于同一天不重复奖励，不参与选材 */
     markDailyDigest(channelId: string, at: Date): Promise<void>;
+    saveReport(channelId: string, issueDate: string, kind: string, title: string, imagePath: string, data: any): Promise<void>;
+    getReport(channelId: string, issueDate: string): Promise<SatReport | null>;
     /** 记录本期的「最喜欢」，下一份报告不能再选同一个人 */
     markFavorite(channelId: string, userId: string, username: string): Promise<void>;
     /** 报告发出后记录期号，下一期的报头 +1 */

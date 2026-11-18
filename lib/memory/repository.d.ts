@@ -1,5 +1,5 @@
 import { Context } from 'koishi';
-import { Granularity, ProfileData, SatDialogue, SatKnowledge, SatMemory, SatMeta, SatProfile } from './schema';
+import { Granularity, ProfileData, SatDialogue, SatKnowledge, SatMemory, SatMeta, SatProfile, SatReport } from './schema';
 export declare class MemoryRepository {
     private ctx;
     /**
@@ -94,6 +94,9 @@ export declare class MemoryRepository {
     /** 已经发出的报告期数；报头显示「第 N 期」 */
     getReportCount(scopeId: string): Promise<number>;
     setReportCount(scopeId: string, count: number): Promise<void>;
+    getReport(scopeId: string, issueDate: string): Promise<SatReport | null>;
+    /** 同一群同一天重复生成时覆盖旧的一期 */
+    saveReport(row: Omit<SatReport, 'id'>): Promise<void>;
     /**
      * 活跃 scope：最近活跃时间不早于 since。不传 limit 时返回全部。
      * `__global__` 只用来记迁移时间，不是对话作用域——它有 meta 但没有对话，

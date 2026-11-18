@@ -16,7 +16,7 @@ import {
 } from './memory/group-digest'
 import { formatTime } from './memory/summarizer'
 import { DEFAULT_REPORT_MASTHEAD, GroupReportKind, ReportFavoriteTier, resolveFavoriteTier } from './memory/report-specs'
-import { renderReportHtml } from './report-card'
+import { ReportCardInput, renderReportHtml } from './report-card'
 import { handleFixedDialogues } from './fixed-dialogues'
 import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck, shouldAppendFavorabilityMark } from './favorability'
 import { createMiddleware } from './middleware'
@@ -361,6 +361,10 @@ export class SAT extends Sat {
     ctx.command('群日报', '群日报/周报/月报/年报：按日期自动选择（1月1日/每月1日/周一）', { authority: 3 })
       .alias('日报')
       .action(async ({ session }) => this.handleGroupReport(session))
+
+    ctx.command('往期报刊 <issue>', '查看往期报刊，参数为日期，如 20260101', { authority: 0 })
+      .alias('往期报纸')
+      .action(async ({ session }, issue) => this.handlePastReport(session, issue))
 
     ctx.command('sat.memory.migrate', '重新迁移旧版记忆文件', { authority: 4 })
       .option('force', '-f')
@@ -1320,10 +1324,10 @@ export class SAT extends Sat {
       ? await this.applyDigestFavorite(sections.favorite, context.favoriteCandidates, context.previousFavorite)
       : null
 
-    const card = await this.renderReportCard(context, sections)
+    const { input, image } = await this.renderReportCard(context, sections)
     // 图片和文字分开两条发：数组里的字符串不会被 h.normalize 解析成元素，
     // 图文混排时图片会退化成一段 base64 文本，整条消息只剩 @ 能显示。
-    if (card) await session.send(card)
+    if (image) await session.send(image)
     else await session.send(reportToText(sections, context.spec.title))
 
     if (favorite) {
@@ -1339,6 +1343,11 @@ export class SAT extends Sat {
 
     if (favorite) {
       await this.memoryService.markFavorite(session.channelId, favorite.userId, favorite.username)
+    }
+    try {
+      await this.saveReportArchive(session, context, favorite, input, image)
+    } catch (error) {
+      logger.warn(`往期报刊存档失败：${error}`)
     }
     // 发送成功后才推进游标与期号；生成或发送失败时下次会重新覆盖这段时间
     await this.memoryService.markReportIssued(session.channelId, context.issue)
@@ -1367,11 +1376,7 @@ export class SAT extends Sat {
   }
 
   /** 报纸卡片。没有 puppeteer 时返回 null，由调用方退回纯文本 */
-  private async renderReportCard(
-    context: GroupReportContext,
-    sections: ReportSections,
-  ): Promise<string | null> {
-    if (!this.puppeteer) return null
+  private buildReportCardInput(context: GroupReportContext, sections: ReportSections): ReportCardInput {
     const tz = this.config.memory_timezone_offset
     const nowLabel = formatTime(context.now, tz)
 
@@ -1390,7 +1395,7 @@ export class SAT extends Sat {
         comment: comments.get(item.userId) || '',
       }))
 
-    const html = renderReportHtml({
+    return {
       masthead: this.config.report_masthead || DEFAULT_REPORT_MASTHEAD,
       kindTitle: `群${context.spec.title}`,
       dateLabel: nowLabel.slice(0, 10).replace(/\//g, '.'),
@@ -1407,13 +1412,104 @@ export class SAT extends Sat {
       rankingLabel: context.spec.rankingLabel,
       footerName: this.getBotName(),
       footerTime: nowLabel,
-    })
+    }
+  }
+
+  /** 报纸卡片。没有 puppeteer 时 image 为 null，但结构化内容仍返回供存档 */
+  private async renderReportCard(
+    context: GroupReportContext,
+    sections: ReportSections,
+  ): Promise<{ input: ReportCardInput, image: string | null }> {
+    const input = this.buildReportCardInput(context, sections)
+    if (!this.puppeteer) return { input, image: null }
     try {
-      return await this.puppeteer.render(html)
+      return { input, image: await this.puppeteer.render(renderReportHtml(input)) }
     } catch (error) {
       logger.warn(`群${context.spec.title}图片渲染失败：${error}`)
-      return null
+      return { input, image: null }
     }
+  }
+
+  /** 往期报刊：图片写 dataDir/reports/，数据库只存相对路径和结构化内容 */
+  private async saveReportArchive(
+    session: Session,
+    context: GroupReportContext,
+    favorite: (DigestParticipant & { tier: ReportFavoriteTier, reason: string }) | null,
+    input: ReportCardInput,
+    image: string | null,
+  ): Promise<void> {
+    const tz = this.config.memory_timezone_offset
+    const issueDate = formatTime(context.now, tz).slice(0, 10).replace(/\//g, '')
+    const imagePath = image ? await this.writeReportImage(session.channelId, issueDate, image) : ''
+    const data = {
+      input,
+      favoriteLabel: context.spec.favoriteLabel,
+      favorite: favorite
+        ? {
+          userId: favorite.userId,
+          username: favorite.username,
+          tier: favorite.tier,
+          reason: favorite.reason,
+        }
+        : null,
+    }
+    await this.memoryService.saveReport(
+      session.channelId,
+      issueDate,
+      context.kind,
+      `群${context.spec.title}`,
+      imagePath,
+      data,
+    )
+  }
+
+  private async writeReportImage(channelId: string, issueDate: string, image: string): Promise<string> {
+    const match = image.match(/src="data:image\/png;base64,([^"]+)"/)
+    if (!match) return ''
+    const safe = (channelId || 'unknown').replace(/[^\w-]/g, '_')
+    const relative = `reports/g_${safe}/${issueDate}.png`
+    const absolute = path.join(this.config.dataDir, relative)
+    await fs.mkdir(path.dirname(absolute), { recursive: true })
+    await fs.writeFile(absolute, Buffer.from(match[1], 'base64'))
+    return relative
+  }
+
+  /** 往期报刊指令：按 YYYYMMDD 取当前群的那一期 */
+  private async handlePastReport(session: Session, issue?: string) {
+    if (!isGroupSession(session)) return '「往期报刊」只能在群里用。'
+    const value = (issue || '').trim()
+    if (!/^\d{8}$/.test(value)) return '报刊号格式应为 YYYYMMDD，例如 20260101。'
+
+    const report = await this.memoryService.getReport(session.channelId, value)
+    if (!report) return `没有找到 ${value} 这一期。`
+
+    const data = (report.data || {}) as { input?: ReportCardInput }
+
+    let sent = false
+    if (report.imagePath) {
+      try {
+        const buffer = await fs.readFile(path.join(this.config.dataDir, report.imagePath))
+        await session.send(h.image(buffer, 'image/png'))
+        sent = true
+      } catch (error) {
+        logger.warn(`读取往期报刊图片失败（${report.imagePath}）：${error}`)
+      }
+    }
+    if (!sent && data.input) {
+      if (this.puppeteer) {
+        try {
+          await session.send(await this.puppeteer.render(renderReportHtml(data.input)))
+          sent = true
+        } catch (error) {
+          logger.warn(`重新渲染往期报刊失败：${error}`)
+        }
+      }
+      if (!sent && data.input.sections) {
+        await session.send(reportToText(data.input.sections, String(data.input.kindTitle || '日报').replace(/^群/, '')))
+        sent = true
+      }
+    }
+    if (!sent) return `第 ${value} 期的图片已丢失。`
   }
 
   private async renderDigestCard(

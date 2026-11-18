@@ -47,6 +47,20 @@ export interface SatProfile {
     data: ProfileData;
     updatedAt: Date;
 }
+export interface SatReport {
+    id: number;
+    scopeId: string;
+    /** 报刊号，按生成日期 YYYYMMDD */
+    issueDate: string;
+    /** daily / weekly / monthly / yearly */
+    kind: string;
+    title: string;
+    /** 相对 dataDir 的图片路径；没有渲染图片时为空字符串 */
+    imagePath: string;
+    /** 重新渲染所需的完整 ReportCardInput + favorite */
+    data: any;
+    createdAt: Date;
+}
 export interface SatMeta {
     id: number;
     scopeId: string;
@@ -68,6 +82,7 @@ declare module 'koishi' {
         sat_knowledge: SatKnowledge;
         sat_profile: SatProfile;
         sat_meta: SatMeta;
+        sat_report: SatReport;
     }
 }
 export declare const MEMORY_GRANULARITIES: readonly ["topic", "day", "week", "month", "season", "year"];
