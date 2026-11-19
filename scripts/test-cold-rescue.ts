@@ -84,6 +84,20 @@ async function main() {
   await flush()
   assert(rescued.length === 0, '一分钟内有人回复，不救场')
 
+  // ---------- 场景 2b：开口的人自己接着说，重新计时 ----------
+  manager = newManager()
+  manager.observe(makeSession())
+  now += 10 * 60_000
+  const since2b = manager.observe(makeSession())
+  manager.arm(makeSession(), since2b!)
+  now += 30_000
+  assert(manager.observe(makeSession({ content: '接着说' })) === null, '同一人接着说不再算新的冷场开口')
+  assert(timers.filter(timer => !timer.cleared).length === 1, '同一人接着说时旧定时器取消、重新武装一个')
+  runTimers()
+  await flush()
+  assert(rescued.length === 1, '从最新一条消息起一分钟无人回复，救场一次')
+  assert(rescued[0].content === '接着说', '救场使用最新一条消息的会话')
+
   // ---------- 场景 3：写入群聊环境期间已有人说话，不再武装 ----------
   manager = newManager()
   manager.observe(makeSession())
@@ -95,6 +109,18 @@ async function main() {
   runTimers()
   await flush()
   assert(timers.length === 0 && rescued.length === 0, 'observe 与 arm 之间有人说话，不武装')
+
+  // ---------- 场景 3b：observe 与 arm 之间同一人接着说，按最新消息重新计时 ----------
+  manager = newManager()
+  manager.observe(makeSession())
+  now += 10 * 60_000
+  const since3b = manager.observe(makeSession())
+  manager.observe(makeSession({ content: '接着说' }))
+  manager.arm(makeSession(), since3b!)
+  assert(timers.filter(timer => !timer.cleared).length === 1, '同一个人接着说的竞态也会重新武装')
+  runTimers()
+  await flush()
+  assert(rescued.length === 1 && rescued[0].content === '接着说', '救场使用最新一条消息的会话')
 
   // ---------- 场景 4：bot 自己的消息与纯图片不算「有人开口」 ----------
   manager = newManager()
