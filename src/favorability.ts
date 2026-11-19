@@ -109,6 +109,20 @@ export async function handleAuxiliaryResult(ctx: Context, session: Session, conf
   return;
 }
 
+// 输入命中敏感词：扣心情和好感。用户文本命中、识图结果命中都走这里。
+export async function applyInputCensorPenalty(
+  ctx: Context,
+  user: User,
+  config: FavorabilityConfig,
+  session: Session,
+  moodManager: MoodManager
+): Promise<number> {
+  if (!config.input_censor_favorability) return 0
+  await moodManager.handleInputMoodChange(user, getFavorabilityLevel(user, config))
+  await applyFavorabilityEffect(ctx, user, -1 * config.value_of_input_favorability, session)
+  return -1 * config.value_of_input_favorability
+}
+
 // 处理输入好感度检查
 export async function inputContentCheck(
   ctx: Context,
@@ -124,9 +138,7 @@ export async function inputContentCheck(
   const hasCensor = hasCensorMark(content)
 
   if (hasCensor && config.input_censor_favorability) {
-    await moodManager.handleInputMoodChange(user, getFavorabilityLevel(user, config))
-    await applyFavorabilityEffect(ctx, user, -1 * config.value_of_input_favorability, session) // 应用好感度效果
-    return -1 * config.value_of_input_favorability
+    return applyInputCensorPenalty(ctx, user, config, session, moodManager)
   }
   // 正常情况增加1点心情
   await moodManager.applyMoodChange(user, 1)

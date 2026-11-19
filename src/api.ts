@@ -148,7 +148,7 @@ export class APIClient {
     images: string[],
     prompt: string,
     maxAttempts = Math.max(1, this.config.maxRetryTimes || 1),
-  ): Promise<{ content: string, error: boolean }> {
+  ): Promise<{ content: string, error: boolean, filtered?: boolean }> {
     const keys = (this.config.vision_LLM_key || []).filter(Boolean)
     if (!keys.length || !this.config.vision_LLM || !this.config.vision_LLM_URL) {
       return { content: '未配置识图模型', error: true }
@@ -171,9 +171,44 @@ export class APIClient {
 
     for (let i = 1; i <= maxAttempts; i++) {
       try {
-        const response = await this.ctx.http.post(url, payload, { headers, timeout: 120000 })
-        const content = response?.choices?.[0]?.message?.content
-        return { content: typeof content === 'string' ? content : '', error: false }
+        const parseVision = (response: any) => {
+          const choice = response?.choices?.[0]
+          const message = choice?.message || {}
+          const content = typeof message.content === 'string' ? message.content : ''
+          // 空内容未必是故障：图被服务端内容审核拦下时，接口常返回 200 + 空 content
+          const filtered = choice?.finish_reason === 'content_filter' || !!message.refusal
+          return { choice, message, content, filtered }
+        }
+        // 识图只需要描述，不需要推理；先关掉思考省一轮输出预算（思考模型会先花 30 秒把
+        // 2048 token 全用在思维链上）。供应商不认 thinking 参数时退回原始请求。
+        const post = async (withThinkingDisabled: boolean) => this.ctx.http.post(url,
+          withThinkingDisabled ? { ...payload, thinking: { type: 'disabled' } } : payload,
+          { headers, timeout: 120000 })
+        let response: any
+        try {
+          response = await post(true)
+        } catch (error) {
+          response = await post(false)
+        }
+        let result = parseVision(response)
+        // 有的供应商忽略 thinking 参数，仍然把输出预算花在思维链上（content 为空）。
+        // 这时再明确关掉思考重试一次；不认参数时保留原结果。
+        if (!result.content.trim() && result.message.reasoning_content) {
+          logger.warn('识图模型把输出预算花在思维链上，关闭思考后重试一次')
+          try {
+            const retried = parseVision(await post(true))
+            if (retried.content.trim()) result = retried
+          } catch (error) {
+            logger.warn(`关闭思考重试失败：${error}`)
+          }
+        }
+        const { choice, message, content, filtered } = result
+        if (!content.trim()) {
+          const finish = choice?.finish_reason ?? 'unknown'
+          const refusal = typeof message.refusal === 'string' && message.refusal ? `，refusal=${message.refusal}` : ''
+          logger.warn(`识图模型返回空内容（finish_reason=${finish}${refusal}）`)
+        }
+        return { content, error: false, filtered }
       } catch (error) {
         if (i == maxAttempts) return { ...this.handleAPIError(error), error: true }
         const status = this.statusOf(error)

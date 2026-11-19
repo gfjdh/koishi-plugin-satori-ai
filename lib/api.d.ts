@@ -27,6 +27,7 @@ export declare class APIClient {
     visionChat(images: string[], prompt: string, maxAttempts?: number): Promise<{
         content: string;
         error: boolean;
+        filtered?: boolean;
     }>;
     /**
      * 辅助请求的实际发送与重试。

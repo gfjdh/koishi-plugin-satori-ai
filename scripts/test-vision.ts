@@ -4,7 +4,7 @@
 // 要保证的事：能从本次消息和引用消息里抽图片、正文里的 img 标签会被去掉、
 // 图片能转成 data URL、识图提示词带上原消息正文。
 import {
-  buildVisionPrompt, collectImages, currentImages, downloadImageAsDataUrl, guessImageMime, hasTextContent, stripImageTags,
+  buildVisionPrompt, collectImages, currentImages, dedupeFeatureLines, downloadImageAsDataUrl, guessImageMime, hasTextContent, stripImageTags,
 } from '../src/vision'
 import { consumeVisionUsage } from '../src/database'
 import {
@@ -55,6 +55,21 @@ async function main() {
     assert(stripImageTags('<img src="x"/>') === '', '只有图片时正文为空')
   }
 
+  // ---------- 场景 2.5：复读的特征行去重 ----------
+  {
+    // 线上真实故障：四格漫画里同一角色反复出现，模型输出了 84 行特征，实际只有 5 种
+    const lines = ['图1：四格漫画，多名角色在温泉中。']
+    for (let i = 0; i < 40; i++) {
+      lines.push('特征1：金发，长发，红瞳，裸体，无头饰，无标志物。')
+      lines.push('特征2：金发，长发，蓝瞳，裸体，无头饰，无标志物。')
+    }
+    lines.push('特征3：黑发，短发，红瞳，穿红白相间服装，戴红蝴蝶结，无标志物。')
+    const deduped = dedupeFeatureLines(lines.join('\n'))
+    assert(deduped.split('\n').length === 4, `重复特征行只保留一次（实际 ${deduped.split('\n').length} 行）`)
+    assert(deduped.includes('图1：四格漫画') && deduped.includes('特征3：'), '去重后保留概述行和不同特征')
+    assert(dedupeFeatureLines('没有特征行') === '没有特征行', '没有特征行时原样返回')
+  }
+
   // ---------- 场景 3：图片转 data URL ----------
   {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -102,7 +117,10 @@ async function main() {
     assert(prompt.includes('重点描述与消息正文相关的内容'), '提示词要求聚焦问题相关内容')
     assert(prompt.includes('显眼道具必须写进'), '提示词要求把标志物写进特征行')
     assert(prompt.includes('特征1：') && prompt.includes('每个角色单独一行'), '提示词要求多角色分别写特征行')
+    assert(prompt.includes('不能只写主角') && prompt.includes('绝不合并到同一行'), '提示词要求写全每个角色且不合并特征行')
+    assert(prompt.includes('特征行必须写全') && prompt.includes('不受这个字数限制'), '多人图的特征行不受单图字数限制')
     assert(prompt.includes('只做中性描述'), '提示词带内容安全软约束')
+    assert(prompt.includes('【内容违规】'), '整图违规时要求输出拦截标记')
 
     const withPrevious = buildVisionPrompt('这是什么？', 2, 0, 1)
     assert(withPrevious.includes('1 张来自用户上一条消息'), '提示词说明上一条消息来源')

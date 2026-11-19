@@ -15,19 +15,20 @@ import {
   ReportFavorite, ReportSections, resolveDigestFavorite,
 } from './memory/group-digest'
 import { formatTime } from './memory/summarizer'
+import { isRejectedContent } from './memory/reject'
 import { DEFAULT_REPORT_MASTHEAD, GroupReportKind, ReportFavoriteTier, resolveFavoriteTier } from './memory/report-specs'
 import { ReportCardInput, renderReportHtml } from './report-card'
 import { handleFixedDialogues } from './fixed-dialogues'
-import { handleFavorabilitySystem, inputContentCheck, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck, shouldAppendFavorabilityMark } from './favorability'
+import { handleFavorabilitySystem, inputContentCheck, applyInputCensorPenalty, generateLevelPrompt, getFavorabilityLevel, generateAuxiliaryPrompt, handleAuxiliaryResult, ensureCensorFileExists, outputContentCheck, shouldAppendFavorabilityMark } from './favorability'
 import { createMiddleware } from './middleware'
 import { extendDatabase, ensureUserExists, updateFavorability, getUser, updateUserLevel, updateUserUsage, consumeVisionUsage } from './database'
 import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './types'
 import { addOutputCensor, buildQuoteNote, filterResponse, hasCensorMark, processPrompt, splitSentences, stripReplyMarker, updateUserPWithTicket } from './utils'
 import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
-import { CollectedImage, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, downloadImageAsDataUrl, stripImageTags } from './vision'
+import { CollectedImage, VISION_BLOCK_MARKER, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, dedupeFeatureLines, downloadImageAsDataUrl, stripImageTags } from './vision'
 import { takeRecentImageMessage } from './image-cache'
-import { buildCharacterNoteFromGroups, loadTouhouCharacters, matchCharacterGroups } from './touhou'
+import { buildCharacterNoteFromGroups, extractFeatureGroups, loadCharacters, matchCharacterGroups } from './character-recognition'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
@@ -136,7 +137,7 @@ export class SAT extends Sat {
     // 调用父类构造函数
     super(ctx, config)
     // 东方角色库：默认值随包，启动时从 dataDir 的 JSON 加载（没有就写一份默认值）
-    loadTouhouCharacters(config.dataDir)
+    loadCharacters(config.dataDir)
     // 初始化本地化
     ctx.i18n.define('zh', require('./locales/zh'))
     // 实例化puppeteer
@@ -466,6 +467,7 @@ export class SAT extends Sat {
     let quotedUsed = 0
     let imageTotal = 0
     let imageUsed = 0
+    let imageCensored = false
     if (images.length) {
       if (this.apiClient.visionEnabled()) {
         const result = await this.describeImages(session, processedPrompt, images, user)
@@ -473,13 +475,20 @@ export class SAT extends Sat {
         quotedUsed = result.quotedUsed
         imageTotal = result.total
         imageUsed = result.used
+        imageCensored = !!result.censored
         if (result.description) {
           finalPrompt = `${processedPrompt}\n\n[图片内容]\n${result.description}`.trim()
           // 按角色分别检索东方角色库，只给参考，不下结论
-          const characterNote = buildCharacterNoteFromGroups(
-            matchCharacterGroups(result.description, stripImageTags(processedPrompt)),
-          )
-          if (characterNote) finalPrompt = `${finalPrompt}\n${characterNote}`.trim()
+          const groups = matchCharacterGroups(result.description, stripImageTags(processedPrompt))
+          let characterNote = buildCharacterNoteFromGroups(groups)
+          if (characterNote) {
+            // 明确告诉模型有几个角色检索不到候选，避免它凭印象编名字
+            const missing = extractFeatureGroups(result.description).length - groups.length
+            if (missing > 0) {
+              characterNote = `${characterNote}（图中另有 ${missing} 个角色没有匹配到候选，认不出来就说认不出来，不要编名字）`
+            }
+            finalPrompt = `${finalPrompt}\n${characterNote}`.trim()
+          }
         }
       } else {
         const result = await this.loadImageParts(session, images)
@@ -490,11 +499,16 @@ export class SAT extends Sat {
         imageUsed = result.used
       }
     }
-    // 有图没取到时明确告诉模型它看不到，避免它编造画面
+    // 有图没取到时明确告诉模型原因，避免它编造画面；内容违规时不要再说成「看不到」
     if (imageUsed < imageTotal) {
-      const note = quotedUsed < quotedTotal
-        ? '[引用的图片无法识别：你看不到这张图，不要描述或猜测图中内容，直接告诉用户图片没加载出来]'
-        : '[图片无法识别：你看不到这张图，不要描述或猜测图中内容]'
+      let note: string
+      if (imageCensored) {
+        note = '[图片内容违规：图中内容违反了内容规定，不要描述或猜测图中内容，直接告诉用户图片内容违规、无法讨论]'
+      } else if (quotedUsed < quotedTotal) {
+        note = '[引用的图片无法识别：你看不到这张图，不要描述或猜测图中内容，直接告诉用户图片没加载出来]'
+      } else {
+        note = '[图片无法识别：你看不到这张图，不要描述或猜测图中内容]'
+      }
       finalPrompt = `${finalPrompt}\n\n${note}`.trim()
     }
     // 引用消息：注明是谁发的、内容是什么
@@ -502,7 +516,7 @@ export class SAT extends Sat {
     if (quoteNote) finalPrompt = `${finalPrompt}\n${quoteNote}`.trim()
     // 生成回复
     const response = await this.generateResponse(session, finalPrompt, imageParts)
-    const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response)
+    const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response, imageCensored)
     // 更新记忆（短期记忆 + 分层长期记忆）
     await this.memoryService.recordTurn(session, finalPrompt, response)
     // 更新用户p
@@ -528,11 +542,11 @@ export class SAT extends Sat {
   }
 
   // 处理辅助判断
-  private async handleAuxiliaryDialogue(session: Session, prompt: string, response: { content: string, error: boolean }) {
+  private async handleAuxiliaryDialogue(session: Session, prompt: string, response: { content: string, error: boolean }, imageCensored = false) {
     if (response.error || !this.config.enable_favorability) return null
     const user = await getUser(this.ctx, session.userId)
     const outputCheck = await outputContentCheck(this.ctx, response, session.userId, this.getFavorabilityConfig(), session, this.moodManager)
-    const inputCensor = hasCensorMark(prompt)
+    const inputCensor = hasCensorMark(prompt) || imageCensored
     const outputCensor = outputCheck < 0
     if (inputCensor) return "(好感↓↓)"
     if (outputCensor) return "(好感↓)"
@@ -676,7 +690,7 @@ export class SAT extends Sat {
     text: string,
     images: CollectedImage[],
     user: User,
-  ): Promise<{ description: string, total: number, used: number, quotedTotal: number, quotedUsed: number }> {
+  ): Promise<{ description: string, total: number, used: number, quotedTotal: number, quotedUsed: number, censored?: boolean }> {
     const dataUrls: string[] = []
     let quotedTotal = 0
     let quotedUsed = 0
@@ -698,6 +712,16 @@ export class SAT extends Sat {
     const failed = { description: '', total: images.length, used: 0, quotedTotal, quotedUsed }
     if (!dataUrls.length) return failed
 
+    // 安全审查拦截：记日志、按输入敏感词扣分，并标记给调用方注入「内容违规」提示
+    const markCensored = async (reason: string) => {
+      logger.warn(`识图内容被安全审查拦截 user=${session.userId} ${reason}`)
+      // 与用户输入命中敏感词同一路径：扣心情和好感。本轮文本自己已命中过就不再重复扣。
+      if (this.config.enable_favorability && !hasCensorMark(text)) {
+        await applyInputCensorPenalty(this.ctx, user, this.getFavorabilityConfig(), session, this.moodManager)
+      }
+      return { ...failed, censored: true }
+    }
+
     // 只有真的发起识图调用才消耗额度；下载全失败时不算次数
     const level = user.userlevel < 5 ? user.userlevel : 4
     const limit = this.config.max_vision_usage[level] || 0
@@ -706,24 +730,33 @@ export class SAT extends Sat {
       return failed
     }
 
+    logger.info(`发起识图：${dataUrls.length} 张图 user=${session.userId}`)
     const result = await this.apiClient.visionChat(
       dataUrls,
       buildVisionPrompt(text, dataUrls.length, quotedUsed, previous),
     )
     if (result.error) {
       logger.warn(`识图失败：${result.content}`)
+      // 服务端审核拒绝（data_inspection_failed 等）按内容违规处理
+      if (isRejectedContent(result.content)) return markCensored(`原因=服务端审核拒绝：${result.content}`)
       return failed
     }
-    const description = (result.content || '').trim()
-    if (!description) return failed
+    const rawDescription = (result.content || '').trim()
+    if (!rawDescription) {
+      logger.warn(`识图模型返回空内容，按无法识别处理 user=${session.userId} 图片数=${dataUrls.length}`)
+      if (result.filtered) return markCensored('原因=识图模型返回空内容且标记为内容过滤')
+      return failed
+    }
+    // 识图原文先落日志：即使随后被内容审核拦截，也能回看模型到底描述了什么
+    logger.info(`识图原文（${session.userId}）：${rawDescription}`)
+    // 识图模型自己判定整张图违规时输出标记，直接按内容违规拦截
+    if (rawDescription.includes(VISION_BLOCK_MARKER)) return markCensored('原因=识图模型判定内容违规')
+    // 漫画/多格图里同一角色会反复出现，模型偶尔复读；重复的特征行只保留一次
+    const description = dedupeFeatureLines(rawDescription)
 
     // 识图结果会进入主模型和长期记忆，按用户输入对待：过审查，命中就整段丢弃
     const censored = this.ctx.censor ? await this.ctx.censor.transform(description, session) : description
-    if (hasCensorMark(censored)) {
-      logger.warn(`识图内容被安全审查拦截 user=${session.userId} 长度=${description.length}`)
-      return failed
-    }
-    logger.info(`识图结果（${session.userId}）：${censored}`)
+    if (hasCensorMark(censored)) return markCensored(`原文=${description}`)
     return { description: censored, total: images.length, used: dataUrls.length, quotedTotal, quotedUsed }
   }
 

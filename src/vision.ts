@@ -15,8 +15,8 @@ export const VISION_MAX_IMAGES = 6
  * Chronocat 的 /v1/assets 在媒体下载超过 1 秒时会返回 500，而第一次请求通常
  * 已经把媒体拉到了本地。重试几次就能命中缓存。
  */
-export const IMAGE_DOWNLOAD_ATTEMPTS = 3
-export const IMAGE_DOWNLOAD_RETRY_DELAY_MS = 1500
+export const IMAGE_DOWNLOAD_ATTEMPTS = 10
+export const IMAGE_DOWNLOAD_RETRY_DELAY_MS = 3000
 
 export interface CollectedImage {
   src: string
@@ -82,6 +82,26 @@ export function stripImageTags(text: string): string {
     .trim()
 }
 
+/**
+ * 去掉重复的「特征N：」行，只保留第一次出现。
+ * 漫画/多格图里同一角色反复出现，识图模型偶尔会陷入复读（线上出现过 84 行里
+ * 只有 5 种特征），重复行会把主模型提示词撑爆。
+ */
+export function dedupeFeatureLines(description: string): string {
+  const seen = new Set<string>()
+  const lines: string[] = []
+  for (const line of (description || '').split('\n')) {
+    const match = line.trim().match(/^(?:特征|角色|人物)\s*\d*\s*(?:[（(][^）)]*[）)])?\s*[:：]\s*(.+)$/)
+    if (match) {
+      const key = match[1].replace(/[\s，。、；：,.;:]/g, '')
+      if (seen.has(key)) continue
+      seen.add(key)
+    }
+    lines.push(line)
+  }
+  return lines.join('\n')
+}
+
 /** 从文件头猜 MIME；猜不出按 jpeg 处理，多数平台会自行识别 */
 export function guessImageMime(buffer: Buffer): string {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg'
@@ -138,6 +158,9 @@ export async function downloadImageAsDataUrl(
   return null
 }
 
+/** 识图模型判定整张图违规时输出的标记，由系统拦截并丢弃整段描述 */
+export const VISION_BLOCK_MARKER = '【内容违规】'
+
 /** 识图提示词：带上本消息正文，并要求重点描述与问题相关的部分 */
 export function buildVisionPrompt(
   text: string,
@@ -160,7 +183,13 @@ ${sourceLine}
 · 图中有少量文字时原样转写，有大量文字时简要概括。
 · 只描述看得见的内容，不要推测或编造。
 · 如果图中有角色，只需要描述外观、动作、表情等，不需要给出角色的身份等信息。
-· 每张图最后概括外观：图里只有一个角色时写一行「特征：发色、发型、瞳色、服装、头饰、标志物」；有多个角色时每个角色单独一行、按从左到右编号「特征1：」「特征2：」，每个角色各写各的发色和瞳色，不要把不同角色的特征混进同一行。第三只眼、漂浮的球体或线、武器、翅膀、尾巴等显眼道具必须写进对应角色的那一行。
-· 遇到暴力、色情、违法内容只做中性描述，不展开细节。
-· 按顺序用「图1：」「图2：」分段，每张图不超过 150 字。`
+· 每张图最后概括外观，这一段会用来查角色库，务必写全：
+  - 先数清图里有几个角色，画面里出现的每个角色都要写，包括只露出半身、位于背景或边缘的角色，不能只写主角；
+  - 同一角色在多个画面、格子或位置重复出现时只写一次，不要重复编号；角色超过 8 个时只写最显眼的 8 个；
+  - 只有一个角色时写一行「特征：发色、发型、瞳色、服装、头饰、标志物」；
+  - 有多个角色时按从左到右编号，每个角色单独一行「特征1：」「特征2：」，各自写各自的发色、发型、瞳色、服装、头饰、标志物；
+  - 不同角色的特征绝不合并到同一行，同一个角色也不要拆成两行；
+  - 第三只眼、漂浮的球体或线、武器、翅膀、尾巴等显眼道具必须写进对应角色的那一行。
+· 遇到暴力、色情、违法内容只做中性描述，不展开细节；如果整张图都是色情、血腥、暴力或违法内容，不要描述，只输出${VISION_BLOCK_MARKER}。
+· 按顺序用「图1：」「图2：」分段；每张图的正文描述控制在 150 字以内，但特征行必须写全，不受这个字数限制。`
 }

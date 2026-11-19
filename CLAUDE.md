@@ -44,11 +44,15 @@ tsc
 # Vision helper test (image extraction from message + quote, data URL, prompt)
 #   node -r esbuild-register external/satori-ai/scripts/test-vision.ts
 
-# Touhou character matching + knowledge entries test
-#   node -r esbuild-register external/satori-ai/scripts/test-touhou.ts
+# Character recognition test (matching, vocabulary from data/characters.json)
+#   node -r esbuild-register external/satori-ai/scripts/test-characters.ts
 
-# Regenerate Touhou character data from external/thbwiki (after thbwiki updates)
+# Regenerate the built-in character data from external/thbwiki (after thbwiki updates)
 #   node -r esbuild-register external/satori-ai/scripts/generate-touhou.ts
+# Then distill the encyclopedia text into 40~100-char recognition profiles (needs an API key)
+#   TOUHOU_PROFILE_API_KEY=... node -r esbuild-register external/satori-ai/scripts/generate-character-profiles.ts
+# Backfill signature words lost during distillation (no API needed)
+#   node -r esbuild-register external/satori-ai/scripts/augment-character-signatures.ts
 
 # Group report test (daily/weekly/monthly/yearly period resolution, newspaper
 # section parsing, favorite tiers, prompt contents)
