@@ -26,7 +26,7 @@ import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './ty
 import { addOutputCensor, buildQuoteNote, filterResponse, hasCensorMark, processPrompt, splitSentences, stripReplyMarker, updateUserPWithTicket } from './utils'
 import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
-import { CollectedImage, VISION_BLOCK_MARKER, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, dedupeFeatureLines, downloadImageAsDataUrl, stripImageTags } from './vision'
+import { CollectedImage, VISION_BLOCK_MARKER, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, dedupeFeatureLines, downloadImageAsDataUrl, isDownloadable, stripImageTags } from './vision'
 import { takeRecentImageMessage } from './image-cache'
 import { CHARACTER_IDENTITY_RULE, buildCharacterNoteFromGroups, extractFeatureGroups, loadCharacters, matchCharacterGroups, stripTransientFeatures } from './character-recognition'
 import { Game } from './game'
@@ -36,6 +36,11 @@ import { wrapInHTML } from './utils'
 import { WeatherManager } from './weather'
 import { Galgame } from './galgame'
 import { ProactiveManager } from './proactive'
+import { ColdRescueManager } from './cold-rescue'
+import {
+  SilenceManager, SILENCE_MARKER, stripSilenceMarker, isMuteControlCommand,
+  extendSilenceDatabase, silenceRemainingMinutes, parseBanMinutes,
+} from './silence'
 
 const logger = new Logger('satori-ai')
 const randomPrompt = '根据群聊内最近的包括所有人的聊天记录，现在请你参与一下群聊中的话题'
@@ -91,6 +96,8 @@ export class SAT extends Sat {
   public broadcastManager: BroadcastManager
   public weatherManager: WeatherManager
   public proactive: ProactiveManager
+  public coldRescue: ColdRescueManager
+  public silence: SilenceManager
   private usersToWarn: Map<string, string> = new Map()
   private puppeteer: Puppeteer | null
   private game: Game
@@ -147,7 +154,10 @@ export class SAT extends Sat {
     // 初始化模块
     this.apiClient = new APIClient(ctx, this.getAPIConfig())
     this.memoryService = new MemoryService(ctx, this.getMemoryConfig(), this.apiClient)
+    extendSilenceDatabase(ctx)
+    this.silence = new SilenceManager(ctx)
     this.proactive = new ProactiveManager(ctx, this, config)
+    this.coldRescue = new ColdRescueManager(ctx, this, config)
     this.moodManager = new MoodManager(ctx, config)
     this.broadcastManager = new BroadcastManager(ctx, config)
     this.weatherManager = new WeatherManager(ctx, config)
@@ -158,6 +168,15 @@ export class SAT extends Sat {
     void this.waitForPuppeteer(ctx, 30, 1000)
     // 注册中间件
     ctx.middleware(createMiddleware(ctx, this, this.getMiddlewareConfig()))
+    // 主动静默/封禁期间连指令一起屏蔽；运维指令（查看、解除、封禁/解封）放行
+    ctx.before('command/execute', async (argv: any) => {
+      const session = argv?.session
+      if (!session?.userId || !(await this.isMuted(session.userId))) return
+      const name = argv?.command?.name || ''
+      if (isMuteControlCommand(name)) return
+      logger.info(`[静默/封禁] 拦截指令 user=${session.userId} command=${name}`)
+      return ''
+    })
     // 注册命令
     this.registerCommands(ctx)
     // 启动分层记忆的后台汇总（可在配置中关闭）
@@ -333,6 +352,46 @@ export class SAT extends Sat {
     ctx.command('sat.user_usage', '查看用户使用次数')
       .alias('查询次数')
       .action(async ({ session }) => this.handleUserUsage(session))
+
+    ctx.command('sat.silence [userId:text]', '查看静默/封禁状态：不填为用户自己', { authority: 4 })
+      .alias('封禁状态')
+      .action(async ({ session }, userId) => {
+        const id = userId || session.userId
+        const row = await this.silence.info(id)
+        if (!row) return `用户 ${id} 当前没有主动静默或封禁。`
+        if (!row.until) return `用户 ${id} 被永久封禁（管理员 ${row.operator}）。`
+        const until = formatTime(row.until, this.config.memory_timezone_offset)
+        const minutes = silenceRemainingMinutes(row)
+        return row.source === 'admin'
+          ? `用户 ${id} 被管理员封禁至 ${until}，剩余 ${minutes} 分钟。`
+          : `用户 ${id} 处于主动静默，剩余 ${minutes} 分钟。`
+      })
+
+    // 用选项而不是位置参数：中文指令下 text 位置参数会把后面的内容一起吞掉
+    ctx.command('封禁', '封禁用户：-i 用户 id，-t 分钟数（0 为永久）', { authority: 4 })
+      .alias('封禁用户')
+      .option('id', '-i <id:string> 用户 id')
+      .option('time', '-t <time:string> 分钟数，0 为永久')
+      .action(async ({ session, options }) => {
+        const userId = options.id
+        if (!userId) return '请用 -i 指定要封禁的用户 id。'
+        const duration = parseBanMinutes(options.time)
+        if (duration === null) return '请用 -t 指定时长（分钟），0 表示永久封禁。'
+        const row = await this.silence.apply(userId, duration, 'admin', session.userId)
+        return row.until
+          ? `已临时封禁此用户`
+          : `已永久封禁此用户`
+      })
+
+    ctx.command('解封', '解除用户的主动静默或封禁：-i 用户 id', { authority: 4 })
+      .alias('解封用户')
+      .option('id', '-i <id:string> 用户 id')
+      .action(async ({ options }) => {
+        const userId = options.id
+        if (!userId) return '请用 -i 指定要解封的用户 id。'
+        const removed = await this.silence.lift(userId)
+        return removed ? `已解除此用户的静默/封禁。` : `此用户当前没有被静默或封禁。`
+      })
 
     ctx.command('sat.add_output_censor <text:text>', '添加输出敏感词', { authority: 4 })
       .alias('添加输出屏蔽词')
@@ -518,7 +577,7 @@ export class SAT extends Sat {
     const quoteNote = buildQuoteNote(session)
     if (quoteNote) finalPrompt = `${finalPrompt}\n${quoteNote}`.trim()
     // 生成回复
-    const response = await this.generateResponse(session, finalPrompt, imageParts)
+    const response = await this.generateResponse(session, finalPrompt, imageParts, true)
     const auxiliaryResult = await this.handleAuxiliaryDialogue(session, processedPrompt, response, imageCensored)
     // 更新记忆（短期记忆 + 分层长期记忆）
     await this.memoryService.recordTurn(session, finalPrompt, response)
@@ -540,7 +599,9 @@ export class SAT extends Sat {
         logger.error('Failed to send emoji:', e)
       }
     }
-
+    if (response.silenceMinutes) {
+      await session.send(`【您已被封禁${response.silenceMinutes}分钟】`)
+    }
     return await this.formatResponse(session, response.content, auxiliaryResult, response.reasoning_content)
   }
 
@@ -652,7 +713,8 @@ export class SAT extends Sat {
   }
 
   // 生成回复
-  public async generateResponse(session: Session, prompt: string, imageParts: Sat.MsgContentPart[] = []) {
+  // allowSilence 只给正常对话开启：随机插话、游戏等路径不注入主动沉默提示词，也不识别触发词
+  public async generateResponse(session: Session, prompt: string, imageParts: Sat.MsgContentPart[] = [], allowSilence = false) {
     if (this.getChannelParallelCount(session) > this.config.max_parallel_count) {
       logger.info(`频道 ${session.channelId} 并发数过高(${this.getChannelParallelCount(session)})，${session.username}等待中...`)
     }
@@ -670,10 +732,10 @@ export class SAT extends Sat {
     await this.updateChannelParallelCount(session, 1)
     try {
       logger.info(`频道 ${session.channelId} 处理：${session.userId},剩余${this.getChannelParallelCount(session)}并发`)
-      const messages = await this.buildMessages(session, prompt, {}, imageParts)
+      const messages = await this.buildMessages(session, prompt, { allowSilence }, imageParts)
       const user = await getUser(this.ctx, session.userId)
-      let response = await this.getChatResponse(user, messages, prompt, session)
-      if (response.error) response = await this.getChatResponse(user, messages, prompt, session)
+      let response = await this.getChatResponse(user, messages, prompt, session, { allowSilence })
+      if (response.error) response = await this.getChatResponse(user, messages, prompt, session, { allowSilence })
       if (response.error) updateUserUsage(this.ctx, user, -1)
       return response
     } finally {
@@ -699,15 +761,17 @@ export class SAT extends Sat {
     let quotedUsed = 0
     let previous = 0
     for (const image of images) {
-      if (image.source === 'quoted') quotedTotal += 1
+      if (!isDownloadable(image)) {
+        quotedTotal += 1
+        continue
+      }
       const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src, this.imageHttp(session))
       if (!dataUrl) {
         logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src}`)
         continue
       }
       dataUrls.push(dataUrl)
-      if (image.source === 'quoted') quotedUsed += 1
-      else if (image.source === 'previous') previous += 1
+      if (image.source === 'previous') previous += 1
     }
     if (quotedUsed < quotedTotal) {
       logger.info(`引用图片下载失败，引用内容：${(session.quote as any)?.content || '（空）'}`)
@@ -773,14 +837,16 @@ export class SAT extends Sat {
     let quotedTotal = 0
     let quotedUsed = 0
     for (const image of images) {
-      if (image.source === 'quoted') quotedTotal += 1
+      if (!isDownloadable(image)) {
+        quotedTotal += 1
+        continue
+      }
       const dataUrl = await downloadImageAsDataUrl(this.ctx, image.src, this.imageHttp(session))
       if (!dataUrl) {
         logger.warn(`图片下载失败或超过大小上限，已跳过：${image.src}`)
         continue
       }
       parts.push({ type: 'image_url', image_url: { url: dataUrl } })
-      if (image.source === 'quoted') quotedUsed += 1
     }
     return { parts, total: images.length, used: parts.length, quotedTotal, quotedUsed }
   }
@@ -791,13 +857,14 @@ export class SAT extends Sat {
     messages: Sat.Msg[],
     prompt: string,
     session?: Session,
-    options: { maxOutputTokens?: number; preserveFormatting?: boolean; disableThinking?: boolean } = {},
-  ): Promise<{ content: string; error: boolean; reasoning_content?: string }> {
+    options: { maxOutputTokens?: number; preserveFormatting?: boolean; disableThinking?: boolean; allowSilence?: boolean } = {},
+  ): Promise<{ content: string; error: boolean; reasoning_content?: string; silenceMinutes?: number }> {
     const hasTicket = user?.items?.['地灵殿通行证']?.description && user.items['地灵殿通行证'].description === 'on'
     const maxLength = hasTicket ? user?.items?.['地灵殿通行证']?.metadata?.use_not_reasoner_LLM_length : this.config.use_not_reasoner_LLM_length
     const useNoReasoner = prompt.length <= maxLength && this.config.enable_reasoner_like
     const startTime = Date.now()
-    let response = await this.apiClient.chat(user, messages, options)
+    let response: { content: string; error: boolean; reasoning_content?: string; silenceMinutes?: number }
+      = await this.apiClient.chat(user, messages, options)
     logger.info(`API 调用耗时: ${Date.now() - startTime}ms`)
     if (this.config.log_ask_response) {
       const prefix = session ? `Satori AI（${botTag(session)}）` : 'Satori AI'
@@ -805,6 +872,17 @@ export class SAT extends Sat {
         logger.info(`${prefix}：（心情值：${this.moodManager.getMoodValue(user.userid)}）${response.content}`)
       else
         logger.info(`${prefix}：${response.content}`)
+    }
+    // 主动静默：在过滤前识别触发词，避免括号过滤把它拆散或丢掉
+    if (!response.error && options.allowSilence && this.config.enable_silence && session) {
+      const stripped = stripSilenceMarker(response.content)
+      if (stripped.triggered) {
+        // 模型只输出了触发词（可能还包着 <p>）时给一个最小宣告，避免后续内容抽取报错
+        const visible = stripped.content.replace(/<\/?p>/gi, '').trim()
+        response.content = visible ? stripped.content : '<p>……</p>'
+        response.silenceMinutes = stripped.minutes
+        await this.silence.apply(session.userId, stripped.minutes, 'model')
+      }
     }
     if (!response.error) {
       const filterStartTime = Date.now()
@@ -844,7 +922,7 @@ export class SAT extends Sat {
 4. 符合你当前的好感度、心情和说话习惯。
 `
 
-    const system = await this.buildSystemPrompt(session, '[主动]', queryHint)
+    const system = await this.buildSystemPrompt(session, '[主动]', queryHint, { randomDayRecall: true })
     const messages: Sat.Msg[] = []
     if (this.config.no_system_prompt) {
       messages.push({ role: 'user', content: system + rule })
@@ -965,6 +1043,14 @@ export class SAT extends Sat {
       if (this.config.no_system_prompt) systemPrompt += '\n#如果你明白以上内容，请回复“<p>已明确对话要求</p>”'
     }
 
+    // 主动静默：只给正常对话注入触发词说明；用不用、多久、什么时候用由模型判断
+    if (options.allowSilence && this.config.enable_silence) {
+      systemPrompt += `\n#关于主动沉默
+如果对方的话冒犯了你或你的家人、或者让你非常生气、或者你单纯不想再理会他/她，你可以在回复末尾加上触发词 ${SILENCE_MARKER}，N 换成你自己决定的分钟数，例如 [沉默30] 表示 30 分钟。
+这段时间里你不会再回复他/她。用不用、沉默多久、什么时候用，都由你自己判断，不需要勉强使用；使用时像平常一样把想说的话说完，触发词只是宣告。
+`
+    }
+
     if (!skipUserContext) systemPrompt += this.getThinkingPrompt(user, prompt)
 
     // ---------- 2. 半静态：同一用户若干轮内不变 ----------
@@ -985,12 +1071,27 @@ export class SAT extends Sat {
 
     // 添加好感度提示（按天变化，比心情稳定）
     if (!skipUserContext && this.config.enable_favorability) {
-      const favorabilityLevel = getFavorabilityLevel(user, this.getFavorabilityConfig())
+      const favorabilityConfig = this.getFavorabilityConfig()
+      // 关系惯性：近期互动越热络，注入的关系等级越高。只影响这里的等级判断，
+      // 不写回 p_system.favorability；等级不变时提示词逐字节不变，不影响前缀缓存。
+      const baseLevel = getFavorabilityLevel(user, favorabilityConfig)
+      let favorabilityLevel = baseLevel
+      if (user) {
+        const inertia = await this.memoryService.getRelationshipInertiaBonus(session)
+        if (inertia > 0) {
+          favorabilityLevel = getFavorabilityLevel(
+            { ...user, favorability: user.favorability + inertia }, favorabilityConfig,
+          )
+          if (favorabilityLevel !== baseLevel) {
+            logger.debug(`[关系惯性] scope=${this.memoryService.getScopeId(session)} 加分=${inertia} 好感度=${user.favorability} 等级=${baseLevel}→${favorabilityLevel}`)
+          }
+        }
+      }
       if (this.config.enable_mood) {
         if ((moodLevel == 'normal' || moodLevel == 'happy') || favorabilityLevel == '厌恶')
-          systemPrompt += '\n##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
+          systemPrompt += '\n##' + generateLevelPrompt(favorabilityLevel, favorabilityConfig, user)
       } else {
-        systemPrompt += '\n##' + generateLevelPrompt(favorabilityLevel, this.getFavorabilityConfig(), user)
+        systemPrompt += '\n##' + generateLevelPrompt(favorabilityLevel, favorabilityConfig, user)
       }
     }
 
@@ -1029,6 +1130,7 @@ export class SAT extends Sat {
     if (memoryContext.stats) systemPrompt += '\n##' + memoryContext.stats
     if (memoryContext.ambient) systemPrompt += '\n##' + memoryContext.ambient
     if (memoryContext.recalled) systemPrompt += '\n##' + memoryContext.recalled
+    if (memoryContext.randomDayRecall) systemPrompt += '\n##' + memoryContext.randomDayRecall
     systemPrompt += '\n##' + memoryContext.datetime
 
     return systemPrompt
@@ -1248,6 +1350,17 @@ export class SAT extends Sat {
     return await this.formatResponse(session, response.content, null, undefined, !response.error)
   }
 
+  // 冷场救场：复用随机插话的生成与发送链路
+  public async handleColdRescue(session: Session) {
+    logger.info(`冷场救场：频道 ${session.channelId}，接 ${session.username} 的话`)
+    return await this.handleRandomMiddleware(session)
+  }
+
+  /** 主动静默或管理员封禁：这段时间里不回复、不响应指令 */
+  public async isMuted(userId: string): Promise<boolean> {
+    return this.silence.isMuted(userId)
+  }
+
   /** 机器人的称呼：昵称列表第一个非空项；都没配置时退回「我」 */
   public getBotName(): string {
     const name = this.config.nick_name_list?.find(item => item && item.trim())
@@ -1269,18 +1382,18 @@ export class SAT extends Sat {
     return this.handleSatCommand(session, prompt)
   }
 
-  // 频道记忆中间件转接
-  public async handleChannelMemoryManager(session: Session): Promise<void> {
+  // 频道记忆中间件转接；返回这条消息是否写入了群聊环境
+  public async handleChannelMemoryManager(session: Session): Promise<boolean> {
     let processedPrompt = processPrompt(session.content, this.config.nick_name_list, [session.selfId])
     if (session.quote) processedPrompt = stripReplyMarker(processedPrompt)
-    if (this.performPreChecks(session, processedPrompt)) return null
+    if (this.performPreChecks(session, processedPrompt)) return false
     // 敏感词处理
     let censored = processedPrompt
     if (this.ctx.censor) censored = await this.ctx.censor.transform(processedPrompt, session)
     this.memoryService.updateChannelDialogue(session, censored, session.username)
     // 群聊记忆：群友发言进群 scope 的原始消息缓冲（只对机器人参与过的群生效）
     this.memoryService.recordGroupMessage(session, censored)
-    return null
+    return true
   }
 
   // 省流：走正常对话的系统提示（人格/画像/好感度），但不注入金字塔与召回，也不留记忆
@@ -1594,6 +1707,7 @@ export class SAT extends Sat {
 
   public async dispose(): Promise<void> {
     this.proactive.stop()
+    this.coldRescue.stop()
     this.memoryService.stop()
     if (this.puppeteer) {
       try {

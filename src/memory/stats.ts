@@ -2,6 +2,7 @@
 // 近期对话时间与频率感知：把“多久没聊、最近聊了多少”注入系统提示。
 // 统计只读 sat_dialogue，实时计算，不写入任何数据。
 import { MemoryRepository } from './repository'
+import { dayStart, nextDayStart } from './summarizer'
 
 const DAY_MS = 86_400_000
 
@@ -74,4 +75,31 @@ export async function buildDialogueStats(
   lines.push('（如果近期互动明显少于以往，可以自然地表达想念和关心，但不要直接念出这些统计数字。）')
 
   return lines.join('\n') + '\n'
+}
+
+/** 关系惯性窗口：今天之前的 6 个完整记忆日（昨天到 6 天前） */
+export const RELATIONSHIP_INERTIA_DAYS = 6
+/** 当天对话的权重：当天还没过完，×2 近似折算成整天 */
+export const RELATIONSHIP_INERTIA_TODAY_WEIGHT = 2
+
+/**
+ * 关系惯性加分：最近 6 个完整记忆日的对话轮次 + 当天对话轮次 ×2。
+ * 只用于注入提示词时判断关系等级，不改写数据库里的好感度。
+ * 「当天」按 memory_timezone_offset / memory_day_boundary_hour 的日界线切分，
+ * 与分层记忆、群日报使用同一套自然日。
+ */
+export async function buildRelationshipInertia(
+  repo: MemoryRepository,
+  scopeId: string,
+  timezoneOffset: number,
+  boundaryHour: number,
+  now: Date = new Date(),
+): Promise<number> {
+  const todayStart = dayStart(now, timezoneOffset, boundaryHour)
+  const windowStart = new Date(todayStart.getTime() - RELATIONSHIP_INERTIA_DAYS * DAY_MS)
+  const [previous, today] = await Promise.all([
+    repo.countDialoguesBetween(scopeId, windowStart, todayStart, DIALOGUE_STATS_KINDS),
+    repo.countDialoguesBetween(scopeId, todayStart, nextDayStart(now, timezoneOffset, boundaryHour), DIALOGUE_STATS_KINDS),
+  ])
+  return previous + today * RELATIONSHIP_INERTIA_TODAY_WEIGHT
 }

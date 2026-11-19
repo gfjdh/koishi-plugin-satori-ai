@@ -186,6 +186,13 @@ export class MemoryRepository {
     return this.ctx.database.eval('sat_dialogue', row => $.count(row.id), query)
   }
 
+  /** [from, to) 之间的对话数。同样用数据库 COUNT。 */
+  async countDialoguesBetween(scopeId: string, from: Date, to: Date, kinds?: string[]): Promise<number> {
+    const query: any = { scopeId, createdAt: { $gte: from, $lt: to } }
+    if (kinds?.length) query.kind = { $in: kinds }
+    return this.ctx.database.eval('sat_dialogue', row => $.count(row.id), query)
+  }
+
   /** 该 scope 最早/最晚一条对话的时间（走 scopeId+createdAt 索引） */
   async getDialogueTimeRange(scopeId: string, kinds?: string[]): Promise<{ first: Date | null, last: Date | null }> {
     const query: any = { scopeId }
@@ -472,11 +479,49 @@ export class MemoryRepository {
     })
   }
 
+  // ---------- 主动回忆提示记录 ----------
+
+  /** 最近 N 天内已经提示过的记忆 id（同一 scope） */
+  async getRecentRecallIds(scopeId: string, since: Date): Promise<Set<number>> {
+    const rows = await this.ctx.database.get('sat_recall_hint', {
+      scopeId,
+      suggestedAt: { $gte: since },
+    }, { fields: ['memoryId'] })
+    return new Set(rows.map(row => row.memoryId))
+  }
+
+  /** 记录本轮的主动回忆提示，并清掉过期记录 */
+  async recordRecallHints(scopeId: string, memoryIds: number[], now: Date, cutoff: Date): Promise<void> {
+    if (!memoryIds.length) return
+    await this.transact(async (db) => {
+      await db.remove('sat_recall_hint', { scopeId, memoryId: { $in: memoryIds } })
+      for (const memoryId of memoryIds) {
+        await db.create('sat_recall_hint', { scopeId, memoryId, suggestedAt: now })
+      }
+      await db.remove('sat_recall_hint', { scopeId, suggestedAt: { $lt: cutoff } })
+    })
+  }
+
+  /** 随机取一条 day 记忆（主动对话用），排除最近提示过的 */
+  async getRandomDayMemory(scopeId: string, since: Date, excludeIds: Set<number>): Promise<SatMemory | null> {
+    const rows = await this.ctx.database.get('sat_memory', {
+      scopeId,
+      granularity: 'day',
+      periodEnd: { $gte: since },
+    }, { fields: ['id'] })
+    const ids = rows.map(row => row.id).filter(id => !excludeIds.has(id))
+    if (!ids.length) return null
+    const id = ids[Math.floor(Math.random() * ids.length)]
+    const [memory] = await this.ctx.database.get('sat_memory', { id })
+    return memory || null
+  }
+
   async clearScope(scopeId: string): Promise<void> {
     await this.ctx.database.remove('sat_dialogue', { scopeId })
     await this.ctx.database.remove('sat_memory', { scopeId })
     await this.ctx.database.remove('sat_profile', { scopeId })
     await this.ctx.database.remove('sat_meta', { scopeId })
+    // sat_recall_hint 有意不清：提示记录独立于记忆内容，清记忆不应重置去重窗口
   }
 
   async clearAll(): Promise<void> {
@@ -484,6 +529,7 @@ export class MemoryRepository {
     await this.ctx.database.remove('sat_memory', {})
     await this.ctx.database.remove('sat_profile', {})
     await this.ctx.database.remove('sat_meta', {})
+    // sat_recall_hint 有意不清：同上
   }
 
   // ---------- 知识 ----------

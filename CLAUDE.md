@@ -23,6 +23,18 @@ tsc
 # Random-trigger middleware ordering test (run from the workspace root)
 #   node -r esbuild-register external/satori-ai/scripts/test-random-middleware.ts
 
+# Cold-rescue test (10-minute silence, 1-minute no-reply window, random trigger wins)
+#   node -r esbuild-register external/satori-ai/scripts/test-cold-rescue.ts
+
+# Proactive recall test (recall prompt hint, 3-day dedup, random day memory for private proactive messages)
+#   node -r esbuild-register external/satori-ai/scripts/test-proactive-recall.ts
+
+# Relationship inertia test (6 full memory days + today ×2 bonus, day boundary, level promotion)
+#   node -r esbuild-register external/satori-ai/scripts/test-relationship-inertia.ts
+
+# Silence/ban test (trigger word, DB persistence, expiry, unified lift, middleware suppression)
+#   node -r esbuild-register external/satori-ai/scripts/test-silence.ts
+
 # Schedule logic test (schedule content lives in ${dataDir}/schedule.json)
 #   node -r esbuild-register external/satori-ai/scripts/test-schedule.ts
 

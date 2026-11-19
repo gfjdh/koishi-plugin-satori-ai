@@ -61,6 +61,12 @@ export interface SatReport {
     data: any;
     createdAt: Date;
 }
+export interface SatRecallHint {
+    id: number;
+    scopeId: string;
+    memoryId: number;
+    suggestedAt: Date;
+}
 export interface SatMeta {
     id: number;
     scopeId: string;
@@ -83,6 +89,7 @@ declare module 'koishi' {
         sat_profile: SatProfile;
         sat_meta: SatMeta;
         sat_report: SatReport;
+        sat_recall_hint: SatRecallHint;
     }
 }
 export declare const MEMORY_GRANULARITIES: readonly ["topic", "day", "week", "month", "season", "year"];

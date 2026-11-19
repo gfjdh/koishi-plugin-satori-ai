@@ -117,6 +117,13 @@ export class ProactiveManager {
           continue
         }
 
+        // 主动静默/封禁期间不主动开口；解除武装，等用户再次说话后重新计时
+        if (await this.sat.isMuted(target.userId)) {
+          target.armed = false
+          logger.debug(`用户处于主动静默或封禁，跳过主动 ${target.key}`)
+          continue
+        }
+
         const bot = this.ctx.bots.find(
           bot => bot.platform === target.platform && bot.selfId === target.selfId,
         )

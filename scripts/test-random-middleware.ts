@@ -7,6 +7,8 @@ const calls: string[] = []
 
 const sat: any = {
   broadcastManager: { seedBroadcast: async () => {} },
+  coldRescue: { observe: () => null, arm: () => {} },
+  isMuted: async () => false,
   handleChannelMemoryManager: async () => {
     calls.push('record-user')
   },

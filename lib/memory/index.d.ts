@@ -147,6 +147,12 @@ export declare class MemoryService {
     /** 报告发出后记录期号，下一期的报头 +1 */
     markReportIssued(channelId: string, issue: number): Promise<void>;
     getPromptContext(session: Session, query: string, options?: PromptBuildOptions): Promise<PromptContext>;
+    /**
+     * 关系惯性：注入关系等级时使用的近期互动热度加分。
+     * 最近 6 个完整记忆日各计 1 轮、当天计 2 轮；只影响注入的等级，
+     * 不改写 p_system.favorability，也不影响心情/屏蔽等其它判断。
+     */
+    getRelationshipInertiaBonus(session: Session): Promise<number>;
     addCommonSense(content: string): Promise<void>;
     addGroupCommonSense(content: string, channelId: string): Promise<void>;
     hasProfile(scopeId: string): Promise<boolean>;

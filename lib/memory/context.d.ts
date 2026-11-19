@@ -11,6 +11,8 @@ export interface PromptContext {
     datetime: string;
     pyramid: string;
     recalled: string;
+    /** 私聊主动消息的纯随机 day 记忆：建议模型以其为话题 */
+    randomDayRecall: string;
     profile: string;
     /** 群聊记忆金字塔：与按人记忆并存，预算约为个人金字塔的一半 */
     groupPyramid: string;
@@ -44,6 +46,10 @@ export interface PromptBuildOptions {
     skipUserContext?: boolean;
     /** 不注入短期群聊环境（日报材料已覆盖同一时段） */
     skipAmbient?: boolean;
+    /** 私聊主动消息：额外注入一条纯随机的 day 记忆，建议模型以其为话题 */
+    randomDayRecall?: boolean;
+    /** 正常对话：允许模型用主动沉默触发词（由 config.enable_silence 控制是否真的注入说明） */
+    allowSilence?: boolean;
 }
 export declare class ContextBuilder {
     private repo;
@@ -81,5 +87,14 @@ export declare class ContextBuilder {
     private renderPyramid;
     /** 运维命令用：返回与注入系统提示完全一致的金字塔文本 */
     buildMemoryView(scopeId: string): Promise<string>;
+    /**
+     * 较久之前的旧事：BM25 召回 + 3 天内不重复提示。
+     * 提示词只给「可以主动提起」的许可，提不提、怎么提由模型判断。
+     */
     private buildRecall;
+    /**
+     * 私聊主动消息：额外随机取一条 day 记忆，建议模型以其为话题。
+     * 只用于私聊；群聊的主动发言不做随机 day 召回。
+     */
+    private buildRandomDayRecall;
 }

@@ -4,7 +4,7 @@
 // 要保证的事：能从本次消息和引用消息里抽图片、正文里的 img 标签会被去掉、
 // 图片能转成 data URL、识图提示词带上原消息正文。
 import {
-  buildVisionPrompt, collectImages, currentImages, dedupeFeatureLines, downloadImageAsDataUrl, guessImageMime, hasTextContent, stripImageTags,
+  buildVisionPrompt, collectImages, currentImages, dedupeFeatureLines, downloadImageAsDataUrl, guessImageMime, hasTextContent, isDownloadable, stripImageTags,
 } from '../src/vision'
 import { consumeVisionUsage } from '../src/database'
 import {
@@ -40,6 +40,10 @@ async function main() {
     assert(images[0].source === 'current' && images[1].source === 'current', '当前消息的图片标记为 current')
     assert(images[2].source === 'quoted', '引用消息的图片标记为 quoted')
     assert(images[2].src.includes('quoted.png'), '引用图片按顺序排在最后')
+    // 引用图片的媒体取不到，不应尝试下载（否则要白等十次重试）
+    assert(!isDownloadable(images[2]), '引用图片不走下载')
+    assert(isDownloadable(images[0]), '当前消息的图片正常下载')
+    assert(isDownloadable({ src: 'x', source: 'previous' }), '上一条消息的图片正常下载')
 
     assert(currentImages(session).length === 2, 'currentImages 只返回当前消息的图片')
     assert(hasTextContent(session) === false, '纯图片消息没有正文')

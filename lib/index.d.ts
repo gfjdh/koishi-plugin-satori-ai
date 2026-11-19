@@ -4,6 +4,8 @@ import Puppeteer from 'koishi-plugin-puppeteer';
 import { BroadcastManager } from './broadcast';
 import { WeatherManager } from './weather';
 import { ProactiveManager } from './proactive';
+import { ColdRescueManager } from './cold-rescue';
+import { SilenceManager } from './silence';
 export declare let puppeteer: Puppeteer | null;
 export declare function refreshPuppeteer(ctx: Context): void;
 export declare class SAT extends Sat {
@@ -16,6 +18,8 @@ export declare class SAT extends Sat {
     broadcastManager: BroadcastManager;
     weatherManager: WeatherManager;
     proactive: ProactiveManager;
+    coldRescue: ColdRescueManager;
+    silence: SilenceManager;
     private usersToWarn;
     private puppeteer;
     private game;
@@ -41,10 +45,11 @@ export declare class SAT extends Sat {
     private updateChannelParallelCount;
     private getChannelParallelCount;
     private processInput;
-    generateResponse(session: Session, prompt: string, imageParts?: Sat.MsgContentPart[]): Promise<{
+    generateResponse(session: Session, prompt: string, imageParts?: Sat.MsgContentPart[], allowSilence?: boolean): Promise<{
         content: string;
         error: boolean;
         reasoning_content?: string;
+        silenceMinutes?: number;
     }>;
     /** 下载图片优先用适配器自带的 http：Satori 的 /v1/assets 需要 Bearer token */
     private imageHttp;
@@ -56,10 +61,12 @@ export declare class SAT extends Sat {
         maxOutputTokens?: number;
         preserveFormatting?: boolean;
         disableThinking?: boolean;
+        allowSilence?: boolean;
     }): Promise<{
         content: string;
         error: boolean;
         reasoning_content?: string;
+        silenceMinutes?: number;
     }>;
     /**
      * 生成一条主动消息（不写入长期记忆，不扣使用次数）。
@@ -81,12 +88,15 @@ export declare class SAT extends Sat {
     private handleUserUsage;
     isGameActive(session: Session): boolean;
     handleRandomMiddleware(session: Session): Promise<string>;
+    handleColdRescue(session: Session): Promise<string>;
+    /** 主动静默或管理员封禁：这段时间里不回复、不响应指令 */
+    isMuted(userId: string): Promise<boolean>;
     /** 机器人的称呼：昵称列表第一个非空项；都没配置时退回「我」 */
     getBotName(): string;
     /** 群聊环境里代表 bot 自己的名字：昵称列表第一个加「（你）」，让模型能分辨这是自己的发言 */
     private getSelfDialogueName;
     handleNickNameMiddleware(session: Session, prompt: string): Promise<string>;
-    handleChannelMemoryManager(session: Session): Promise<void>;
+    handleChannelMemoryManager(session: Session): Promise<boolean>;
     private handleDigest;
     private handleGroupReport;
     /**

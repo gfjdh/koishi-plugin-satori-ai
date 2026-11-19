@@ -23,6 +23,12 @@ export declare function collectImages(session: Session): CollectedImage[];
 /** 去掉正文里的图片标签；图片本身交给识图或多模态，不留在文本里 */
 export declare function stripImageTags(text: string): string;
 /**
+ * 这张图值不值得下载。
+ * 引用消息里只有解析出来的 img 标签，媒体本身取不到（Chronocat 的引用记录
+ * 指向本地不存在的文件），重试十次也只是白等三十秒，直接按失败处理。
+ */
+export declare function isDownloadable(image: CollectedImage): boolean;
+/**
  * 去掉重复的「特征N：」行，只保留第一次出现。
  * 漫画/多格图里同一角色反复出现，识图模型偶尔会陷入复读（线上出现过 84 行里
  * 只有 5 种特征），重复行会把主模型提示词撑爆。

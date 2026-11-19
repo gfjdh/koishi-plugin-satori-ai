@@ -79,6 +79,14 @@ export interface SatReport {
   createdAt: Date
 }
 
+// 主动回忆提示记录：同一条记忆 3 天内不重复提示
+export interface SatRecallHint {
+  id: number
+  scopeId: string
+  memoryId: number
+  suggestedAt: Date
+}
+
 // 每个 scope 的游标与状态
 export interface SatMeta {
   id: number
@@ -103,6 +111,7 @@ declare module 'koishi' {
     sat_profile: SatProfile
     sat_meta: SatMeta
     sat_report: SatReport
+    sat_recall_hint: SatRecallHint
   }
 }
 
@@ -196,5 +205,15 @@ export function extendMemoryDatabase(ctx: Context) {
   }, {
     autoInc: true,
     unique: [['scopeId', 'issueDate']],
+  })
+
+  ctx.model.extend('sat_recall_hint', {
+    id: 'unsigned',
+    scopeId: 'string',
+    memoryId: 'unsigned',
+    suggestedAt: 'timestamp',
+  }, {
+    autoInc: true,
+    indexes: [['scopeId', 'suggestedAt'], ['memoryId']],
   })
 }

@@ -5,6 +5,7 @@ import { APIClient } from '../api'
 import { getUser } from '../database'
 import { MemoryConfig } from '../types'
 import { ContextBuilder, PromptBuildOptions, PromptContext } from './context'
+import { buildRelationshipInertia } from './stats'
 import { Heartbeat } from './heartbeat'
 import { Migrator } from './migrate'
 import { ProfileManager } from './profile'
@@ -541,6 +542,20 @@ export class MemoryService {
     options?: PromptBuildOptions,
   ): Promise<PromptContext> {
     return this.contextBuilder.build(session, query, options)
+  }
+
+  /**
+   * 关系惯性：注入关系等级时使用的近期互动热度加分。
+   * 最近 6 个完整记忆日各计 1 轮、当天计 2 轮；只影响注入的等级，
+   * 不改写 p_system.favorability，也不影响心情/屏蔽等其它判断。
+   */
+  async getRelationshipInertiaBonus(session: Session): Promise<number> {
+    return buildRelationshipInertia(
+      this.repo,
+      this.getScopeId(session),
+      this.config.memory_timezone_offset,
+      this.config.memory_day_boundary_hour,
+    )
   }
 
   // ---------- 知识 ----------

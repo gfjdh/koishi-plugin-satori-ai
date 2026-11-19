@@ -25,6 +25,12 @@ export function createMiddleware(
         sat.getWarningList(session)
       await sat.broadcastManager.seedBroadcast(session)
 
+      // 冷场救场：任何群消息都会更新本群活动时间、打断待触发的救场；
+      // 这条消息若发生在十分钟沉默之后，返回它的序号，写入群聊环境后再武装救场。
+      const coldStart = sat.coldRescue.observe(session)
+      // 主动静默/管理员封禁：这段时间里不回复；命令中间件是前置的，指令另行拦截
+      const silenced = await sat.isMuted(session.userId)
+
       // 私信处理
       if (config.private && isPrivateSession(session)) {
         // 游戏进行中：「左 右」「游戏规则」这类输入不是命令，若不拦截会同时触发 AI 对话，
@@ -33,23 +39,29 @@ export function createMiddleware(
           sat.proactive.touch(session)
           return next()
         }
+        if (silenced) return
         return await handlePrivateMessage(sat, session)
       }
 
       // 昵称处理
       if (config.nick_name && await hasNickName(ctx, session, config)) {
-        return await handleNickNameMessage(sat, session)
+        if (!silenced) return await handleNickNameMessage(sat, session)
+        // 被静默的用户：不回复，但继续记录群聊环境
       }
 
       // 随机触发处理
-      if (shouldRandomTrigger(session, config)) {
+      if (!silenced && shouldRandomTrigger(session, config)) {
         // 触发插话的这条消息也要先进群聊环境：否则模型看不到引出它的话题，
         // 事后群聊记录里也只有 bot 的发言，像是凭空接话。
         await sat.handleChannelMemoryManager(session)
         return await sat.handleRandomMiddleware(session)
       }
 
-      if (!isSpecialMessage(session)) await sat.handleChannelMemoryManager(session)
+      if (!isSpecialMessage(session)) {
+        const recorded = await sat.handleChannelMemoryManager(session)
+        // 已触发随机回复/昵称回复的消息不会走到这里，不会再武装救场
+        if (coldStart !== null && recorded && !silenced) sat.coldRescue.arm(session, coldStart)
+      }
 
       return next()
     } finally {

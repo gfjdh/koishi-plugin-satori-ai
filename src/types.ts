@@ -268,6 +268,7 @@ export namespace Sat {
     random_min_tokens: number
     enable_random_without_favorability: boolean
     randnum: number
+    enable_cold_rescue: boolean
     sentences_divide: boolean
     min_sentences_length: number
     max_sentences_length: number
@@ -298,6 +299,8 @@ export namespace Sat {
     min_pocket_money: number
     max_pocket_money: number
     pocket_money_cost: number
+
+    enable_silence: boolean
 
     enable_weather_perception: boolean
     Location_search_API_URL: string
@@ -468,6 +471,7 @@ export namespace Sat {
       random_min_tokens: Schema.number().default(20).description('随机触发对话的最小长度'),
       enable_random_without_favorability: Schema.boolean().default(true).description('是否启用随机触发对话无视高好感度（即使用户好感度很高也会最多视为朋友）'),
       randnum: Schema.number().role('slider').min(0).max(1).step(0.01).default(0).description('在群聊中随机触发对话的概率，如需关闭可设置为 0'),
+      enable_cold_rescue: Schema.boolean().default(false).description('冷场救场：群内十分钟没人说话后有人开口、且一分钟内无人回复时，由 bot 接一句（这条消息已触发随机回复时不救场）'),
       sentences_divide: Schema.boolean().default(true).description('是否分句发送'),
       min_sentences_length: Schema.number().default(10).description('每个分句的最小长度'),
       max_sentences_length: Schema.number().default(20).description('每个分句的最大长度'),
@@ -544,6 +548,10 @@ export namespace Sat {
       max_pocket_money: Schema.number().default(400).description('随机p点最大值'),
       pocket_money_cost: Schema.number().default(2).description('消耗心情换p点的心情值'),
     }).description('好感度拓展：心情设置（需要开启好感度模块才能生效）'),
+
+    Schema.object({
+      enable_silence: Schema.boolean().default(false).description('主动静默：允许模型在被冒犯/生气时用 [沉默N] 触发词宣告暂时不再回复该用户，触发时机与时长都由模型自己判断'),
+    }).description('主动静默 / 冷却宣告'),
 
     Schema.object({
       enable_galgame: Schema.boolean().default(true).description('是否启用 galgame 模块'),

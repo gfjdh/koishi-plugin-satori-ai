@@ -54,6 +54,8 @@ export declare class MemoryRepository {
     countDialoguesInRange(scopeId: string, after: Date, before: Date, kinds?: string[]): Promise<number>;
     /** since 之后的对话数。用数据库 COUNT，避免把整段历史拉进内存。 */
     countDialoguesSince(scopeId: string, since: Date, kinds?: string[]): Promise<number>;
+    /** [from, to) 之间的对话数。同样用数据库 COUNT。 */
+    countDialoguesBetween(scopeId: string, from: Date, to: Date, kinds?: string[]): Promise<number>;
     /** 该 scope 最早/最晚一条对话的时间（走 scopeId+createdAt 索引） */
     getDialogueTimeRange(scopeId: string, kinds?: string[]): Promise<{
         first: Date | null;
@@ -125,6 +127,12 @@ export declare class MemoryRepository {
      */
     commitTopicArchives(memories: Omit<SatMemory, 'id'>[], scopeId: string, topicStart: Date): Promise<void>;
     getRecallCandidates(scopeId: string, granularities: Granularity[], since: Date): Promise<SatMemory[]>;
+    /** 最近 N 天内已经提示过的记忆 id（同一 scope） */
+    getRecentRecallIds(scopeId: string, since: Date): Promise<Set<number>>;
+    /** 记录本轮的主动回忆提示，并清掉过期记录 */
+    recordRecallHints(scopeId: string, memoryIds: number[], now: Date, cutoff: Date): Promise<void>;
+    /** 随机取一条 day 记忆（主动对话用），排除最近提示过的 */
+    getRandomDayMemory(scopeId: string, since: Date, excludeIds: Set<number>): Promise<SatMemory | null>;
     clearScope(scopeId: string): Promise<void>;
     clearAll(): Promise<void>;
     getKnowledge(kind: string, targetId: string): Promise<SatKnowledge[]>;

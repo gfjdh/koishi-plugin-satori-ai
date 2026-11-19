@@ -1,6 +1,6 @@
 // src/memory/context.ts
 // 组装注入系统提示的记忆片段：常识 / 群常识 / 群聊环境 / 分层金字塔 / 关键词召回 / 画像。
-import { Session } from 'koishi'
+import { Logger, Session } from 'koishi'
 import { getTimeOfDay } from '../utils'
 import { MemoryRepository } from './repository'
 import { ProfileManager } from './profile'
@@ -11,6 +11,11 @@ import { buildDialogueStats } from './stats'
 import { formatDay, formatTime, periodStart } from './summarizer'
 import { groupScopeId, isGroupScope, isGroupSession } from './group'
 
+const logger = new Logger('satori-recall')
+
+/** 同一条记忆多少天内不重复提示 */
+const RECALL_HINT_DAYS = 3
+
 export interface PromptContext {
   common: string
   group: string
@@ -20,6 +25,8 @@ export interface PromptContext {
   datetime: string
   pyramid: string
   recalled: string
+  /** 私聊主动消息的纯随机 day 记忆：建议模型以其为话题 */
+  randomDayRecall: string
   profile: string
   /** 群聊记忆金字塔：与按人记忆并存，预算约为个人金字塔的一半 */
   groupPyramid: string
@@ -70,6 +77,10 @@ export interface PromptBuildOptions {
   skipUserContext?: boolean
   /** 不注入短期群聊环境（日报材料已覆盖同一时段） */
   skipAmbient?: boolean
+  /** 私聊主动消息：额外注入一条纯随机的 day 记忆，建议模型以其为话题 */
+  randomDayRecall?: boolean
+  /** 正常对话：允许模型用主动沉默触发词（由 config.enable_silence 控制是否真的注入说明） */
+  allowSilence?: boolean
 }
 
 export class ContextBuilder {
@@ -109,8 +120,12 @@ export class ContextBuilder {
     ])
 
     // 召回依赖金字塔已经选中的节点，避免同一段记忆被注入两次
-    const recalled = this.config.enabled && !options.skipRecall
+    const recall = this.config.enabled && !options.skipRecall
       ? await this.buildRecall(scopeId, query, pyramid.ids)
+      : { text: '', ids: new Set<number>() }
+    // 随机 day 记忆在召回之后取，排除刚注入的记忆，避免同一段旧事出现两次
+    const randomDayRecall = options.randomDayRecall
+      ? await this.buildRandomDayRecall(session, recall.ids)
       : ''
 
     const ambient = options.skipAmbient
@@ -122,7 +137,8 @@ export class ContextBuilder {
       common, group, ambient, stats,
       datetime: this.buildDateTime(),
       pyramid: this.renderPyramid(pyramid.sections),
-      recalled, profile,
+      recalled: recall.text, profile,
+      randomDayRecall,
       groupPyramid: this.renderPyramid(groupPyramid.sections),
       groupProfile,
     }
@@ -284,20 +300,30 @@ export class ContextBuilder {
     return this.renderPyramid(sections)
   }
 
-  // ---------- 召回 ----------
+  // ---------- 主动回忆 ----------
 
-  private async buildRecall(scopeId: string, query: string, excluded: Set<number>): Promise<string> {
-    if (!query) return ''
+  /**
+   * 较久之前的旧事：BM25 召回 + 3 天内不重复提示。
+   * 提示词只给「可以主动提起」的许可，提不提、怎么提由模型判断。
+   */
+  private async buildRecall(scopeId: string, query: string, excluded: Set<number>): Promise<{ text: string, ids: Set<number> }> {
+    if (!query) return { text: '', ids: new Set() }
+    const now = this.now()
+    const cutoff = new Date(now.getTime() - RECALL_HINT_DAYS * 86_400_000)
     // 0 = 永久保留：召回不受时间窗限制
     const since = this.config.retentionDays > 0
-      ? new Date(this.now().getTime() - this.config.retentionDays * 86_400_000)
+      ? new Date(now.getTime() - this.config.retentionDays * 86_400_000)
       : new Date(0)
-    const candidates = await this.repo.getRecallCandidates(scopeId, ['topic', 'day'], since)
-    if (!candidates.length) return ''
+    const [candidates, recentIds] = await Promise.all([
+      this.repo.getRecallCandidates(scopeId, ['topic', 'day'], since),
+      this.repo.getRecentRecallIds(scopeId, cutoff),
+    ])
+    if (!candidates.length) return { text: '', ids: new Set() }
 
-    // 金字塔已注入的节点不重复召回
-    const docs = candidates
-      .filter(memory => !excluded.has(memory.id))
+    // 金字塔已注入的节点不重复召回；3 天内提示过的也不再重复
+    const available = candidates.filter(memory => !excluded.has(memory.id))
+    const docs = available
+      .filter(memory => !recentIds.has(memory.id))
       .map(memory => ({
         id: memory.id,
         content: memory.content,
@@ -306,12 +332,56 @@ export class ContextBuilder {
       }))
 
     const ranked = rankDocuments(query, docs).slice(0, this.config.recallTopN)
-    if (!ranked.length) return ''
+    if (!ranked.length) {
+      if (available.length > docs.length) {
+        logger.debug(`[主动回忆] scope=${scopeId} 候选 ${available.length} 条均在 ${RECALL_HINT_DAYS} 天内提示过`)
+      }
+      return { text: '', ids: new Set() }
+    }
+
+    const ids = ranked.map(item => item.doc.memory.id)
+    await this.repo.recordRecallHints(scopeId, ids, now, cutoff)
+    logger.info(`[主动回忆] scope=${scopeId} 注入 ${ranked.length} 条`
+      + ` ids=[${ids.join(',')}]`
+      + ` 分数=[${ranked.map(item => item.score.toFixed(3)).join(',')}]`
+      + (available.length > docs.length
+        ? `，${RECALL_HINT_DAYS} 天内已提示跳过 ${available.length - docs.length} 条`
+        : ''))
 
     const lines = ranked.map(({ doc }) => {
       const time = formatTime(doc.memory.periodStart, this.config.timezoneOffset)
       return `[${time}] ${doc.content}`
     })
-    return `以下是较久之前用户说过的话和对话时间：{\n${lines.join('\n')}\n}\n`
+    return {
+      text: `以下是较久之前用户说过的话和对话时间（如果和当前话题自然相关，可以主动提起；不相关就忽略，不要生硬复述）：{\n${lines.join('\n')}\n}\n`,
+      ids: new Set(ids),
+    }
+  }
+
+  /**
+   * 私聊主动消息：额外随机取一条 day 记忆，建议模型以其为话题。
+   * 只用于私聊；群聊的主动发言不做随机 day 召回。
+   */
+  private async buildRandomDayRecall(session: Session, excludeIds: Set<number>): Promise<string> {
+    if (!this.config.enabled) return ''
+    if (isGroupSession(session)) return ''
+    const scopeId = this.config.memoryConfig.personal_memory ? session.userId : session.channelId
+    if (!scopeId) return ''
+
+    const now = this.now()
+    const cutoff = new Date(now.getTime() - RECALL_HINT_DAYS * 86_400_000)
+    const since = this.config.retentionDays > 0
+      ? new Date(now.getTime() - this.config.retentionDays * 86_400_000)
+      : new Date(0)
+    const recentIds = await this.repo.getRecentRecallIds(scopeId, cutoff)
+    // 本轮召回刚注入的记忆也不重复
+    const blocked = new Set([...recentIds, ...excludeIds])
+    const memory = await this.repo.getRandomDayMemory(scopeId, since, blocked)
+    if (!memory) return ''
+
+    await this.repo.recordRecallHints(scopeId, [memory.id], now, cutoff)
+    const time = formatDay(memory.periodStart, this.config.timezoneOffset)
+    logger.info(`[主动回忆] scope=${scopeId} 随机 day 记忆 id=${memory.id} 日期=${time}`)
+    return `以下是你记得的一件旧事（可以自然地以它为话题，和当前情况不相关就不要硬提）：{\n[${time}] ${memory.content}\n}\n`
   }
 }

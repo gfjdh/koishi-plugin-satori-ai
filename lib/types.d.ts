@@ -241,6 +241,7 @@ export declare namespace Sat {
         random_min_tokens: number;
         enable_random_without_favorability: boolean;
         randnum: number;
+        enable_cold_rescue: boolean;
         sentences_divide: boolean;
         min_sentences_length: number;
         max_sentences_length: number;
@@ -268,6 +269,7 @@ export declare namespace Sat {
         min_pocket_money: number;
         max_pocket_money: number;
         pocket_money_cost: number;
+        enable_silence: boolean;
         enable_weather_perception: boolean;
         Location_search_API_URL: string;
         location_param_name: string;
