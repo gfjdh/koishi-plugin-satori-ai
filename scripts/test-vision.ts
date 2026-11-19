@@ -119,6 +119,7 @@ async function main() {
     assert(prompt.includes('特征1：') && prompt.includes('每个角色单独一行'), '提示词要求多角色分别写特征行')
     assert(prompt.includes('不能只写主角') && prompt.includes('绝不合并到同一行'), '提示词要求写全每个角色且不合并特征行')
     assert(prompt.includes('特征行必须写全') && prompt.includes('不受这个字数限制'), '多人图的特征行不受单图字数限制')
+    assert(prompt.includes('不写睁眼/闭眼'), '特征行不写睁眼闭眼等瞬时状态')
     assert(prompt.includes('只做中性描述'), '提示词带内容安全软约束')
     assert(prompt.includes('【内容违规】'), '整图违规时要求输出拦截标记')
 

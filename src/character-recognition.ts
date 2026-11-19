@@ -47,6 +47,8 @@ export interface Vocabulary {
   signatures: SignatureDef[]
   /** 头部上下文正则源码：配饰出现在这些词附近才算头饰 */
   headContext: string
+  /** 瞬时状态词：睁眼/闭眼、表情、动作等，不能作为角色识别依据 */
+  transient: string[]
 }
 
 export interface CharacterData {
@@ -149,6 +151,7 @@ function normalizeVocabulary(input?: Partial<Vocabulary>): Vocabulary {
       ? input.signatures.filter(item => item && typeof item.name === 'string')
       : [],
     headContext: typeof input?.headContext === 'string' ? input.headContext : '',
+    transient: stringList(input?.transient),
   }
 }
 
@@ -172,6 +175,7 @@ function mergeVocabulary(base: Vocabulary, input?: Partial<Vocabulary>): Vocabul
       ? input.signatures.filter(item => item && typeof item.name === 'string')
       : base.signatures,
     headContext: typeof input.headContext === 'string' ? input.headContext : base.headContext,
+    transient: Array.isArray(input.transient) ? stringList(input.transient) : base.transient,
   }
 }
 
@@ -199,6 +203,8 @@ let signatureMatchers: { name: string, words: string[], patterns: RegExp[] }[] =
 let headContext: RegExp | null = compileHeadContext(vocabulary.headContext)
 /** 配饰连同它的颜色：「绿色蝴蝶结」不该算成发色 */
 let accessoryColorPattern: RegExp | null = buildAccessoryColorPattern()
+/** 瞬时状态词（不带 g，避免 test() 的 lastIndex 副作用） */
+let transientPattern: RegExp | null = compileTransient(vocabulary.transient)
 
 function compileSignatures(vocab: Vocabulary) {
   return vocab.signatures.map(definition => ({
@@ -232,11 +238,17 @@ function buildAccessoryColorPattern(): RegExp | null {
   return new RegExp(`[${chars}]{1,2}(?:色)?[^，。；、\\n]{0,6}?(?:${words.join('|')})`, 'g')
 }
 
+function compileTransient(words: string[]): RegExp | null {
+  if (!words.length) return null
+  return new RegExp(words.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'))
+}
+
 function applyVocabulary(next: Vocabulary): void {
   vocabulary = next
   signatureMatchers = compileSignatures(next)
   headContext = compileHeadContext(next.headContext)
   accessoryColorPattern = buildAccessoryColorPattern()
+  transientPattern = compileTransient(next.transient)
 }
 
 /**
@@ -776,6 +788,28 @@ export function extractFeatureGroups(description: string): string[] {
   return groups
 }
 
+const FEATURE_LINE_PATTERN = /^((?:特征|角色|人物)\s*\d*\s*(?:[（(][^）)]*[）)])?\s*[:：]\s*)(.+)$/
+
+/**
+ * 特征行只保留稳定外观。
+ * 识图模型偶尔无视提示词，把「闭眼」「微笑」这类瞬时状态写进特征行，
+ * 主模型会把它当成识别依据（线上案例：因为「睁眼」否认了正确的候选）。
+ * 这里按词表把含瞬时状态的从句整句丢掉。
+ */
+export function stripTransientFeatures(description: string): string {
+  if (!transientPattern) return description || ''
+  return (description || '').split('\n').map((line) => {
+    const match = line.trim().match(FEATURE_LINE_PATTERN)
+    if (!match) return line
+    const kept = match[2]
+      .split(/[，,、；;]/)
+      .map(clause => clause.trim())
+      .filter(clause => clause && !transientPattern!.test(clause))
+    if (!kept.length) return line
+    return `${match[1]}${kept.join('，')}`
+  }).join('\n')
+}
+
 /**
  * 角色检索的查询：特征行 + 用户正文。
  * 整段描述里的动作、背景、衣服上的字母等词会稀释外观特征，所以只取特征行；
@@ -818,8 +852,17 @@ export function matchCharacterGroups(description: string, userText = '', topN = 
   return groups
 }
 
-const CHARACTER_NOTE_TAIL = '（这些是按识图描述检索出的猜测，按可能性从高到低排列。核对时只看发色、瞳色、头饰是否对得上；'
-  + '服装、帽子、道具与同人图不一致很常见（泳装、换装、cosplay），不算对不上。'
+/**
+ * 注入在图片描述前面的识别纪律。
+ * 之前这段规则放在候选说明末尾的长括号里，主模型经常忽略，
+ * 拿正文里的「睁眼/闭眼」当依据否定正确候选，所以提前到描述之前。
+ */
+export const CHARACTER_IDENTITY_RULE = '[角色识别规则：判断图中角色是谁时，只看发色、发型、瞳色、头饰和标志物；'
+  + '描述与候选摘要用词相近就算吻合（「浅绿」和「浅绿色」是同一种）；'
+  + '睁眼/闭眼、表情、动作、姿势是瞬时状态，不能作为识别依据；'
+  + '服装和普通道具被同人图换掉很常见，对不上不算错，但出现了候选的标志物就是有力证据]'
+
+const CHARACTER_NOTE_TAIL = '（这些是按识图描述检索出的猜测，按可能性从高到低排列。'
   + '第一个候选吻合就用第一个，不要因为服装不同改选后面的。'
   + '没有候选、或候选和描述都对不上的角色，直接说认不出来，绝对不要凭记忆或印象编一个名字；'
   + '候选本身也只是猜测，不要把猜测说成确定答案，也不要仅凭候选否定用户说的角色）'

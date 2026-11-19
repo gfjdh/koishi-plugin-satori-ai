@@ -4,9 +4,10 @@
 // 要保证的事：特征明显的描述能命中对应角色；无关描述不产生候选；
 // 候选说明的格式固定；词表和角色库都从 JSON 读取。
 import {
-  buildCharacterNote, buildCharacterNoteFromGroups, buildMatchQuery, CHARACTER_GROUP_MIN_SCORE, CHARACTER_MAX_GROUPS,
-  CHARACTERS_FILE, extractFeatureGroups, extractFeatureLines, findSignatures,
-  getCharacters, LEGACY_CHARACTERS_FILE, loadCharacters, matchCharacterGroups, matchCharacters, summarizeAppearance,
+  buildCharacterNote, buildCharacterNoteFromGroups, buildMatchQuery, CHARACTER_GROUP_MIN_SCORE, CHARACTER_IDENTITY_RULE,
+  CHARACTER_MAX_GROUPS, CHARACTERS_FILE, extractFeatureGroups, extractFeatureLines, findSignatures,
+  getCharacters, LEGACY_CHARACTERS_FILE, loadCharacters, matchCharacterGroups, matchCharacters, stripTransientFeatures,
+  summarizeAppearance,
 } from '../src/character-recognition'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -48,8 +49,7 @@ const assert = (cond: any, message: string) => {
   assert(matches.every(m => m.score > 0), '候选都有正的匹配分')
   assert(matches.every(m => m.summary.length > 0), '候选都带外观摘要')
 
-  const tail = '（这些是按识图描述检索出的猜测，按可能性从高到低排列。核对时只看发色、瞳色、头饰是否对得上；'
-    + '服装、帽子、道具与同人图不一致很常见（泳装、换装、cosplay），不算对不上。'
+  const tail = '（这些是按识图描述检索出的猜测，按可能性从高到低排列。'
     + '第一个候选吻合就用第一个，不要因为服装不同改选后面的。'
     + '没有候选、或候选和描述都对不上的角色，直接说认不出来，绝对不要凭记忆或印象编一个名字；'
     + '候选本身也只是猜测，不要把猜测说成确定答案，也不要仅凭候选否定用户说的角色）'
@@ -253,6 +253,32 @@ const assert = (cond: any, message: string) => {
   // 黑发有翅膀的封兽鵺不能因为「翅膀」混进银白发的候选里
   const wings = matchCharacters('银白色短发、蓝色瞳、背后有翅膀、白色连衣裙。')
   assert(!wings.some(match => match.name === '封兽鵺'), '常见标志物不会绕过发色冲突')
+}
+
+// ---------- 场景 3.14：特征行里的瞬时状态被清掉 ----------
+{
+  // 线上案例（2026-11-19 20:50）：识图模型无视提示词，把「闭眼」写进特征行；
+  // 主模型又拿正文里的「睁眼/闭眼」当依据，开始怀疑正确的候选
+  const description = [
+    '图1：两名角色在户外近距离面对面，鼻尖相触，脸颊泛红。左侧角色闭眼，右侧角色睁眼，两人身体贴近。',
+    '特征1：浅绿色短发，闭眼，浅黄色上衣配绿色领子，胸前有绿色菱形宝石，头戴深色尖顶帽，身侧有紫色物体。',
+    '特征2：粉色长发，粉紫色瞳，穿蓝绿色格子衬衫，脸颊有红晕。',
+  ].join('\n')
+  const cleaned = stripTransientFeatures(description)
+  const feature1 = cleaned.split('\n')[1]
+  assert(!feature1.includes('闭眼'), `特征行里的「闭眼」被清掉（实际 ${feature1}）`)
+  assert(feature1.startsWith('特征1：浅绿色短发，浅黄色上衣'), `稳定外观按原顺序保留（实际 ${feature1}）`)
+  assert(feature1.includes('身侧有紫色物体'), '第三只眼的描述保留')
+  assert(!cleaned.includes('脸颊有红晕'), '「红晕」这类瞬时状态从句也被清掉')
+  assert(cleaned.includes('左侧角色闭眼'), '正文里的动作叙述不受影响')
+
+  // 清理后检索结果不变：恋恋仍是第一候选
+  assert(matchCharacterGroups(cleaned, '')[0]?.matches[0]?.name === '古明地恋',
+    `清理瞬时状态后仍命中古明地恋（实际 ${matchCharacterGroups(cleaned, '')[0]?.matches[0]?.name}）`)
+
+  // 识别纪律本身明确列出瞬时状态不能当依据
+  assert(CHARACTER_IDENTITY_RULE.includes('睁眼/闭眼') && CHARACTER_IDENTITY_RULE.includes('不能作为识别依据'),
+    '识别纪律包含瞬时状态规则')
 }
 
 // ---------- 场景 4：从 dataDir 的 JSON 加载角色库 ----------

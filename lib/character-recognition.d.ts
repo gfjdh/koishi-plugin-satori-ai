@@ -34,6 +34,8 @@ export interface Vocabulary {
     signatures: SignatureDef[];
     /** 头部上下文正则源码：配饰出现在这些词附近才算头饰 */
     headContext: string;
+    /** 瞬时状态词：睁眼/闭眼、表情、动作等，不能作为角色识别依据 */
+    transient: string[];
 }
 export interface CharacterData {
     version?: number;
@@ -154,6 +156,13 @@ export declare function extractFeatureLines(description: string): string;
  */
 export declare function extractFeatureGroups(description: string): string[];
 /**
+ * 特征行只保留稳定外观。
+ * 识图模型偶尔无视提示词，把「闭眼」「微笑」这类瞬时状态写进特征行，
+ * 主模型会把它当成识别依据（线上案例：因为「睁眼」否认了正确的候选）。
+ * 这里按词表把含瞬时状态的从句整句丢掉。
+ */
+export declare function stripTransientFeatures(description: string): string;
+/**
  * 角色检索的查询：特征行 + 用户正文。
  * 整段描述里的动作、背景、衣服上的字母等词会稀释外观特征，所以只取特征行；
  * 用户在正文里点名的角色（如「看这个恋恋」）是最强先验，必须一起参与检索。
@@ -169,6 +178,12 @@ export interface CharacterCandidateGroup {
  * 没有特征行时退回整段描述（老格式描述仍然可用）。
  */
 export declare function matchCharacterGroups(description: string, userText?: string, topN?: number): CharacterCandidateGroup[];
+/**
+ * 注入在图片描述前面的识别纪律。
+ * 之前这段规则放在候选说明末尾的长括号里，主模型经常忽略，
+ * 拿正文里的「睁眼/闭眼」当依据否定正确候选，所以提前到描述之前。
+ */
+export declare const CHARACTER_IDENTITY_RULE: string;
 /** 注入主模型提示词的候选说明：带上官方外观摘要，供模型与图中描述核对 */
 export declare function buildCharacterNote(matches: CharacterMatch[]): string;
 /** 多角色图的候选说明：每个角色分开写，避免把候选安到错误的角色身上 */

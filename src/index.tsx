@@ -28,7 +28,7 @@ import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
 import { CollectedImage, VISION_BLOCK_MARKER, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, dedupeFeatureLines, downloadImageAsDataUrl, stripImageTags } from './vision'
 import { takeRecentImageMessage } from './image-cache'
-import { buildCharacterNoteFromGroups, extractFeatureGroups, loadCharacters, matchCharacterGroups } from './character-recognition'
+import { CHARACTER_IDENTITY_RULE, buildCharacterNoteFromGroups, extractFeatureGroups, loadCharacters, matchCharacterGroups, stripTransientFeatures } from './character-recognition'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
@@ -477,13 +477,16 @@ export class SAT extends Sat {
         imageUsed = result.used
         imageCensored = !!result.censored
         if (result.description) {
-          finalPrompt = `${processedPrompt}\n\n[图片内容]\n${result.description}`.trim()
           // 按角色分别检索东方角色库，只给参考，不下结论
           const groups = matchCharacterGroups(result.description, stripImageTags(processedPrompt))
+          const featureCount = extractFeatureGroups(result.description).length
+          // 识别纪律放在描述前面，主模型才不会先被正文里的动作/表情带偏
+          const identityRule = featureCount ? `${CHARACTER_IDENTITY_RULE}\n` : ''
+          finalPrompt = `${processedPrompt}\n\n[图片内容]\n${identityRule}${result.description}`.trim()
           let characterNote = buildCharacterNoteFromGroups(groups)
           if (characterNote) {
             // 明确告诉模型有几个角色检索不到候选，避免它凭印象编名字
-            const missing = extractFeatureGroups(result.description).length - groups.length
+            const missing = featureCount - groups.length
             if (missing > 0) {
               characterNote = `${characterNote}（图中另有 ${missing} 个角色没有匹配到候选，认不出来就说认不出来，不要编名字）`
             }
@@ -757,7 +760,8 @@ export class SAT extends Sat {
     // 识图结果会进入主模型和长期记忆，按用户输入对待：过审查，命中就整段丢弃
     const censored = this.ctx.censor ? await this.ctx.censor.transform(description, session) : description
     if (hasCensorMark(censored)) return markCensored(`原文=${description}`)
-    return { description: censored, total: images.length, used: dataUrls.length, quotedTotal, quotedUsed }
+    // 清掉瞬时状态后再去重一次：同一角色在不同格子睁眼/闭眼，清理后会变成同一行
+    return { description: dedupeFeatureLines(stripTransientFeatures(censored)), total: images.length, used: dataUrls.length, quotedTotal, quotedUsed }
   }
 
   /** 没配识图模型时，把图片作为多模态内容直接附给主模型 */
