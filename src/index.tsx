@@ -1073,11 +1073,12 @@ export class SAT extends Sat {
     if (!skipUserContext && this.config.enable_favorability) {
       const favorabilityConfig = this.getFavorabilityConfig()
       // 关系惯性：近期互动越热络，注入的关系等级越高。只影响这里的等级判断，
-      // 不写回 p_system.favorability；等级不变时提示词逐字节不变，不影响前缀缓存。
+      // 不写回 p_system.favorability；好感度 0 以上才计算，负好感不因活跃被抬高。
+      // 等级不变时提示词逐字节不变，不影响前缀缓存。
       const baseLevel = getFavorabilityLevel(user, favorabilityConfig)
       let favorabilityLevel = baseLevel
       if (user) {
-        const inertia = await this.memoryService.getRelationshipInertiaBonus(session)
+        const inertia = await this.memoryService.getRelationshipInertiaBonus(session, user.favorability)
         if (inertia > 0) {
           favorabilityLevel = getFavorabilityLevel(
             { ...user, favorability: user.favorability + inertia }, favorabilityConfig,

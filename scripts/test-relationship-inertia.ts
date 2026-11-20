@@ -1,6 +1,6 @@
 // 关系惯性（2.4）的脚本级验证。在工作区根目录运行：
 //   node -r esbuild-register external/satori-ai/scripts/test-relationship-inertia.ts
-// 覆盖：近 6 个完整记忆日 + 当天 ×2 的加分口径、日界线切分、关系等级提升。
+// 覆盖：近 6 个完整记忆日 + 当天 ×2 的加分口径、日界线切分、关系等级提升、好感度 0 以下不加分。
 import { buildRelationshipInertia } from '../src/memory/stats'
 import { getFavorabilityLevel } from '../src/favorability'
 
@@ -37,7 +37,7 @@ async function main() {
     todayCount = 10
     const now = new Date('2026-11-20T12:00:00+08:00')
     todayStart = new Date('2026-11-20T04:00:00+08:00')
-    const bonus = await buildRelationshipInertia(repo, 'u1', TZ, BOUNDARY, now)
+    const bonus = await buildRelationshipInertia(repo, 'u1', 140, TZ, BOUNDARY, now)
     assert(bonus === 6 * 30 + 2 * 10, `加分为 6*30 + 2*10 = 200（实际 ${bonus}）`)
 
     assert(calls.length === 2, '只查两个窗口：之前 6 天、当天')
@@ -66,7 +66,7 @@ async function main() {
     todayCount = 3
     const now = new Date('2026-11-20T03:30:00+08:00')
     todayStart = new Date('2026-11-19T04:00:00+08:00')
-    const bonus = await buildRelationshipInertia(repo, 'u1', TZ, BOUNDARY, now)
+    const bonus = await buildRelationshipInertia(repo, 'u1', 140, TZ, BOUNDARY, now)
     assert(bonus === 100 + 3 * 2, '凌晨 4 点前仍属于前一个记忆日')
     assert(
       calls[0].from.getTime() === new Date('2026-11-13T04:00:00+08:00').getTime(),
@@ -81,7 +81,7 @@ async function main() {
     todayCount = 0
     const now = new Date('2026-11-20T12:00:00+08:00')
     todayStart = new Date('2026-11-20T04:00:00+08:00')
-    const bonus = await buildRelationshipInertia(repo, 'u1', TZ, BOUNDARY, now)
+    const bonus = await buildRelationshipInertia(repo, 'u1', 140, TZ, BOUNDARY, now)
     assert(bonus === 0, '没有近期对话时不加分')
   }
 
@@ -99,6 +99,20 @@ async function main() {
     const effective = getFavorabilityLevel({ ...user, favorability: user.favorability + 200 }, config)
     assert(effective === '朋友', `加上 200 后注入等级变成朋友（实际 ${effective}）`)
     assert(user.favorability === 140, '只读计算，不改写存储的好感度')
+  }
+
+  // ---------- 场景 5：好感度 0 或负值不计算加分 ----------
+  {
+    calls.length = 0
+    previousCount = 6 * 30
+    todayCount = 10
+    const now = new Date('2026-11-20T12:00:00+08:00')
+    todayStart = new Date('2026-11-20T04:00:00+08:00')
+    const zero = await buildRelationshipInertia(repo, 'u1', 0, TZ, BOUNDARY, now)
+    const negative = await buildRelationshipInertia(repo, 'u1', -10, TZ, BOUNDARY, now)
+    assert(zero === 0, '好感度正好为 0 时不加分')
+    assert(negative === 0, '负好感不因近期活跃被抬高')
+    assert(calls.length === 0, '不满足条件时直接返回，不查询对话次数')
   }
 
   console.log('ALL PASS')

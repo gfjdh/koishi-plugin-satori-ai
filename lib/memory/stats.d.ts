@@ -14,7 +14,8 @@ export declare const RELATIONSHIP_INERTIA_TODAY_WEIGHT = 2;
 /**
  * 关系惯性加分：最近 6 个完整记忆日的对话轮次 + 当天对话轮次 ×2。
  * 只用于注入提示词时判断关系等级，不改写数据库里的好感度。
+ * 好感度 0 以上才计算：负好感不因近期聊得多而被抬高（被拉黑的用户不会被惯性救回来）。
  * 「当天」按 memory_timezone_offset / memory_day_boundary_hour 的日界线切分，
  * 与分层记忆、群日报使用同一套自然日。
  */
-export declare function buildRelationshipInertia(repo: MemoryRepository, scopeId: string, timezoneOffset: number, boundaryHour: number, now?: Date): Promise<number>;
+export declare function buildRelationshipInertia(repo: MemoryRepository, scopeId: string, favorability: number, timezoneOffset: number, boundaryHour: number, now?: Date): Promise<number>;
