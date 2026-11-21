@@ -4,7 +4,7 @@
 // 要保证的事：能从本次消息和引用消息里抽图片、正文里的 img 标签会被去掉、
 // 图片能转成 data URL、识图提示词带上原消息正文。
 import {
-  buildVisionPrompt, collectImages, currentImages, dedupeFeatureLines, downloadImageAsDataUrl, guessImageMime, hasTextContent, isDownloadable, stripImageTags,
+  buildImageFailureNote, buildVisionPrompt, collectImages, currentImages, downloadImageAsDataUrl, guessImageMime, hasTextContent, isDownloadable, stripImageTags,
 } from '../src/vision'
 import { consumeVisionUsage } from '../src/database'
 import {
@@ -59,21 +59,6 @@ async function main() {
     assert(stripImageTags('<img src="x"/>') === '', '只有图片时正文为空')
   }
 
-  // ---------- 场景 2.5：复读的特征行去重 ----------
-  {
-    // 线上真实故障：四格漫画里同一角色反复出现，模型输出了 84 行特征，实际只有 5 种
-    const lines = ['图1：四格漫画，多名角色在温泉中。']
-    for (let i = 0; i < 40; i++) {
-      lines.push('特征1：金发，长发，红瞳，裸体，无头饰，无标志物。')
-      lines.push('特征2：金发，长发，蓝瞳，裸体，无头饰，无标志物。')
-    }
-    lines.push('特征3：黑发，短发，红瞳，穿红白相间服装，戴红蝴蝶结，无标志物。')
-    const deduped = dedupeFeatureLines(lines.join('\n'))
-    assert(deduped.split('\n').length === 4, `重复特征行只保留一次（实际 ${deduped.split('\n').length} 行）`)
-    assert(deduped.includes('图1：四格漫画') && deduped.includes('特征3：'), '去重后保留概述行和不同特征')
-    assert(dedupeFeatureLines('没有特征行') === '没有特征行', '没有特征行时原样返回')
-  }
-
   // ---------- 场景 3：图片转 data URL ----------
   {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -119,11 +104,10 @@ async function main() {
     assert(prompt.includes('2 张'), '提示词写明图片数量')
     assert(prompt.includes('1 张来自用户引用的消息'), '提示词说明引用来源')
     assert(prompt.includes('重点描述与消息正文相关的内容'), '提示词要求聚焦问题相关内容')
-    assert(prompt.includes('显眼道具必须写进'), '提示词要求把标志物写进特征行')
-    assert(prompt.includes('特征1：') && prompt.includes('每个角色单独一行'), '提示词要求多角色分别写特征行')
-    assert(prompt.includes('不能只写主角') && prompt.includes('绝不合并到同一行'), '提示词要求写全每个角色且不合并特征行')
-    assert(prompt.includes('特征行必须写全') && prompt.includes('不受这个字数限制'), '多人图的特征行不受单图字数限制')
-    assert(prompt.includes('不写睁眼/闭眼'), '特征行不写睁眼闭眼等瞬时状态')
+    assert(prompt.includes('「角色：角色名」') && prompt.includes('「角色1：」「角色2：」'), '提示词要求识图模型直接给出角色身份')
+    assert(prompt.includes('「角色：不确定」') && prompt.includes('不要猜'), '不认识时要求写不确定，不许猜')
+    assert(prompt.includes('「角色：无」'), '没有角色时要求写无')
+    assert(prompt.includes('身份行只写角色名'), '身份行只写名字，不写推测理由')
     assert(prompt.includes('只做中性描述'), '提示词带内容安全软约束')
     assert(prompt.includes('【内容违规】'), '整图违规时要求输出拦截标记')
 
@@ -152,6 +136,28 @@ async function main() {
     rememberImageMessage({ channelId: 'c1', userId: 'u2' } as any, images, 1000)
     assert(takeRecentImageMessage(session, 1500).length === 0, '别的用户的图片不会串到当前用户')
     clearImageCache()
+  }
+
+  // ---------- 场景 4.5：图片没取全时的提示 ----------
+  {
+    // 线上事故（2026-11-21 20:27）：当前图片已识别成功，但同轮带上的上一张纯图片下载失败，
+    // 触发了「你看不到这张图」；主模型丢开描述，从群记忆里编了群友「清水尚辉」。
+    const partial = buildImageFailureNote({ total: 2, used: 1, quotedTotal: 0, quotedUsed: 0 })
+    assert(partial.includes('另有 1 张图片没有加载出来'), '部分图片失败时只说明缺失的数量')
+    assert(!partial.includes('你看不到这张图'), '部分图片失败时不能说看不到图')
+    assert(!partial.includes('图片无法识别'), '部分图片失败时不能说整张图无法识别')
+
+    const none = buildImageFailureNote({ total: 1, used: 0, quotedTotal: 0, quotedUsed: 0 })
+    assert(none.includes('你看不到这张图'), '一张都没取到时才说看不到图')
+
+    const quoted = buildImageFailureNote({ total: 1, used: 0, quotedTotal: 1, quotedUsed: 0 })
+    assert(quoted.includes('引用的图片无法识别'), '只有引用图片失败时说明是引用图片')
+
+    const censored = buildImageFailureNote({ total: 1, used: 0, quotedTotal: 0, quotedUsed: 0, censored: true })
+    assert(censored.includes('内容违规') && !censored.includes('看不到'), '内容违规时不说成看不到')
+
+    assert(buildImageFailureNote({ total: 1, used: 1, quotedTotal: 0, quotedUsed: 0 }) === '', '全部取到时没有提示')
+    assert(buildImageFailureNote({ total: 0, used: 0, quotedTotal: 0, quotedUsed: 0 }) === '', '没有图片时没有提示')
   }
 
   // ---------- 场景 5：识图次数按等级限额、按天重置 ----------

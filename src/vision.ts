@@ -91,26 +91,6 @@ export function isDownloadable(image: CollectedImage): boolean {
   return image.source !== 'quoted'
 }
 
-/**
- * 去掉重复的「特征N：」行，只保留第一次出现。
- * 漫画/多格图里同一角色反复出现，识图模型偶尔会陷入复读（线上出现过 84 行里
- * 只有 5 种特征），重复行会把主模型提示词撑爆。
- */
-export function dedupeFeatureLines(description: string): string {
-  const seen = new Set<string>()
-  const lines: string[] = []
-  for (const line of (description || '').split('\n')) {
-    const match = line.trim().match(/^(?:特征|角色|人物)\s*\d*\s*(?:[（(][^）)]*[）)])?\s*[:：]\s*(.+)$/)
-    if (match) {
-      const key = match[1].replace(/[\s，。、；：,.;:]/g, '')
-      if (seen.has(key)) continue
-      seen.add(key)
-    }
-    lines.push(line)
-  }
-  return lines.join('\n')
-}
-
 /** 从文件头猜 MIME；猜不出按 jpeg 处理，多数平台会自行识别 */
 export function guessImageMime(buffer: Buffer): string {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg'
@@ -170,6 +150,34 @@ export async function downloadImageAsDataUrl(
 /** 识图模型判定整张图违规时输出的标记，由系统拦截并丢弃整段描述 */
 export const VISION_BLOCK_MARKER = '【内容违规】'
 
+/**
+ * 图片没取全时给主模型的提示。
+ *
+ * 关键：只有一张图都没拿到时才能说「你看不到这张图」。部分图片失败时，
+ * 已经识别出来的 [图片内容] 仍然有效；这时再说「看不到图」会让模型丢掉
+ * 描述、转而从记忆里编名字（线上案例：黄仁勋的照片被答成群友「清水尚辉」，
+ * 因为同一轮里上一张纯图片下载失败，触发了整段「图片无法识别」提示）。
+ */
+export function buildImageFailureNote(input: {
+  total: number
+  used: number
+  quotedTotal: number
+  quotedUsed: number
+  censored?: boolean
+}): string {
+  const { total, used, quotedTotal, quotedUsed, censored } = input
+  if (total <= 0 || used >= total) return ''
+  if (censored) {
+    return '[图片内容违规：图中内容违反了内容规定，不要描述或猜测图中内容，直接告诉用户图片内容违规、无法讨论]'
+  }
+  if (used === 0) {
+    return quotedUsed < quotedTotal
+      ? '[引用的图片无法识别：你看不到这张图，不要描述或猜测图中内容，直接告诉用户图片没加载出来]'
+      : '[图片无法识别：你看不到这张图，不要描述或猜测图中内容]'
+  }
+  return `[另有 ${total - used} 张图片没有加载出来，不要描述或猜测这些图片的内容]`
+}
+
 /** 识图提示词：带上本消息正文，并要求重点描述与问题相关的部分 */
 export function buildVisionPrompt(
   text: string,
@@ -191,15 +199,12 @@ ${sourceLine}
 · 重点描述与消息正文相关的内容；正文没提到的地方简单带过。
 · 图中有少量文字时原样转写，有大量文字时简要概括。
 · 只描述看得见的内容，不要推测或编造。
-· 如果图中有角色，只需要描述外观、动作、表情等，不需要给出角色的身份等信息。
-· 每张图最后概括外观，这一段会用来查角色库，务必写全：
-  - 先数清图里有几个角色，画面里出现的每个角色都要写，包括只露出半身、位于背景或边缘的角色，不能只写主角；
-  - 同一角色在多个画面、格子或位置重复出现时只写一次，不要重复编号；角色超过 8 个时只写最显眼的 8 个；
-  - 只有一个角色时写一行「特征：发色、发型、瞳色、服装、头饰、标志物」；
-  - 特征行只写外观，不写睁眼/闭眼、表情、动作、姿势——这些是瞬时状态，换一张图就变了；
-  - 有多个角色时按从左到右编号，每个角色单独一行「特征1：」「特征2：」，各自写各自的发色、发型、瞳色、服装、头饰、标志物；
-  - 不同角色的特征绝不合并到同一行，同一个角色也不要拆成两行；
-  - 第三只眼、漂浮的球体或线、武器、翅膀、尾巴等显眼道具必须写进对应角色的那一行。
+· 如果图中有角色，描述外观、动作、表情；每张图的描述末尾另起一行写身份行：
+  - 认识图中的角色就写「角色：角色名」；有多个角色时按从左到右编号，每个角色单独一行「角色1：」「角色2：」；
+  - 同一角色在多个画面、格子或位置重复出现时只写一次；角色超过 8 个时只写最显眼的 8 个；
+  - 不确定、不认识、或只是觉得像某个角色时，写「角色：不确定」，不要猜；
+  - 图中没有角色（真人、物体、风景等）时写「角色：无」；
+  - 身份行只写角色名，不要写外貌、动作或推测理由。
 · 遇到暴力、色情、违法内容只做中性描述，不展开细节；如果整张图都是色情、血腥、暴力或违法内容，不要描述，只输出${VISION_BLOCK_MARKER}。
-· 按顺序用「图1：」「图2：」分段；每张图的正文描述控制在 150 字以内，但特征行必须写全，不受这个字数限制。`
+· 按顺序用「图1：」「图2：」分段；每张图的正文描述控制在 150 字以内。`
 }

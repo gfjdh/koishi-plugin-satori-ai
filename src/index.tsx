@@ -26,9 +26,9 @@ import { Sat, User, FavorabilityConfig, APIConfig, MiddlewareConfig } from './ty
 import { addOutputCensor, buildQuoteNote, filterResponse, hasCensorMark, processPrompt, splitSentences, stripReplyMarker, updateUserPWithTicket } from './utils'
 import { MoodManager } from './mood'
 import { buildScheduleText, loadScheduleFile } from './schedule'
-import { CollectedImage, VISION_BLOCK_MARKER, VISION_MAX_IMAGES, buildVisionPrompt, collectImages, dedupeFeatureLines, downloadImageAsDataUrl, isDownloadable, stripImageTags } from './vision'
+import { CollectedImage, VISION_BLOCK_MARKER, VISION_MAX_IMAGES, buildImageFailureNote, buildVisionPrompt, collectImages, downloadImageAsDataUrl, isDownloadable } from './vision'
 import { takeRecentImageMessage } from './image-cache'
-import { CHARACTER_IDENTITY_RULE, buildCharacterNoteFromGroups, extractFeatureGroups, loadCharacters, matchCharacterGroups, stripTransientFeatures } from './character-recognition'
+import { applyCharacterReference, loadCharacters } from './character-recognition'
 import { Game } from './game'
 import Puppeteer, { } from 'koishi-plugin-puppeteer'
 import { BroadcastManager } from './broadcast'
@@ -536,21 +536,8 @@ export class SAT extends Sat {
         imageUsed = result.used
         imageCensored = !!result.censored
         if (result.description) {
-          // 按角色分别检索东方角色库，只给参考，不下结论
-          const groups = matchCharacterGroups(result.description, stripImageTags(processedPrompt))
-          const featureCount = extractFeatureGroups(result.description).length
-          // 识别纪律放在描述前面，主模型才不会先被正文里的动作/表情带偏
-          const identityRule = featureCount ? `${CHARACTER_IDENTITY_RULE}\n` : ''
-          finalPrompt = `${processedPrompt}\n\n[图片内容]\n${identityRule}${result.description}`.trim()
-          let characterNote = buildCharacterNoteFromGroups(groups)
-          if (characterNote) {
-            // 明确告诉模型有几个角色检索不到候选，避免它凭印象编名字
-            const missing = featureCount - groups.length
-            if (missing > 0) {
-              characterNote = `${characterNote}（图中另有 ${missing} 个角色没有匹配到候选，认不出来就说认不出来，不要编名字）`
-            }
-            finalPrompt = `${finalPrompt}\n${characterNote}`.trim()
-          }
+          // 身份由识图模型给出；角色库只补充官方外观，供主模型核对，不再生成候选
+          finalPrompt = `${processedPrompt}\n\n[图片内容]\n${applyCharacterReference(result.description)}`.trim()
         }
       } else {
         const result = await this.loadImageParts(session, images)
@@ -562,17 +549,14 @@ export class SAT extends Sat {
       }
     }
     // 有图没取到时明确告诉模型原因，避免它编造画面；内容违规时不要再说成「看不到」
-    if (imageUsed < imageTotal) {
-      let note: string
-      if (imageCensored) {
-        note = '[图片内容违规：图中内容违反了内容规定，不要描述或猜测图中内容，直接告诉用户图片内容违规、无法讨论]'
-      } else if (quotedUsed < quotedTotal) {
-        note = '[引用的图片无法识别：你看不到这张图，不要描述或猜测图中内容，直接告诉用户图片没加载出来]'
-      } else {
-        note = '[图片无法识别：你看不到这张图，不要描述或猜测图中内容]'
-      }
-      finalPrompt = `${finalPrompt}\n\n${note}`.trim()
-    }
+    const imageNote = buildImageFailureNote({
+      total: imageTotal,
+      used: imageUsed,
+      quotedTotal,
+      quotedUsed,
+      censored: imageCensored,
+    })
+    if (imageNote) finalPrompt = `${finalPrompt}\n\n${imageNote}`.trim()
     // 引用消息：注明是谁发的、内容是什么
     const quoteNote = buildQuoteNote(session)
     if (quoteNote) finalPrompt = `${finalPrompt}\n${quoteNote}`.trim()
@@ -818,14 +802,11 @@ export class SAT extends Sat {
     logger.info(`识图原文（${session.userId}）：${rawDescription}`)
     // 识图模型自己判定整张图违规时输出标记，直接按内容违规拦截
     if (rawDescription.includes(VISION_BLOCK_MARKER)) return markCensored('原因=识图模型判定内容违规')
-    // 漫画/多格图里同一角色会反复出现，模型偶尔复读；重复的特征行只保留一次
-    const description = dedupeFeatureLines(rawDescription)
 
     // 识图结果会进入主模型和长期记忆，按用户输入对待：过审查，命中就整段丢弃
-    const censored = this.ctx.censor ? await this.ctx.censor.transform(description, session) : description
-    if (hasCensorMark(censored)) return markCensored(`原文=${description}`)
-    // 清掉瞬时状态后再去重一次：同一角色在不同格子睁眼/闭眼，清理后会变成同一行
-    return { description: dedupeFeatureLines(stripTransientFeatures(censored)), total: images.length, used: dataUrls.length, quotedTotal, quotedUsed }
+    const censored = this.ctx.censor ? await this.ctx.censor.transform(rawDescription, session) : rawDescription
+    if (hasCensorMark(censored)) return markCensored(`原文=${rawDescription}`)
+    return { description: censored, total: images.length, used: dataUrls.length, quotedTotal, quotedUsed }
   }
 
   /** 没配识图模型时，把图片作为多模态内容直接附给主模型 */

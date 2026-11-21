@@ -28,12 +28,6 @@ export declare function stripImageTags(text: string): string;
  * 指向本地不存在的文件），重试十次也只是白等三十秒，直接按失败处理。
  */
 export declare function isDownloadable(image: CollectedImage): boolean;
-/**
- * 去掉重复的「特征N：」行，只保留第一次出现。
- * 漫画/多格图里同一角色反复出现，识图模型偶尔会陷入复读（线上出现过 84 行里
- * 只有 5 种特征），重复行会把主模型提示词撑爆。
- */
-export declare function dedupeFeatureLines(description: string): string;
 /** 从文件头猜 MIME；猜不出按 jpeg 处理，多数平台会自行识别 */
 export declare function guessImageMime(buffer: Buffer): string;
 /**
@@ -46,5 +40,20 @@ export declare function downloadImageAsDataUrl(ctx: Context, src: string, http?:
 }, retryDelayMs?: number): Promise<string | null>;
 /** 识图模型判定整张图违规时输出的标记，由系统拦截并丢弃整段描述 */
 export declare const VISION_BLOCK_MARKER = "\u3010\u5185\u5BB9\u8FDD\u89C4\u3011";
+/**
+ * 图片没取全时给主模型的提示。
+ *
+ * 关键：只有一张图都没拿到时才能说「你看不到这张图」。部分图片失败时，
+ * 已经识别出来的 [图片内容] 仍然有效；这时再说「看不到图」会让模型丢掉
+ * 描述、转而从记忆里编名字（线上案例：黄仁勋的照片被答成群友「清水尚辉」，
+ * 因为同一轮里上一张纯图片下载失败，触发了整段「图片无法识别」提示）。
+ */
+export declare function buildImageFailureNote(input: {
+    total: number;
+    used: number;
+    quotedTotal: number;
+    quotedUsed: number;
+    censored?: boolean;
+}): string;
 /** 识图提示词：带上本消息正文，并要求重点描述与问题相关的部分 */
 export declare function buildVisionPrompt(text: string, imageCount: number, quotedCount: number, previousCount?: number): string;
